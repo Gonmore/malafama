@@ -1,18 +1,41 @@
-# 📚 API Endpoints Reference - MalaFama
+# 📚 API Reference - MalaFama
 
 **Base URL:** `http://localhost:5000/api/v1`
 
-**Última actualización:** ${new Date().toLocaleDateString('es-ES')}
+**Última actualización:** 20 de Noviembre 2025
 
 ---
 
 ## 🔐 Autenticación
 
-Todos los endpoints requieren autenticación excepto los de registro/login.
+Todos los endpoints (excepto registro y login) requieren autenticación JWT.
 
 **Header requerido:**
 ```
 Authorization: Bearer <token>
+```
+
+**Obtener Token:**
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"usuario@example.com","password":"password"}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": "uuid",
+      "nombre": "Usuario",
+      "email": "usuario@example.com",
+      "tipo": "admin|atencion|cocina|proveedor"
+    }
+  }
+}
 ```
 
 ---
@@ -381,7 +404,31 @@ Agregar pedidos a comanda existente (Admin/Atención)
 ```
 
 ### PUT `/comandas/:id/cerrar`
-Cerrar comanda (Admin/Atención)
+Cerrar comanda y generar total (Admin/Atención)
+
+**Body (opcional):**
+```json
+{
+  "metodoPago": "efectivo|qr|mixto",
+  "montoEfectivo": 100.00,
+  "montoQr": 50.00,
+  "imagenComprobante": "base64_string_or_file"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "total": 150.50,
+    "estado": "cerrada",
+    "metodoPago": "mixto",
+    "fechaCierre": "2024-11-20T10:30:00Z"
+  }
+}
+```
 
 ---
 
@@ -627,15 +674,130 @@ curl -X POST http://localhost:5000/api/v1/mesas/bulk \
 
 ---
 
-## 📖 Documentación Relacionada
+## 🔌 WebSocket Events (Socket.io)
 
-- [README Principal](../README.md)
-- [Bitácora del Proyecto](../BITACORA.md)
-- [Estado del Proyecto](../STATUS.md)
-- [Guía de Inicio Rápido](../QUICKSTART.md)
+El sistema usa Socket.io para notificaciones en tiempo real.
+
+### Conexión
+
+```javascript
+import io from 'socket.io-client';
+
+const socket = io('http://localhost:5000');
+
+// Unirse a room según rol
+socket.emit('join-room', 'cocina'); // o 'bar', 'atencion', 'admin'
+```
+
+### Events que Emite el Cliente
+
+| Event | Payload | Descripción |
+|-------|---------|-------------|
+| `join-room` | `'cocina' \| 'bar' \| 'atencion' \| 'admin'` | Unirse a una sala |
+| `leave-room` | `'cocina' \| 'bar'` | Salir de una sala |
+| `register` | `{ userId, userType }` | Registrar usuario conectado |
+| `ping` | - | Test de conexión |
+
+### Events que Escucha el Cliente
+
+| Event | Payload | Descripción | Room |
+|-------|---------|-------------|------|
+| `nueva-comanda` | `{ comanda, pedidos }` | Nueva comanda creada | `cocina`, `bar` |
+| `nuevos-pedidos` | `{ comandaId, pedidos }` | Pedidos agregados a comanda | `cocina`, `bar` |
+| `pedido-listo` | `{ pedidoId, comandaId, mesaId }` | Pedido marcado como listo | `atencion` |
+| `comanda-completa` | `{ comandaId, mesaId }` | Todos los pedidos listos | `atencion` |
+| `pedido-cancelado` | `{ pedidoId, comandaId }` | Pedido cancelado | `cocina`, `bar` |
+| `pong` | `{ timestamp }` | Respuesta a ping | individual |
+
+### Ejemplo de Uso (React)
+
+```javascript
+import { useEffect } from 'react';
+import io from 'socket.io-client';
+
+function CocinaView() {
+  useEffect(() => {
+    const socket = io('http://localhost:5000');
+    
+    // Unirse a room
+    socket.emit('join-room', 'cocina');
+    
+    // Escuchar nueva comanda
+    socket.on('nueva-comanda', (data) => {
+      console.log('Nueva comanda:', data);
+      // Actualizar UI + reproducir sonido
+      new Audio('/notification.mp3').play();
+    });
+    
+    // Cleanup
+    return () => {
+      socket.emit('leave-room', 'cocina');
+      socket.disconnect();
+    };
+  }, []);
+  
+  return <div>Vista de Cocina</div>;
+}
+```
 
 ---
 
-**Total de Endpoints:** 65+
-**Versión API:** v1
-**Puerto por defecto:** 5000
+## 📝 Notas Importantes
+
+### Sistema de Tipos de Productos
+
+Los productos se categorizan automáticamente:
+- `tipo: 'comida'` → Pedidos van a cocina
+- `tipo: 'bebida'` → Pedidos van a bar
+- `tipo: 'otros'` → No se notifica
+
+### Sistema de Notas en Pedidos
+
+Cada pedido puede incluir notas:
+```json
+{
+  "productoId": "uuid",
+  "cantidad": 2,
+  "notas": "Sin picante, sin cebolla"
+}
+```
+
+Las notas se muestran con ícono 📝 en cocina y bar.
+
+### Sistema de Pagos
+
+Métodos soportados:
+1. **Efectivo**: Solo monto efectivo
+2. **QR**: Requiere comprobante (imagen)
+3. **Mixto**: Efectivo + QR (validación: suma = total)
+
+---
+
+## 🔧 Troubleshooting
+
+### Error 401 Unauthorized
+- Verifica que el token JWT sea válido
+- El token expira después de 24 horas
+
+### Error 403 Forbidden
+- El usuario no tiene permisos para ese endpoint
+- Verifica el rol del usuario
+
+### Socket.io no conecta
+- Verifica que el backend esté corriendo en puerto 5000
+- Verifica CORS en `backend/src/index.js`
+
+---
+
+## 📖 Documentación Relacionada
+
+- [README Principal](./README.md)
+- [Bitácora del Proyecto](./BITACORA.md)
+
+---
+
+**Total de Endpoints:** 70+  
+**Versión API:** v1  
+**Puerto por defecto:** 5000  
+**Autor**: Supernovatel S.R.L. (gonzalo.m@supernovatel.com)  
+**Ubicación**: La Paz, Bolivia

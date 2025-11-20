@@ -97,7 +97,7 @@ MalaFama/
 └── README.md        # Este archivo
 ```
 
-## 🚀 Inicio Rápido (Instalación Completa)
+## 🚀 Inicio Rápido
 
 ### Prerrequisitos
 
@@ -105,51 +105,44 @@ MalaFama/
 - PostgreSQL 14+
 - Docker (opcional)
 
-### Opción 1: Inicio Rápido con Docker
+### Opción 1: Con Docker (Recomendado)
 
 ```bash
 # 1. Clonar repositorio
 git clone <repo-url>
 cd MalaFama
 
-# 2. Iniciar base de datos
-docker-compose up -d postgres
+# 2. Iniciar todos los servicios
+docker-compose up -d
 
-# 3. Ejecutar scripts SQL
-psql -h localhost -U postgres -d malafama -f database/schema.sql
-psql -h localhost -U postgres -d malafama -f database/views.sql
+# 3. Ver logs
+docker-compose logs -f
 
-# 4. Backend (Terminal 1)
-cd backend
-cp .env.example .env  # Editar si es necesario
-npm install
-npm run dev
-
-# 5. Frontend (Terminal 2)
-cd frontend
-npm install
-npm run dev
-
-# 6. Inicializar datos de prueba (Terminal 3)
-# En Windows PowerShell:
-.\init-data.ps1
-
-# En Linux/Mac:
-chmod +x init-data.sh
-./init-data.sh
+# 4. Detener servicios
+docker-compose down
 ```
+
+Esto iniciará:
+- PostgreSQL en puerto 5432
+- Backend en puerto 5000
+- Frontend en puerto 3000
 
 ### Opción 2: Instalación Manual
 
-#### 1. Configurar Base de Datos
+#### 1. Base de Datos
 
 ```bash
 # Crear base de datos
 createdb malafama
 
+# O con psql
+psql -U postgres
+CREATE DATABASE malafama;
+\q
+
 # Ejecutar scripts
-psql -d malafama -f database/schema.sql
-psql -d malafama -f database/views.sql
+psql -U postgres -d malafama -f database/schema.sql
+psql -U postgres -d malafama -f database/views.sql
 ```
 
 #### 2. Backend
@@ -158,13 +151,15 @@ psql -d malafama -f database/views.sql
 cd backend
 npm install
 cp .env.example .env
-# Editar .env con tus credenciales
+# Editar .env con tus credenciales:
+# - DB_PASSWORD=tu_password
+# - JWT_SECRET=una_clave_secreta_segura
 npm run dev
 ```
 
-El backend estará corriendo en `http://localhost:5000`
+Backend corriendo en: `http://localhost:5000`
 
-### 3. Frontend
+#### 3. Frontend
 
 ```bash
 cd frontend
@@ -172,15 +167,71 @@ npm install
 npm run dev
 ```
 
-El frontend estará en `http://localhost:3000`
+Frontend corriendo en: `http://localhost:3000`
 
-### 4. Mobile (Opcional)
+#### 4. Mobile (Opcional)
 
 ```bash
 cd mobile
 npm install
 npm start
-# Escanea el QR con Expo Go
+# Escanear QR con Expo Go app
+```
+
+### Verificar Instalación
+
+```bash
+# Health check backend
+curl http://localhost:5000/health
+# Debería responder: {"status":"OK","timestamp":"...","service":"MalaFama API"}
+
+# Frontend - Abrir en navegador
+http://localhost:3000
+```
+
+### Crear Usuario Admin
+
+```bash
+# Con curl
+curl -X POST http://localhost:5000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Admin Principal",
+    "email": "admin@malafama.com",
+    "password": "password123",
+    "tipo": "admin"
+  }'
+
+# O con PowerShell (Windows)
+Invoke-RestMethod -Uri "http://localhost:5000/api/v1/auth/register" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body '{"nombre":"Admin Principal","email":"admin@malafama.com","password":"password123","tipo":"admin"}'
+```
+
+### Troubleshooting
+
+**Backend no inicia:**
+- Verifica que PostgreSQL esté corriendo
+- Verifica las credenciales en `.env`
+- Verifica que el puerto 5000 esté libre
+
+**Frontend no conecta:**
+- Verifica que el backend esté corriendo
+- Verifica la URL en `frontend/.env`
+
+**Puerto ocupado (Windows):**
+```bash
+netstat -ano | findstr :5000
+taskkill /PID [PID] /F
+```
+
+**Reset completo de BD:**
+```bash
+dropdb malafama
+createdb malafama
+psql -U postgres -d malafama -f database/schema.sql
+psql -U postgres -d malafama -f database/views.sql
 ```
 
 ## 🎭 Roles de Usuario
@@ -327,43 +378,131 @@ npm test
 
 ## 📝 Documentación
 
-- **Onboarding**: `docs/ONBOARDING.md` - Sistema de configuración inicial
-- **Integración Frontend**: `INTEGRACION_FRONTEND.md` - Guía de integración completa
-- **Bitácora del Proyecto**: `BITACORA.md` - Registro completo de desarrollo
+- **README.md** (este archivo) - Guía principal del proyecto
+- **BITACORA.md** - Registro completo de desarrollo y tareas
+- **API_REFERENCE.md** - Documentación completa de endpoints
 - **Backend**: `backend/README.md`
 - **Frontend**: `frontend/README.md`
 - **Mobile**: `mobile/README.md`
 - **Database**: `database/README.md`
 
+## 🛠️ Comandos Útiles
+
+### Desarrollo Diario
+
+```bash
+# Iniciar backend (Terminal 1)
+cd backend && npm run dev
+
+# Iniciar frontend (Terminal 2)
+cd frontend && npm run dev
+
+# Con Docker (todo en uno)
+docker-compose up
+```
+
+### Base de Datos
+
+```bash
+# Conectar a PostgreSQL
+psql -U postgres -d malafama
+
+# Backup
+pg_dump -U postgres malafama > backup.sql
+
+# Restore
+psql -U postgres -d malafama < backup.sql
+
+# Ver tablas
+\dt
+
+# Ver vistas
+\dv
+```
+
+### Testing
+
+```bash
+# Backend
+cd backend && npm test
+
+# Frontend
+cd frontend && npm test
+
+# Lint
+npm run lint
+```
+
+### Docker
+
+```bash
+# Ver logs en tiempo real
+docker-compose logs -f
+
+# Reconstruir
+docker-compose up --build
+
+# Limpiar todo
+docker-compose down -v
+docker system prune -a
+```
+
+### Git
+
+```bash
+# Commit con formato convencional
+git commit -m "feat: descripción"
+git commit -m "fix: descripción"
+git commit -m "docs: descripción"
+
+# Push
+git push origin main
+```
+
 ## 🚧 Estado del Proyecto
 
 Ver `BITACORA.md` para el registro detallado de progreso.
 
-**Completado (80%)**:
-- ✅ Base de datos completa con vistas
-- ✅ Backend API (70+ endpoints)
-- ✅ Sistema de onboarding
-- ✅ Web scraping de menús
-- ✅ Frontend con 3 dashboards integrados
-- ✅ Socket.io en tiempo real
+### Completado (85%)
+
+**Infraestructura:**
+- ✅ Base de datos PostgreSQL (9 tablas + 8 vistas)
+- ✅ Backend API completo (70+ endpoints)
+- ✅ Autenticación JWT multi-rol
+- ✅ Socket.io para tiempo real
+- ✅ Web scraping (Puppeteer + Cheerio)
+
+**Frontend Web:**
+- ✅ Sistema de onboarding completo
+- ✅ Dashboard Mesero con comandas funcionales
+- ✅ Dashboard Cocina con cola en tiempo real
+- ✅ Dashboard Bar con gestión de bebidas
+- ✅ Modal de pago con cámara para comprobantes
 - ✅ Notificaciones con audio
+- ✅ Vista compacta en cocina/bar
+- ✅ Sistema de notas en pedidos
 
-**En Desarrollo (15%)**:
+**Funcionalidades Core:**
+- ✅ Gestión completa de mesas
+- ✅ Creación y cierre de comandas
+- ✅ Pedidos con notas personalizadas
+- ✅ Categorización automática de productos (comida/bebida)
+- ✅ Cálculo automático de totales
+- ✅ Sistema de pagos (efectivo/QR/mixto)
+
+### En Desarrollo (10%)
+
+- 🔄 Dashboard Admin con reportes visuales
 - 🔄 Dashboard Proveedor
-- 🔄 Páginas CRUD para gestión
-- 🔄 Reportes con gráficas
+- 🔄 Páginas CRUD para gestión de productos/usuarios
+- 🔄 Gráficas y analytics
 
-**Pendiente (5%)**:
-- ⏳ App móvil funcional
+### Pendiente (5%)
+
+- ⏳ App móvil React Native
 - ⏳ Tests automatizados
 - ⏳ Deploy y CI/CD
-- 🔄 Funcionalidades por rol
-
-**Pendiente (~30%)**:
-- ⏳ Web scraping
-- ⏳ Reportes completos
-- ⏳ App móvil funcional
-- ⏳ Tests y optimización
+- ⏳ Documentación Swagger/OpenAPI
 
 ## 🤝 Contribuir
 
@@ -380,7 +519,10 @@ ISC
 
 ## 👤 Autor
 
-Proyecto desarrollado para gestión de pedidos en restaurantes.
+Supernovatel S.R.L.
+gonzalo.m@supernovatel.com
+Gonzalo Moreno Dolz
+La Paz, Bolivia
 
 ---
 
