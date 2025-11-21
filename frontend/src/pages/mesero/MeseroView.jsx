@@ -21,6 +21,7 @@ export default function MeseroView() {
   const [comandaIdSeleccionada, setComandaIdSeleccionada] = useState(null);
   const [mesasConPedidoListo, setMesasConPedidoListo] = useState(new Set());
   const [mesasConComandaCompleta, setMesasConComandaCompleta] = useState(new Set());
+  const [comandasAcknowledged, setComandasAcknowledged] = useState(new Set()); // Comandas reconocidas por el mesero
   const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
 
@@ -265,6 +266,27 @@ export default function MeseroView() {
   };
 
   const handleComandaClick = (mesa, comandaId) => {
+    // Buscar la comanda
+    const comanda = mesa.comandas?.find(c => c.id === comandaId);
+    const pedidos = comanda?.pedidos || [];
+    const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
+      ['listo', 'entregado', 'cancelado'].includes(p.estado)
+    );
+
+    // Si la comanda está lista y no ha sido acknowledged, marcarla como acknowledged con animación
+    if (todosPedidosListos && !comandasAcknowledged.has(comandaId)) {
+      // Marcar como acknowledged inmediatamente para detener el parpadeo
+      setComandasAcknowledged(prev => new Set([...prev, comandaId]));
+      
+      // Mostrar toast después de un breve delay para sincronizar con la animación
+      setTimeout(() => {
+        toast.success('Comanda reconocida como entregada', { icon: '✓', duration: 2000 });
+      }, 300);
+      
+      return; // Solo acknowledge en el primer click
+    }
+
+    // Si ya fue acknowledged o no está lista, abrir el modal
     setSelectedMesa(mesa);
     setComandaIdSeleccionada(comandaId);
     setShowComandaModal(true);
@@ -283,19 +305,32 @@ export default function MeseroView() {
         const comandas = mesa.comandas || [];
         if (comandas.length === 0) return 4; // Sin comandas - última prioridad
         
-        // Verificar si toda la mesa está lista
+        // Verificar si toda la mesa está lista Y NO acknowledged
+        const todaMesaListaNoAck = comandas.every(c => {
+          const pedidos = c.pedidos || [];
+          const todosListos = pedidos.length > 0 && pedidos.every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado));
+          const esAcknowledged = comandasAcknowledged.has(c.id);
+          return !todosListos || esAcknowledged; // Si está listo pero acknowledged, no cuenta como "pendiente"
+        });
+        
         const todaMesaLista = comandas.every(c => 
           (c.pedidos || []).length > 0 && 
           (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
         );
-        if (todaMesaLista) return 1; // Todas las comandas listas - máxima prioridad
         
-        // Verificar si alguna comanda está completa
-        const algunaComandaCompleta = comandas.some(c => 
-          (c.pedidos || []).length > 0 && 
-          (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
-        );
-        if (algunaComandaCompleta) return 2; // Alguna comanda lista - segunda prioridad
+        // Verificar si TODAS las comandas están acknowledged
+        const todasAcknowledged = comandas.every(c => comandasAcknowledged.has(c.id));
+        
+        if (todaMesaLista && !todasAcknowledged) return 1; // Todas las comandas listas pero NO todas acknowledged - máxima prioridad
+        
+        // Verificar si alguna comanda está completa y NO acknowledged
+        const algunaComandaCompletaNoAck = comandas.some(c => {
+          const pedidos = c.pedidos || [];
+          const todosListos = pedidos.length > 0 && pedidos.every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado));
+          const esAcknowledged = comandasAcknowledged.has(c.id);
+          return todosListos && !esAcknowledged;
+        });
+        if (algunaComandaCompletaNoAck) return 2; // Alguna comanda lista sin acknowledge - segunda prioridad
         
         // Verificar si algún pedido está listo
         const algunPedidoListo = comandas.some(c => 
@@ -329,6 +364,9 @@ export default function MeseroView() {
             (c.pedidos || []).length > 0 && 
             (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
           );
+          
+          // Verificar si TODAS las comandas están acknowledged
+          const todasComandasAcknowledged = tieneComandas && comandas.every(c => comandasAcknowledged.has(c.id));
 
           // Mesas SIN comandas - layout simple horizontal
           if (!tieneComandas) {
@@ -355,11 +393,13 @@ export default function MeseroView() {
             <div 
               key={mesa.id}
               className={`relative flex rounded-lg overflow-hidden shadow-md transition-all duration-200 ${
-                todaMesaLista 
+                todaMesaLista && !todasComandasAcknowledged
                   ? 'ring-4 ring-green-500 animate-pulse' 
-                  : darkMode 
-                    ? 'border border-gray-700' 
-                    : ''
+                  : todaMesaLista && todasComandasAcknowledged
+                    ? 'ring-4 ring-green-500'
+                    : darkMode 
+                      ? 'border border-gray-700' 
+                      : ''
               }`}
               style={{ minHeight: '100px' }}
             >
@@ -388,8 +428,8 @@ export default function MeseroView() {
                   darkMode ? 'border-r-2' : 'border-r-2 border-gray-300'
                 } ${
                   todaMesaLista && !darkMode ? '' : ''
-                } hover:bg-opacity-80 transition-colors ${
-                  todaMesaLista ? 'animate-pulse' : ''
+                } hover:bg-opacity-80 transition-all duration-500 ${
+                  todaMesaLista && !todasComandasAcknowledged ? 'animate-pulse' : ''
                 }`}
               >
                 <div className="text-center">
@@ -407,6 +447,7 @@ export default function MeseroView() {
                     const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
                       ['listo', 'entregado', 'cancelado'].includes(p.estado)
                     );
+                    const esAcknowledged = comandasAcknowledged.has(comanda.id);
                     
                     // Calcular tiempo de forma segura
                     let tiempoMin = 0;
@@ -420,7 +461,7 @@ export default function MeseroView() {
                     }
                     
                     return (
-                      <div key={comanda.id} className={`flex gap-0 rounded-lg shadow-sm items-center ${
+                      <div key={comanda.id} className={`relative flex gap-0 rounded-lg shadow-sm items-center ${
                         darkMode ? 'bg-gray-900' : 'bg-white'
                       } ${
                         todosPedidosListos && darkMode ? 'ring-2 ring-green-500' : ''
@@ -428,20 +469,35 @@ export default function MeseroView() {
                         {/* Semicírculo con número de comanda - pegado a la izquierda */}
                         <button
                           onClick={() => handleComandaClick(mesa, comanda.id)}
-                          className={`flex-shrink-0 w-12 h-16 rounded-r-full flex flex-col items-center justify-center text-xs font-bold ${
+                          className={`relative flex-shrink-0 w-12 h-16 rounded-r-full flex flex-col items-center justify-center text-xs font-bold ${
                             darkMode
                               ? todosPedidosListos
-                                ? 'bg-gray-900 border-2 border-green-500 text-white animate-pulse'
+                                ? `bg-gray-900 border-2 border-green-500 text-white ${!esAcknowledged ? 'animate-pulse' : ''}`
                                 : 'bg-gray-900 border-2 border-gray-600 text-gray-300'
                               : todosPedidosListos 
-                                ? 'bg-green-500 text-white animate-pulse' 
+                                ? `bg-green-500 text-white ${!esAcknowledged ? 'animate-pulse' : ''}` 
                                 : 'bg-blue-500 text-white'
-                          } hover:scale-105 transition-transform shadow-md border-l-0`}
+                          } hover:scale-105 transition-all duration-500 shadow-md border-l-0`}
                           style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                         >
+                          {/* Manito señalando cuando está lista y no acknowledged */}
+                          {todosPedidosListos && !esAcknowledged && (
+                            <div className="absolute -bottom-1 -right-1 animate-bounce">
+                              <div className="text-2xl">{darkMode ? '👆🏽' : '👆'}</div>
+                            </div>
+                          )}
                           <span>C{idx + 1}</span>
                           <span className="text-[9px] font-normal">{tiempoMin}m</span>
                         </button>
+                        
+                        {/* Check verde para comandas acknowledged */}
+                        {todosPedidosListos && esAcknowledged && (
+                          <div className="absolute bottom-1 right-1 flex items-center justify-center w-6 h-6 bg-green-500 rounded-full border-2 border-white shadow-lg animate-fadeIn">
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )}
 
                         {/* Pedidos de la comanda */}
                         <div className="flex-1 flex flex-wrap gap-1.5 p-2">
@@ -453,9 +509,9 @@ export default function MeseroView() {
                             return (
                               <div
                                 key={pedido.id}
-                                className={`inline-flex flex-col px-2 py-1 rounded text-xs border ${
+                                className={`inline-flex flex-col px-2 py-1 rounded text-xs border transition-all duration-500 ${
                                   estaListo 
-                                    ? 'bg-green-100 border-green-500 animate-pulse' 
+                                    ? `bg-green-100 border-green-500 ${!esAcknowledged ? 'animate-pulse' : ''}` 
                                     : darkMode
                                       ? 'bg-gray-800 border-gray-600 text-gray-300'
                                       : 'bg-gray-50 border-gray-300'
