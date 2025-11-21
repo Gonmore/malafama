@@ -60,11 +60,16 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting - configuración ajustada para uso en restaurante
+// Permite ~500 requests por minuto (suficiente para múltiples dispositivos con polling)
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Demasiadas peticiones desde esta IP, por favor intente más tarde.'
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minuto
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 500, // 500 requests por minuto
+  message: 'Demasiadas peticiones desde esta IP, por favor intente más tarde.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Skip rate limiting for Socket.io connections
+  skip: (req) => req.path.includes('/socket.io')
 });
 app.use('/api/', limiter);
 

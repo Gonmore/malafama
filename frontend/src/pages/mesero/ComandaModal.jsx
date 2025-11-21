@@ -102,13 +102,14 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
         await comandaService.addPedidos(comanda.id, pedidosConNotas);
         toast.success('Pedidos agregados a la comanda');
       } else {
-        // Crear nueva comanda
-        const payload = { 
-          mesaId: mesa.id, 
-          pedidos: pedidosConNotas 
-        };
-        console.log('Creando nueva comanda con:', payload);
-        const resp = await comandaService.create(payload);
+          // Crear nueva comanda. Si la mesa ya tiene comandas, forzamos la creación
+          const payload = { 
+            mesaId: mesa.id, 
+            pedidos: pedidosConNotas 
+          };
+          const options = (mesa?.comandas && mesa.comandas.length > 0) ? { forzar: true } : {};
+          console.log('Creando nueva comanda con:', payload, 'options:', options);
+          const resp = await comandaService.create(payload, options);
         console.log('Respuesta crear comanda:', resp);
         if (resp?.data) {
           setComanda(resp.data);
@@ -130,7 +131,8 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
       }
     } catch (error) {
       console.error('enviarPedidos', error);
-      toast.error('Error al enviar pedidos');
+      const mensaje = error.response?.data?.message || 'Error al enviar pedidos';
+      toast.error(mensaje);
     } finally {
       setLoading(false);
     }

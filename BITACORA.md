@@ -1,6 +1,6 @@
 # BitÃ¡cora del Proyecto MalaFama - Sistema de GestiÃ³n de Pedidos para Restaurante
 
-**Ãšltima actualizaciÃ³n:** ${new Date().toLocaleDateString('es-ES')}
+**Ãšltima actualizaciÃ³n:** 20 de Noviembre 2025
 
 ## ðŸ“‹ DescripciÃ³n del Proyecto
 
@@ -9,6 +9,49 @@ Sistema completo de gestiÃ³n de pedidos para restaurantes que incluye:
 - **Backend**: Node.js con Express
 - **Frontend Web**: React
 - **App MÃ³vil**: React Native
+
+---
+
+## ðŸ†• ÃšLTIMAS ACTUALIZACIONES
+
+### SesiÃ³n del 20 de Noviembre 2025 - Vistas Agrupadas para Cocina y Bar
+
+#### âœ… Tareas Completadas
+
+**1. Fix: Error 400 al crear segunda comanda**
+- Problema: Error "Ya existe una comanda abierta en esta mesa"
+- SoluciÃ³n: Agregado flag `forzar: true` cuando mesa tiene comandas previas
+- Archivo: `frontend/src/pages/mesero/ComandaModal.jsx`
+
+**2. Fix: "Invalid Date" en modal de selecciÃ³n**
+- Problema: Fechas mostraban "Invalid Date"
+- SoluciÃ³n: ValidaciÃ³n robusta + fallbacks mÃºltiples (createdAt || created_at || fecha)
+- Confirmado: `created_at` es el campo vÃ¡lido
+- Archivo: `frontend/src/pages/mesero/MesaConComandaModal.jsx`
+
+**3. Feature: Vistas Agrupadas**
+Nuevo sistema de visualizaciÃ³n con 3 modos:
+- **Por Pedido**: Vista grid actual (default)
+- **Agrupado por Producto**: PestaÃ±as por producto, preparaciÃ³n batch
+- **Agrupado por Mesa**: PestaÃ±as por mesa, completar mesa entera
+
+**ImplementaciÃ³n**:
+- Dropdown "Ver como" en header
+- Persistencia en localStorage (cocina_modo_vista, bar_modo_vista)
+- Funciones: agruparPorProducto(), agruparPorMesa()
+- Componentes: VistaAgrupadaProducto, VistaAgrupadaMesa
+- Botones batch: "Marcar todos listos", "Completar mesa"
+
+**Archivos modificados**: CocinaView.jsx (+200 lÃ­neas), BarView.jsx (+200 lÃ­neas)
+
+**Caso de uso**: Bar recibe 3 Fernets â†’ vista "Agrupado por Producto" â†’ pestaÃ±a Fernet â†’ preparar batch â†’ marcar todos listos
+
+#### ðŸŽ¯ Resultados
+âœ… Segunda comanda funciona correctamente
+âœ… Fechas se muestran bien en modal
+âœ… 3 modos de vista operativos en Cocina y Bar
+âœ… PreparaciÃ³n batch optimizada
+âœ… Persistencia de preferencias
 
 ---
 
@@ -717,52 +760,56 @@ curl -X POST http://localhost:5000/api/v1/auth/login \
 ```
 
 ---
- 
- - - -  
-  
- # #     S e s i ó n   d e l   1 7   d e   N o v i e m b r e   2 0 2 5   -   S i s t e m a   C o m p l e t o   M e s e r o / C o c i n a / B a r  
+
+ 
+ - - - 
+ 
+ 
+ 
+ # #     S e s i ï¿½ n   d e l   1 7   d e   N o v i e m b r e   2 0 2 5   -   S i s t e m a   C o m p l e t o   M e s e r o / C o c i n a / B a r 
+ 
  
 
 ---
 
-## Sesión del 20 de Noviembre 2025 - Sistema Completo Funcionando + Consolidación Documentación
+## Sesiï¿½n del 20 de Noviembre 2025 - Sistema Completo Funcionando + Consolidaciï¿½n Documentaciï¿½n
 
 
 ---
 
-## Sesión del 20 de Noviembre 2025 - Consolidación de Documentación
+## Sesiï¿½n del 20 de Noviembre 2025 - Consolidaciï¿½n de Documentaciï¿½n
 
 ###  Tareas Completadas
 
-#### 1. Actualización de README.md
+#### 1. Actualizaciï¿½n de README.md
 **Cambios**:
-- Consolidación de información de QUICKSTART.md y COMANDOS.md
-- Sección de Inicio Rápido expandida con opciones Docker y manual
-- Agregada sección de Troubleshooting
-- Comandos útiles integrados directamente
+- Consolidaciï¿½n de informaciï¿½n de QUICKSTART.md y COMANDOS.md
+- Secciï¿½n de Inicio Rï¿½pido expandida con opciones Docker y manual
+- Agregada secciï¿½n de Troubleshooting
+- Comandos ï¿½tiles integrados directamente
 - Estado del proyecto actualizado (85% completo)
 - Eliminadas referencias a archivos MD obsoletos
 
 **Contenido Nuevo**:
-- Verificación de instalación
+- Verificaciï¿½n de instalaciï¿½n
 - Comandos de desarrollo diario
 - Comandos de base de datos
 - Comandos Docker
 - Comandos Git
 
-#### 2. Actualización de BITACORA.md
+#### 2. Actualizaciï¿½n de BITACORA.md
 **Cambios**:
-- Agregada sesión del 17 de Noviembre con detalle completo
-- Documentación de todas las features implementadas
+- Agregada sesiï¿½n del 17 de Noviembre con detalle completo
+- Documentaciï¿½n de todas las features implementadas
 - Listado de archivos creados/modificados
-- Métricas de la sesión
+- Mï¿½tricas de la sesiï¿½n
 - Issues resueltos documentados
 
-#### 3. Plan de Consolidación de Archivos MD
+#### 3. Plan de Consolidaciï¿½n de Archivos MD
 **Archivos a Mantener**:
-- README.md - Guía principal (actualizado)
-- BITACORA.md - Registro cronológico completo
-- API_REFERENCE.md - Documentación de endpoints
+- README.md - Guï¿½a principal (actualizado)
+- BITACORA.md - Registro cronolï¿½gico completo
+- API_REFERENCE.md - Documentaciï¿½n de endpoints
 
 **Archivos a Eliminar** (info ya consolidada):
 - STATUS.md  Info movida a README
@@ -779,48 +826,48 @@ curl -X POST http://localhost:5000/api/v1/auth/login \
 -  Backend API completo (70+ endpoints)
 -  Frontend con 3 dashboards funcionales (Mesero, Cocina, Bar)
 -  Sistema de onboarding
--  Sistema de pagos con 3 métodos
+-  Sistema de pagos con 3 mï¿½todos
 -  Notificaciones en tiempo real
 -  Sistema de notas en pedidos
--  Categorización automática de productos
+-  Categorizaciï¿½n automï¿½tica de productos
 -  Vista compacta en cocina/bar
--  Web scraping de menús
+-  Web scraping de menï¿½s
 
 **En Desarrollo (10%)**:
 -  Dashboard Admin con reportes visuales
 -  Dashboard Proveedor
 
 **Pendiente (5%)**:
--  App móvil React Native
+-  App mï¿½vil React Native
 -  Tests automatizados
 -  Deploy y CI/CD
 
-###  Documentación Consolidada
+###  Documentaciï¿½n Consolidada
 
-Los 3 archivos principales ahora contienen toda la información necesaria:
+Los 3 archivos principales ahora contienen toda la informaciï¿½n necesaria:
 
 1. **README.md**:
-   - Descripción del proyecto
-   - Arquitectura y tecnologías
-   - Instalación completa (Docker + Manual)
-   - Comandos útiles
+   - Descripciï¿½n del proyecto
+   - Arquitectura y tecnologï¿½as
+   - Instalaciï¿½n completa (Docker + Manual)
+   - Comandos ï¿½tiles
    - Troubleshooting
    - Estado del proyecto
 
 2. **BITACORA.md**:
-   - Historial cronológico completo
+   - Historial cronolï¿½gico completo
    - Todas las sesiones de desarrollo
    - Features implementadas con detalle
-   - Decisiones técnicas
+   - Decisiones tï¿½cnicas
    - Issues resueltos
 
 3. **API_REFERENCE.md**:
-   - Documentación de todos los endpoints
+   - Documentaciï¿½n de todos los endpoints
    - Ejemplos de requests/responses
-   - Códigos de error
-   - Autenticación
+   - Cï¿½digos de error
+   - Autenticaciï¿½n
 
-###  Próximos Pasos
+###  Prï¿½ximos Pasos
 
 1. Eliminar archivos MD redundantes
 2. Continuar con Dashboard Admin

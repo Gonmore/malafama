@@ -18,7 +18,10 @@ const getAllMesas = async (req, res) => {
         as: 'comandas',
         where: { estado: 'abierta' },
         required: false,
-        include: ['pedidos']
+        include: [{
+          association: 'pedidos',
+          include: ['producto']
+        }]
       }],
       order: [['numero', 'ASC']]
     });
@@ -326,6 +329,16 @@ const getMesasAsignadas = async (req, res) => {
 
     const mesas = await Mesa.findAll({
       where: { id: mesaIds },
+      include: [{
+        model: Comanda,
+        as: 'comandas',
+        where: { estado: 'abierta' },
+        required: false,
+        include: [{
+          association: 'pedidos',
+          include: ['producto']
+        }]
+      }],
       order: [['numero', 'ASC']]
     });
 

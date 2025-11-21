@@ -3,6 +3,9 @@ import { useState } from 'react';
 export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, onClose }) {
   const [comandaSeleccionada, setComandaSeleccionada] = useState(mesa?.comandas?.[0]?.id || null);
 
+  // Debug: ver qué datos llegan
+  console.log('MesaConComandaModal - mesa.comandas:', mesa?.comandas);
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
       <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-6 border-2 border-orange-200">
@@ -41,22 +44,61 @@ export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, o
               Hay {mesa.comandas.length} comandas activas - Seleccioná cuál continuar:
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {mesa.comandas.map((c) => (
-                <button
-                  key={c.id}
-                  className={`p-3 rounded-lg border-2 text-sm font-medium transition text-left ${
-                    comandaSeleccionada === c.id 
-                      ? 'border-orange-500 bg-orange-100' 
-                      : 'border-gray-200 bg-white hover:border-orange-400 hover:bg-orange-50'
-                  }`}
-                  onClick={() => setComandaSeleccionada(c.id)}
-                >
-                  <div className="font-bold text-gray-800">#{c.id?.slice?.(0, 8)}</div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(c.createdAt).toLocaleTimeString()}
-                  </div>
-                </button>
-              ))}
+              {mesa.comandas
+                .sort((a, b) => {
+                  const fechaA = new Date(a.createdAt || a.created_at || a.fecha);
+                  const fechaB = new Date(b.createdAt || b.created_at || b.fecha);
+                  return fechaA - fechaB;
+                })
+                .map((c, index) => {
+                  // Intentar múltiples campos de fecha
+                  const fechaRaw = c.createdAt || c.created_at || c.fecha;
+                  const fechaComanda = fechaRaw ? new Date(fechaRaw) : null;
+                  const esValida = fechaComanda && !isNaN(fechaComanda.getTime());
+                  
+                  // Debug
+                  console.log(`Comanda ${index + 1}:`, {
+                    id: c.id?.slice?.(0, 8),
+                    createdAt: c.createdAt,
+                    created_at: c.created_at,
+                    fecha: c.fecha,
+                    fechaRaw,
+                    fechaComanda,
+                    esValida
+                  });
+                  
+                  return (
+                    <button
+                      key={c.id}
+                      className={`p-3 rounded-lg border-2 text-sm font-medium transition text-left ${
+                        comandaSeleccionada === c.id 
+                          ? 'border-orange-500 bg-orange-100' 
+                          : 'border-gray-200 bg-white hover:border-orange-400 hover:bg-orange-50'
+                      }`}
+                      onClick={() => setComandaSeleccionada(c.id)}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-orange-600">
+                          {index === 0 ? '1ª' : index === 1 ? '2ª' : `${index + 1}ª`} Comanda
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-800 font-semibold">
+                        #{c.id?.slice?.(0, 8)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {esValida 
+                          ? fechaComanda.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+                          : 'Hora no disponible'
+                        }
+                      </div>
+                      {c.pedidos && c.pedidos.length > 0 && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          {c.pedidos.length} pedido{c.pedidos.length > 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </div>
         )}

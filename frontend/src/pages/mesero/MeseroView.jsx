@@ -21,6 +21,16 @@ export default function MeseroView() {
   const [comandaIdSeleccionada, setComandaIdSeleccionada] = useState(null);
   const [mesasConPedidoListo, setMesasConPedidoListo] = useState(new Set());
   const [mesasConComandaCompleta, setMesasConComandaCompleta] = useState(new Set());
+  const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
+
+  useEffect(() => {
+    localStorage.setItem('mesero_vista_mode', vistaMode);
+  }, [vistaMode]);
+
+  useEffect(() => {
+    localStorage.setItem('mesero_dark_mode', darkMode);
+  }, [darkMode]);
 
   useEffect(() => {
     cargarMesas();
@@ -200,16 +210,30 @@ export default function MeseroView() {
   };
 
   const getColorMesa = (estado) => {
-    switch (estado) {
-      case 'comanda-completa':
-        return 'bg-green-700 border-green-800 border-2 text-white';
-      case 'pedido-listo':
-        return 'bg-green-100 border-green-500 border-4 animate-pulse';
-      case 'ocupada':
-        return 'bg-yellow-50 border-yellow-400 border-2';
-      case 'libre':
-      default:
-        return 'bg-white border-gray-300 border hover:border-blue-400';
+    if (darkMode) {
+      switch (estado) {
+        case 'comanda-completa':
+          return 'bg-gray-800 border-green-500 border-2 text-gray-200';
+        case 'pedido-listo':
+          return 'bg-gray-800 border-green-500 border-4 animate-pulse text-gray-200';
+        case 'ocupada':
+          return 'bg-gray-800 border-gray-600 border-2 text-gray-200';
+        case 'libre':
+        default:
+          return 'bg-gray-800 border-gray-700 border text-gray-400 hover:border-gray-600';
+      }
+    } else {
+      switch (estado) {
+        case 'comanda-completa':
+          return 'bg-green-700 border-green-800 border-2 text-white';
+        case 'pedido-listo':
+          return 'bg-green-100 border-green-500 border-4 animate-pulse';
+        case 'ocupada':
+          return 'bg-yellow-50 border-yellow-400 border-2';
+        case 'libre':
+        default:
+          return 'bg-white border-gray-300 border hover:border-blue-400';
+      }
     }
   };
 
@@ -232,6 +256,240 @@ export default function MeseroView() {
     return null;
   };
 
+  const calcularTiempoTranscurrido = (fecha) => {
+    const ahora = new Date();
+    const creacion = new Date(fecha);
+    const diffMs = ahora - creacion;
+    const mins = Math.floor(diffMs / 60000);
+    return mins;
+  };
+
+  const handleComandaClick = (mesa, comandaId) => {
+    setSelectedMesa(mesa);
+    setComandaIdSeleccionada(comandaId);
+    setShowComandaModal(true);
+  };
+
+  // Vista en Lista
+  const renderVistaLista = () => {
+    const mesasFiltradas = mesas.filter(m => {
+      if (showUnassigned) return !assignedMesas.has(m.id);
+      return assignedMesas.size === 0 ? true : assignedMesas.has(m.id);
+    });
+
+    // Ordenar mesas por prioridad
+    const mesasOrdenadas = [...mesasFiltradas].sort((a, b) => {
+      const getPrioridad = (mesa) => {
+        const comandas = mesa.comandas || [];
+        if (comandas.length === 0) return 4; // Sin comandas - última prioridad
+        
+        // Verificar si toda la mesa está lista
+        const todaMesaLista = comandas.every(c => 
+          (c.pedidos || []).length > 0 && 
+          (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
+        );
+        if (todaMesaLista) return 1; // Todas las comandas listas - máxima prioridad
+        
+        // Verificar si alguna comanda está completa
+        const algunaComandaCompleta = comandas.some(c => 
+          (c.pedidos || []).length > 0 && 
+          (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
+        );
+        if (algunaComandaCompleta) return 2; // Alguna comanda lista - segunda prioridad
+        
+        // Verificar si algún pedido está listo
+        const algunPedidoListo = comandas.some(c => 
+          (c.pedidos || []).some(p => ['listo', 'entregado'].includes(p.estado))
+        );
+        if (algunPedidoListo) return 3; // Algún pedido listo - tercera prioridad
+        
+        return 3.5; // Tiene comandas pero nada listo - antes de mesas vacías
+      };
+      
+      const prioA = getPrioridad(a);
+      const prioB = getPrioridad(b);
+      
+      // Si tienen la misma prioridad, ordenar por número de mesa
+      if (prioA === prioB) {
+        return parseInt(a.numero) - parseInt(b.numero);
+      }
+      
+      return prioA - prioB;
+    });
+
+    return (
+      <div className="space-y-3 px-3 py-4">
+        {mesasOrdenadas.map((mesa) => {
+          const estado = getEstadoMesa(mesa);
+          const comandas = mesa.comandas || [];
+          const tieneComandas = comandas.length > 0;
+          
+          // Calcular si toda la mesa está lista
+          const todaMesaLista = tieneComandas && comandas.every(c => 
+            (c.pedidos || []).length > 0 && 
+            (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
+          );
+
+          // Mesas SIN comandas - layout simple horizontal
+          if (!tieneComandas) {
+            return (
+              <button
+                key={mesa.id}
+                onClick={() => handleMesaClick(mesa)}
+                className={`w-full ${
+                  darkMode 
+                    ? 'bg-gray-800 hover:bg-gray-700 border-2 border-gray-600 text-gray-200' 
+                    : 'bg-gray-200 hover:bg-gray-300 border-2 border-gray-400'
+                } rounded-lg px-4 py-3 transition-all duration-200 hover:shadow-md`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-base font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Mesa {mesa.numero}</span>
+                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Sin comandas</span>
+                </div>
+              </button>
+            );
+          }
+
+          // Mesas CON comandas - layout con etiqueta vertical
+          return (
+            <div 
+              key={mesa.id}
+              className={`relative flex rounded-lg overflow-hidden shadow-md transition-all duration-200 ${
+                todaMesaLista 
+                  ? 'ring-4 ring-green-500 animate-pulse' 
+                  : darkMode 
+                    ? 'border border-gray-700' 
+                    : ''
+              }`}
+              style={{ minHeight: '100px' }}
+            >
+              {/* Etiqueta de Mesa VERTICAL - 10% width */}
+              <button
+                onClick={() => handleMesaClick(mesa)}
+                className={`w-[10%] min-w-[60px] flex items-center justify-center ${
+                  darkMode
+                    ? todaMesaLista
+                      ? 'bg-gray-800 border-green-500 text-gray-200'
+                      : estado === 'comanda-completa' 
+                        ? 'bg-gray-800 border-gray-600 text-gray-200' 
+                        : estado === 'pedido-listo' 
+                          ? 'bg-gray-800 border-gray-600 animate-pulse text-gray-200' 
+                          : estado === 'ocupada' 
+                            ? 'bg-gray-800 border-gray-600 text-gray-200' 
+                            : 'bg-gray-800 border-gray-700 text-gray-400'
+                    : estado === 'comanda-completa' 
+                      ? 'bg-green-700 text-white' 
+                      : estado === 'pedido-listo' 
+                        ? 'bg-green-100 animate-pulse' 
+                        : estado === 'ocupada' 
+                          ? 'bg-yellow-50' 
+                          : 'bg-gray-50'
+                } ${
+                  darkMode ? 'border-r-2' : 'border-r-2 border-gray-300'
+                } ${
+                  todaMesaLista && !darkMode ? '' : ''
+                } hover:bg-opacity-80 transition-colors ${
+                  todaMesaLista ? 'animate-pulse' : ''
+                }`}
+              >
+                <div className="text-center">
+                  <span className={`block text-sm font-bold whitespace-nowrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`} style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                    Mesa {mesa.numero}
+                  </span>
+                </div>
+              </button>
+
+              {/* Área de Comandas - 90% width */}
+              <div className={`w-[90%] ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} p-2`}>
+                <div className={`space-y-2 ${comandas.length === 1 ? 'flex items-center h-full' : ''}`}>
+                  {comandas.map((comanda, idx) => {
+                    const pedidos = comanda.pedidos || [];
+                    const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
+                      ['listo', 'entregado', 'cancelado'].includes(p.estado)
+                    );
+                    
+                    // Calcular tiempo de forma segura
+                    let tiempoMin = 0;
+                    const fechaComanda = comanda.updatedAt || comanda.createdAt || comanda.fecha;
+                    if (fechaComanda) {
+                      const ahora = new Date();
+                      const creacion = new Date(fechaComanda);
+                      const diffMs = ahora - creacion;
+                      tiempoMin = Math.floor(diffMs / 60000);
+                      if (isNaN(tiempoMin) || tiempoMin < 0) tiempoMin = 0;
+                    }
+                    
+                    return (
+                      <div key={comanda.id} className={`flex gap-0 rounded-lg shadow-sm items-center ${
+                        darkMode ? 'bg-gray-900' : 'bg-white'
+                      } ${
+                        todosPedidosListos && darkMode ? 'ring-2 ring-green-500' : ''
+                      }`}>
+                        {/* Semicírculo con número de comanda - pegado a la izquierda */}
+                        <button
+                          onClick={() => handleComandaClick(mesa, comanda.id)}
+                          className={`flex-shrink-0 w-12 h-16 rounded-r-full flex flex-col items-center justify-center text-xs font-bold ${
+                            darkMode
+                              ? todosPedidosListos
+                                ? 'bg-gray-900 border-2 border-green-500 text-white animate-pulse'
+                                : 'bg-gray-900 border-2 border-gray-600 text-gray-300'
+                              : todosPedidosListos 
+                                ? 'bg-green-500 text-white animate-pulse' 
+                                : 'bg-blue-500 text-white'
+                          } hover:scale-105 transition-transform shadow-md border-l-0`}
+                          style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
+                        >
+                          <span>C{idx + 1}</span>
+                          <span className="text-[9px] font-normal">{tiempoMin}m</span>
+                        </button>
+
+                        {/* Pedidos de la comanda */}
+                        <div className="flex-1 flex flex-wrap gap-1.5 p-2">
+                          {pedidos.map((pedido) => {
+                            const estaListo = ['listo', 'entregado'].includes(pedido.estado);
+                            // Obtener el nombre del producto
+                            const nombreProducto = pedido.producto?.nombre || pedido.productoNombre || pedido.nombre || 'Sin nombre';
+                            
+                            return (
+                              <div
+                                key={pedido.id}
+                                className={`inline-flex flex-col px-2 py-1 rounded text-xs border ${
+                                  estaListo 
+                                    ? 'bg-green-100 border-green-500 animate-pulse' 
+                                    : darkMode
+                                      ? 'bg-gray-800 border-gray-600 text-gray-300'
+                                      : 'bg-gray-50 border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold">{pedido.cantidad}x</span>
+                                  <span className={`font-medium ${estaListo ? 'text-gray-800' : darkMode ? 'text-gray-300' : 'text-gray-800'}`}>{nombreProducto}</span>
+                                </div>
+                                {pedido.notas && (
+                                  <div className={`text-[10px] mt-0.5 italic px-1 rounded ${
+                                    darkMode 
+                                      ? 'text-yellow-300 bg-yellow-900/30' 
+                                      : 'text-gray-600 bg-yellow-50'
+                                  }`}>
+                                    {pedido.notas}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -244,86 +502,165 @@ export default function MeseroView() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+    <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'}`}>
       {/* Navbar */}
       <Navbar />
-      <div className="flex justify-end max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2">
-        <button
-          className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
-          onClick={() => setShowAssignModal(true)}
-        >Asignar mesas</button>
+      
+      {/* Controles superiores */}
+      <div className="flex justify-between items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2 gap-2">
+        {/* Toggle de Vista */}
+        <div className={`flex gap-2 rounded-lg p-1 shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <button
+            onClick={() => setVistaMode('cuadro')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              vistaMode === 'cuadro' 
+                ? 'bg-blue-500 text-white' 
+                : darkMode
+                  ? 'text-gray-300 hover:bg-gray-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              <span className="hidden sm:inline">Cuadro</span>
+            </div>
+          </button>
+          <button
+            onClick={() => setVistaMode('lista')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              vistaMode === 'lista' 
+                ? 'bg-blue-500 text-white' 
+                : darkMode
+                  ? 'text-gray-300 hover:bg-gray-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <span className="hidden sm:inline">Lista</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Controles derechos: Dark Mode + Asignar */}
+        <div className="flex gap-2">
+          {/* Toggle Dark Mode */}
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`px-3 py-2 rounded-lg border transition-colors ${
+              darkMode 
+                ? 'bg-gray-800 text-yellow-400 border-gray-700 hover:bg-gray-700' 
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+            title={darkMode ? 'Modo claro' : 'Modo oscuro'}
+          >
+            {darkMode ? (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fillRule="evenodd" clipRule="evenodd"></path>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+              </svg>
+            )}
+          </button>
+
+          {/* Botón Asignar Mesas */}
+          <button
+            className={`px-3 py-2 rounded-lg border transition-colors ${
+              darkMode
+                ? 'bg-blue-900 text-blue-200 border-blue-800 hover:bg-blue-800'
+                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+            }`}
+            onClick={() => setShowAssignModal(true)}
+          >
+            Asignar mesas
+          </button>
+        </div>
       </div>
       
       {/* Leyenda de estados */}
-      <div className="bg-white/50 backdrop-blur-sm px-3 py-2 border-b border-gray-200">
+      <div className={`px-3 py-2 border-b ${darkMode ? 'bg-gray-800/50 backdrop-blur-sm border-gray-700' : 'bg-white/50 backdrop-blur-sm border-gray-200'}`}>
         <div className="flex gap-3 justify-center flex-wrap">
-          <div className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm">
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-lg"></div>
-            <span className="text-xs text-gray-700 font-medium">Algún pedido listo</span>
+            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Algún pedido listo</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm">
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="w-2 h-2 bg-yellow-300 rounded-full shadow-lg"></div>
-            <span className="text-xs text-gray-700 font-medium">Ocupada</span>
+            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Ocupada</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm">
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="w-2 h-2 bg-green-900 rounded-full shadow-lg ring-2 ring-green-700"></div>
-            <span className="text-xs text-gray-700 font-medium">Todos los pedidos listos</span>
+            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Todos los pedidos listos</span>
           </div>
-          <div className="flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-sm">
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="w-2 h-2 bg-gray-300 rounded-full shadow-lg"></div>
-            <span className="text-xs text-gray-700 font-medium">Libre</span>
+            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Libre</span>
           </div>
         </div>
       </div>
 
-      {/* Grid de Mesas - Mobile First */}
-      <div className="px-3 py-4">
-        {mesas.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl shadow-md">
-            <p className="text-gray-500 text-lg">No hay mesas configuradas</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5">
-            {mesas
-              .filter(m => {
-                if (showUnassigned) return !assignedMesas.has(m.id);
-                return assignedMesas.size === 0 ? true : assignedMesas.has(m.id);
-              })
-              .map((mesa) => {
-              const estado = getEstadoMesa(mesa);
-              const colorClass = getColorMesa(estado);
-              
-              return (
-                <button
-                  key={mesa.id}
-                  onClick={() => handleMesaClick(mesa)}
-                  className={`relative p-3 rounded-xl shadow-md transition-all duration-200 active:scale-95 hover:shadow-xl ${colorClass}`}
-                >
-                  {getIndicadorMesa(estado)}
-                  
-                  <div className="text-center">
-                    <div className="text-3xl mb-1">🪑</div>
-                    <h3 className="font-bold text-base text-gray-800">
-                      {mesa.numero}
-                    </h3>
-                    {mesa.ubicacion && (
-                      <p className="text-[10px] text-gray-500 mt-0.5 truncate">{mesa.ubicacion}</p>
-                    )}
-                    {mesa.comandas && mesa.comandas.length > 0 && (
-                      <div className="mt-1 flex items-center justify-center gap-2">
-                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-semibold">{mesa.comandas.length} {mesa.comandas.length > 1 ? 'comandas' : 'comanda'}</span>
-                      </div>
-                    )}
-                    <p className="text-[9px] text-gray-400 mt-1">
-                      {mesa.capacidad}p
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Contenido Principal - Grid o Lista */}
+      {vistaMode === 'lista' ? (
+        renderVistaLista()
+      ) : (
+        <div className="px-3 py-4">
+          {mesas.length === 0 ? (
+            <div className={`text-center py-12 rounded-2xl shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+              <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No hay mesas configuradas</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5">
+              {mesas
+                .filter(m => {
+                  if (showUnassigned) return !assignedMesas.has(m.id);
+                  return assignedMesas.size === 0 ? true : assignedMesas.has(m.id);
+                })
+                .map((mesa) => {
+                const estado = getEstadoMesa(mesa);
+                const colorClass = getColorMesa(estado);
+                
+                return (
+                  <button
+                    key={mesa.id}
+                    onClick={() => handleMesaClick(mesa)}
+                    className={`relative p-3 rounded-xl shadow-md transition-all duration-200 active:scale-95 hover:shadow-xl ${colorClass}`}
+                  >
+                    {getIndicadorMesa(estado)}
+                    
+                    <div className="text-center">
+                      <div className="text-3xl mb-1">🪑</div>
+                      <h3 className={`font-bold text-base ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {mesa.numero}
+                      </h3>
+                      {mesa.ubicacion && (
+                        <p className={`text-[10px] mt-0.5 truncate ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{mesa.ubicacion}</p>
+                      )}
+                      {mesa.comandas && mesa.comandas.length > 0 && (
+                        <div className="mt-1 flex items-center justify-center gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                            darkMode 
+                              ? 'bg-gray-700 text-gray-300' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>{mesa.comandas.length} {mesa.comandas.length > 1 ? 'comandas' : 'comanda'}</span>
+                        </div>
+                      )}
+                      <p className={`text-[9px] mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                        {mesa.capacidad}p
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal de Comanda */}
       {showComandaModal && selectedMesa && (
@@ -378,10 +715,12 @@ export default function MeseroView() {
       )}
 
       {/* Switch para ver mesas no asignadas */}
-      <div className="fixed bottom-6 right-6 bg-white rounded-full p-2 shadow-lg flex items-center gap-2">
+      <div className={`fixed bottom-6 right-6 rounded-full p-2 shadow-lg flex items-center gap-2 ${
+        darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
+      }`}>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showUnassigned} onChange={() => setShowUnassigned(v => !v)} />
-          <span className="text-sm text-gray-700">Ver mesas no asignadas</span>
+          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Ver mesas no asignadas</span>
         </label>
       </div>
     </div>
