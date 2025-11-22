@@ -24,6 +24,7 @@ export default function MeseroView() {
   const [comandasAcknowledged, setComandasAcknowledged] = useState(new Set()); // Comandas reconocidas por el mesero
   const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
+  const [tiempoActual, setTiempoActual] = useState(new Date());
 
   useEffect(() => {
     localStorage.setItem('mesero_vista_mode', vistaMode);
@@ -32,6 +33,14 @@ export default function MeseroView() {
   useEffect(() => {
     localStorage.setItem('mesero_dark_mode', darkMode);
   }, [darkMode]);
+
+  // Actualizar tiempo cada segundo para mostrar tiempos dinámicos
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      setTiempoActual(new Date());
+    }, 1000);
+    return () => clearInterval(intervalo);
+  }, []);
 
   useEffect(() => {
     cargarMesas();
@@ -449,15 +458,24 @@ export default function MeseroView() {
                     );
                     const esAcknowledged = comandasAcknowledged.has(comanda.id);
                     
-                    // Calcular tiempo de forma segura
+                    // Calcular tiempo de forma dinámica
                     let tiempoMin = 0;
+                    let colorTiempo = 'text-green-400'; // < 3 min
                     const fechaComanda = comanda.updatedAt || comanda.createdAt || comanda.fecha;
                     if (fechaComanda) {
-                      const ahora = new Date();
                       const creacion = new Date(fechaComanda);
-                      const diffMs = ahora - creacion;
+                      const diffMs = tiempoActual - creacion;
                       tiempoMin = Math.floor(diffMs / 60000);
                       if (isNaN(tiempoMin) || tiempoMin < 0) tiempoMin = 0;
+                      
+                      // Reglas de color según tiempo transcurrido
+                      if (tiempoMin < 3) {
+                        colorTiempo = darkMode ? 'text-green-400' : 'text-green-600';
+                      } else if (tiempoMin >= 3 && tiempoMin < 5) {
+                        colorTiempo = darkMode ? 'text-yellow-400' : 'text-yellow-600';
+                      } else {
+                        colorTiempo = darkMode ? 'text-red-400' : 'text-red-600';
+                      }
                     }
                     
                     return (
@@ -487,7 +505,7 @@ export default function MeseroView() {
                             </div>
                           )}
                           <span>C{idx + 1}</span>
-                          <span className="text-[9px] font-normal">{tiempoMin}m</span>
+                          <span className={`text-xs font-bold ${colorTiempo}`}>{tiempoMin}m</span>
                         </button>
                         
                         {/* Check verde para comandas acknowledged */}
@@ -754,6 +772,7 @@ export default function MeseroView() {
       {showMesaConComandaModal && selectedMesa && (
         <MesaConComandaModal
           mesa={selectedMesa}
+          darkMode={darkMode}
           onContinuar={(comandaId) => {
             console.log('onContinuar recibió:', comandaId, 'tipo:', typeof comandaId);
             const idToUse = comandaId || selectedMesa.comandas[0]?.id;

@@ -121,14 +121,8 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
       setNotasPorProducto({});
       setMostrarResumen(false);
       
-      // Recargar datos de la comanda si existe
-      if (comandaId || comanda?.id) {
-        const resp = await comandaService.getById(comanda.id);
-        if (resp?.data) {
-          setComanda(resp.data);
-          setPedidos(resp.data.pedidos || []);
-        }
-      }
+      // Cerrar el modal y volver al dashboard de mesas
+      onClose();
     } catch (error) {
       console.error('enviarPedidos', error);
       const mensaje = error.response?.data?.message || 'Error al enviar pedidos';
