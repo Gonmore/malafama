@@ -2,10 +2,12 @@
 
 Sistema completo de gestión de pedidos en tiempo real para restaurantes, que incluye backend API, aplicación web y aplicación móvil.
 
-[![Status](https://img.shields.io/badge/status-80%25%20completo-green)]()
+[![Status](https://img.shields.io/badge/status-90%25%20completo-green)]()
 [![Backend](https://img.shields.io/badge/backend-100%25%20funcional-success)]()
-[![Frontend](https://img.shields.io/badge/frontend-80%25%20integrado-success)]()
+[![Frontend](https://img.shields.io/badge/frontend-90%25%20integrado-success)]()
 [![Onboarding](https://img.shields.io/badge/onboarding-100%25%20funcional-brightgreen)]()
+[![Dark Mode](https://img.shields.io/badge/dark%20mode-100%25%20implementado-brightgreen)]()
+[![Testing](https://img.shields.io/badge/tests-flujo%20completo-green)]()
 
 ## 📖 Descripción
 
@@ -463,7 +465,7 @@ git push origin main
 
 Ver `BITACORA.md` para el registro detallado de progreso.
 
-### Completado (85%)
+### Completado (90%)
 
 **Infraestructura:**
 - ✅ Base de datos PostgreSQL (9 tablas + 8 vistas)
@@ -481,6 +483,10 @@ Ver `BITACORA.md` para el registro detallado de progreso.
 - ✅ Notificaciones con audio
 - ✅ Vista compacta en cocina/bar
 - ✅ Sistema de notas en pedidos
+- ✅ **Dark Mode** en Mesero, Bar y Cocina (ambiente oscuro para teatro)
+- ✅ **Sistema de Acknowledgment** (reconocimiento de entrega)
+- ✅ Footer adaptativo con logo dinámico
+- ✅ Animaciones y transiciones suaves
 
 **Funcionalidades Core:**
 - ✅ Gestión completa de mesas
@@ -489,6 +495,8 @@ Ver `BITACORA.md` para el registro detallado de progreso.
 - ✅ Categorización automática de productos (comida/bebida)
 - ✅ Cálculo automático de totales
 - ✅ Sistema de pagos (efectivo/QR/mixto)
+- ✅ Reconocimiento visual de comandas entregadas
+- ✅ Indicadores visuales para comandas listas (parpadeo + emoji)
 
 ### En Desarrollo (10%)
 

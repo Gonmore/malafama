@@ -372,7 +372,7 @@ const addPedidosToComanda = async (req, res) => {
 const cerrarComanda = async (req, res) => {
   try {
     const { id } = req.params;
-    const { metodoPago, montoEfectivo, montoQr } = req.body;
+    const { metodoPago, montoEfectivo, montoQr, comprobante } = req.body;
 
     const comanda = await Comanda.findByPk(id, {
       include: [{
@@ -409,18 +409,35 @@ const cerrarComanda = async (req, res) => {
       });
     }
 
-    // Preparar datos de pago para guardar (opcional: puedes crear una tabla de pagos)
+    // Validar método de pago
+    if (metodoPago && !['efectivo', 'qr', 'mixto'].includes(metodoPago)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Método de pago no válido'
+      });
+    }
+
+    // Calcular el total sumando los subtotales de todos los pedidos
+    const totalComanda = comanda.pedidos.reduce((sum, pedido) => {
+      return sum + parseFloat(pedido.subtotal || 0);
+    }, 0);
+
+    // Preparar datos de pago para guardar
     const datosActualizacion = { 
       estado: 'cerrada',
-      cerradaAt: new Date()
+      cerradaAt: new Date(),
+      formaPago: metodoPago || 'efectivo',
+      total: totalComanda
     };
 
-    // Si quieres guardar el método de pago en la comanda (requiere agregar columnas)
-    // datosActualizacion.metodoPago = metodoPago;
-    // if (metodoPago === 'mixto') {
-    //   datosActualizacion.montoEfectivo = montoEfectivo;
-    //   datosActualizacion.montoQr = montoQr;
-    // }
+    // Guardar información de pago según el método
+    if (metodoPago === 'mixto') {
+      datosActualizacion.cantidadEfectivo = montoEfectivo || 0;
+      datosActualizacion.cantidadQr = montoQr || 0;
+      datosActualizacion.comprobante = comprobante || null;
+    } else if (metodoPago === 'qr') {
+      datosActualizacion.comprobante = comprobante || null;
+    }
 
     await comanda.update(datosActualizacion);
 

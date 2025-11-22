@@ -14,6 +14,74 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
 
+### Sesión del 21 de Noviembre 2025 - Dark Mode y Sistema de Acknowledgment
+
+#### ✅ Tareas Completadas
+
+**1. Dark Mode Completo en Mesero, Bar y Cocina**
+- Implementación de dark mode con toggle en las 3 vistas principales
+- Persistencia en localStorage (mesero_dark_mode, bar_dark_mode, cocina_dark_mode)
+- Paleta de colores adaptativa:
+  - Backgrounds: gray-800/900
+  - Textos: gray-200/300/400
+  - Bordes verdes para estados "listo"
+  - Contraste optimizado para uso en teatro
+
+**Componentes actualizados**:
+- `MeseroView.jsx`: Toggle dark mode con íconos sol/luna
+- `BarView.jsx`: Backgrounds oscuros, bordes de color según urgencia
+- `CocinaView.jsx`: Mismo esquema de colores que Bar
+- `Footer.jsx`: Logo adaptativo (Logo_Blanco.png en dark, Logo_Azul.png en light)
+
+**2. Sistema de Acknowledgment (Reconocimiento de Entrega)**
+- Estado `comandasAcknowledged` para rastrear comandas entregadas
+- Primer click en comanda lista → marca como acknowledged
+- Animaciones suaves (500ms) para transiciones
+- Check verde ✓ en esquina inferior derecha de comandas acknowledged
+- Manito señalando (👆/👆🏽) en comandas listas pendientes de ack
+
+**Comportamientos**:
+- Comanda lista SIN ack → parpadea + manito rebotando
+- Comanda lista CON ack → NO parpadea + check verde
+- Mesa con todas acknowledged → vuelve a orden normal
+- Productos dejan de parpadear al hacer ack
+- Toast de confirmación: "Comanda reconocida como entregada"
+
+**3. Mejoras en BarView y CocinaView**
+- Pedidos con background oscuro en dark mode
+- Tiempo con color según urgencia (verde/amarillo/rojo)
+- Cantidad en celeste claro (text-cyan-400)
+- Bordes de color según estado del pedido
+- Transiciones suaves en todos los cambios de estado
+
+**4. Footer Adaptativo y Ajustes de Layout**
+- Footer detecta dark mode de cualquier vista automáticamente
+- Polling cada 1 segundo para sincronización
+- Logo cambia según tema actual
+- Padding bottom reducido de pb-20 (5rem) a pb-10 (2.5rem)
+
+**5. Checkbox "No Asignadas" Reubicado**
+- Movido de bottom flotante a header superior
+- Junto a botón "Asignar mesas"
+- Texto compacto: "No asignadas"
+- Estilo coherente con demás controles
+
+**6. Animación fadeIn Personalizada**
+- Keyframe fadeIn agregado a index.css
+- Animación de 0.5s para check verde
+- Efecto scale de 0.5 a 1.0
+- Transición suave de opacidad
+
+#### 🎯 Resultados
+✅ Dark mode funcional en 3 vistas principales
+✅ Sistema de acknowledgment completo con UX pulida
+✅ Animaciones suaves y feedback visual claro
+✅ Footer adaptativo y responsivo
+✅ Experiencia optimizada para ambiente oscuro (teatro)
+✅ Todos los estados de pedidos claramente diferenciados
+
+---
+
 ### Sesión del 20 de Noviembre 2025 - Vistas Agrupadas para Cocina y Bar
 
 #### ✅ Tareas Completadas

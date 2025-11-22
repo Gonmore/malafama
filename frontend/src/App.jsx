@@ -26,7 +26,7 @@ function App() {
   return (
     <Router>
       <Toaster position="top-right" />
-      <div className="min-h-screen pb-20">
+      <div className="min-h-screen pb-10">
         <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/onboarding" element={

@@ -127,7 +127,7 @@ const getProductoById = async (req, res) => {
 // Crear producto
 const createProducto = async (req, res) => {
   try {
-    const { nombre, descripcion, foto, precio, costo, proveedorId, categoria, tipo } = req.body;
+    const { nombre, descripcion, foto, precio, costo, proveedorId, categoria, tipo, localId } = req.body;
 
     // Verificar que el proveedor existe
     if (proveedorId) {
@@ -148,7 +148,8 @@ const createProducto = async (req, res) => {
       costo,
       proveedorId,
       categoria,
-      tipo: tipo || 'otros'
+      tipo: tipo || 'otros',
+      localId: localId || req.user?.localId
     });
 
     const productoCompleto = await Producto.findByPk(producto.id, {

@@ -46,6 +46,32 @@ const Comanda = sequelize.define('Comanda', {
     field: 'local_id',
     comment: 'Local al que pertenece la comanda'
   },
+  formaPago: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    field: 'forma_pago',
+    validate: {
+      isIn: [['efectivo', 'qr', 'mixto']]
+    },
+    comment: 'Método de pago utilizado: efectivo, qr o mixto'
+  },
+  cantidadEfectivo: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    field: 'cantidad_efectivo',
+    comment: 'Monto pagado en efectivo (para modo mixto)'
+  },
+  cantidadQr: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    field: 'cantidad_qr',
+    comment: 'Monto pagado por QR (para modo mixto)'
+  },
+  comprobante: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Ruta o Base64 de la imagen del comprobante de pago (para QR y mixto)'
+  },
   cerradaAt: {
     type: DataTypes.DATE,
     allowNull: true,

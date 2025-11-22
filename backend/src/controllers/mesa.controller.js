@@ -139,7 +139,7 @@ const createMesa = async (req, res) => {
 // Crear múltiples mesas
 const createMultipleMesas = async (req, res) => {
   try {
-    const { cantidad, ubicacion, capacidad } = req.body;
+    const { cantidad, ubicacion, capacidad, localId } = req.body;
 
     if (!cantidad || cantidad < 1 || cantidad > 100) {
       return res.status(400).json({
@@ -162,7 +162,8 @@ const createMultipleMesas = async (req, res) => {
         nombre: `Mesa ${numero}`,
         numero,
         ubicacion: ubicacion || null,
-        capacidad: capacidad || 4
+        capacidad: capacidad || 4,
+        localId: localId || null
       });
     }
 

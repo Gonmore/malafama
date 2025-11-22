@@ -636,6 +636,23 @@ export default function MeseroView() {
           >
             Asignar mesas
           </button>
+
+          {/* Checkbox Ver mesas no asignadas */}
+          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+            darkMode
+              ? 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}>
+            <input 
+              type="checkbox" 
+              checked={showUnassigned} 
+              onChange={() => setShowUnassigned(v => !v)}
+              className="rounded"
+            />
+            <span className={`text-sm whitespace-nowrap ${
+              darkMode ? 'text-gray-300' : 'text-gray-700'
+            }`}>No asignadas</span>
+          </label>
         </div>
       </div>
       
@@ -723,6 +740,7 @@ export default function MeseroView() {
         <ComandaModal
           mesa={selectedMesa}
           comandaId={comandaIdSeleccionada}
+          darkMode={darkMode}
           onClose={() => {
             setShowComandaModal(false);
             setSelectedMesa(null);
@@ -769,16 +787,6 @@ export default function MeseroView() {
           onClose={() => setShowAssignModal(false)}
         />
       )}
-
-      {/* Switch para ver mesas no asignadas */}
-      <div className={`fixed bottom-6 right-6 rounded-full p-2 shadow-lg flex items-center gap-2 ${
-        darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'
-      }`}>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={showUnassigned} onChange={() => setShowUnassigned(v => !v)} />
-          <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Ver mesas no asignadas</span>
-        </label>
-      </div>
     </div>
   );
 }

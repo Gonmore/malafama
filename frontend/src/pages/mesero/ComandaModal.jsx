@@ -6,7 +6,7 @@ import { comandaService } from '../../services/comandaService';
 import { productoService } from '../../services/productoService';
 import PagoModal from './PagoModal';
 
-export default function ComandaModal({ mesa, comandaId = null, onClose }) {
+export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode = false }) {
   const { user } = useAuthStore();
 
   const [comanda, setComanda] = useState(null);
@@ -162,23 +162,15 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
     try {
       setLoading(true);
       
-      // Crear FormData para enviar imagen si existe
-      const formData = new FormData();
-      formData.append('metodoPago', datoPago.metodoPago);
-      formData.append('total', datoPago.total);
-      
-      if (datoPago.metodoPago === 'mixto') {
-        formData.append('montoEfectivo', datoPago.montoEfectivo);
-        formData.append('montoQr', datoPago.montoQr);
-      }
-      
-      if (datoPago.imagenComprobante) {
-        formData.append('comprobante', datoPago.imagenComprobante);
-      }
+      // Preparar datos para enviar
+      const payload = {
+        metodoPago: datoPago.metodoPago,
+        montoEfectivo: datoPago.montoEfectivo,
+        montoQr: datoPago.montoQr,
+        comprobante: datoPago.comprobante
+      };
 
-      await api.put(`/comandas/${comanda.id}/cerrar`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.put(`/comandas/${comanda.id}/cerrar`, payload);
       
       toast.success('✅ Pago confirmado y comanda cerrada');
       setMostrarPago(false);
@@ -195,9 +187,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
   if (mostrarResumen) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50">
-        <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
-          <div className="p-4 border-b flex-shrink-0">
-            <h3 className="text-lg font-bold">Resumen del pedido ({cantidadProductosCarrito})</h3>
+        <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col`}>
+          <div className={`p-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'} border-b flex-shrink-0`}>
+            <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Resumen del pedido ({cantidadProductosCarrito})</h3>
           </div>
           <div className="overflow-y-auto flex-1 p-4">
             <div className="space-y-3">
@@ -205,15 +197,15 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                 const prod = productos.find((p) => String(p.id) === String(productoId));
                 if (!prod) return null;
                 return (
-                  <div key={productoId} className="p-3 bg-gray-50 rounded-lg space-y-2">
+                  <div key={productoId} className={`p-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'} rounded-lg space-y-2`}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-bold">{prod.nombre}</div>
-                        <div className="text-sm text-gray-500">
+                        <div className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{prod.nombre}</div>
+                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                           {cantidad} x {user?.local?.moneda || 'Bs'} {parseFloat(prod.precio).toFixed(2)}
                         </div>
                       </div>
-                      <div className="text-right font-bold">
+                      <div className={`text-right font-bold ${darkMode ? 'text-blue-400' : 'text-gray-900'}`}>
                         {user?.local?.moneda || 'Bs'} {(Number(prod.precio) * Number(cantidad)).toFixed(2)}
                       </div>
                     </div>
@@ -226,7 +218,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                           ...prev,
                           [productoId]: e.target.value
                         }))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                          darkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
+                        }`}
                       />
                     </div>
                   </div>
@@ -234,9 +228,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
               })}
             </div>
           </div>
-          <div className="p-4 border-t flex justify-between flex-shrink-0">
-            <button onClick={() => setMostrarResumen(false)} className="px-4 py-2 border rounded-lg">Volver</button>
-            <button onClick={enviarPedidos} className="px-4 py-2 bg-green-600 text-white rounded-lg">Enviar pedidos</button>
+          <div className={`p-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'} border-t flex justify-between flex-shrink-0`}>
+            <button onClick={() => setMostrarResumen(false)} className={`px-4 py-2 border rounded-lg ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'}`}>Volver</button>
+            <button onClick={enviarPedidos} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Enviar pedidos</button>
           </div>
         </div>
       </div>
@@ -245,7 +239,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+      <div className={`${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-blue-50 to-purple-50'} rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col`}>
         
         {/* Header - Fixed */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-4 flex items-center justify-between shadow-lg flex-shrink-0">
@@ -277,11 +271,13 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
               <>
                 {/* Categorías */}
                 <div className="mb-4">
-                  <h3 className="text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">📂 Categorías</h3>
+                  <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 uppercase tracking-wide`}>📂 Categorías</h3>
                   <div className="flex gap-2 overflow-x-auto pb-2">
                     <button
                       onClick={() => setCategoriaFiltro('')}
-                      className={categoriaFiltro === '' ? 'px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white whitespace-nowrap' : 'px-4 py-2 rounded-full bg-white whitespace-nowrap'}
+                      className={categoriaFiltro === '' 
+                        ? 'px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white whitespace-nowrap' 
+                        : `px-4 py-2 rounded-full whitespace-nowrap ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-white text-gray-800'}`}
                     >
                       🍽️ Todas
                     </button>
@@ -289,7 +285,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                       <button
                         key={cat}
                         onClick={() => setCategoriaFiltro(cat)}
-                        className={categoriaFiltro === cat ? 'px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white whitespace-nowrap' : 'px-4 py-2 rounded-full bg-white whitespace-nowrap'}
+                        className={categoriaFiltro === cat 
+                          ? 'px-4 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white whitespace-nowrap' 
+                          : `px-4 py-2 rounded-full whitespace-nowrap ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-white text-gray-800'}`}
                       >
                         {cat}
                       </button>
@@ -305,7 +303,11 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                       <button
                         key={prod.id}
                         onClick={() => handleProductoClick(prod.id)}
-                        className="relative p-4 rounded-xl transition-all bg-white hover:shadow-xl border-2 border-gray-200 hover:border-blue-400"
+                        className={`relative p-4 rounded-xl transition-all hover:shadow-xl border-2 ${
+                          darkMode 
+                            ? 'bg-gray-800 border-gray-700 hover:border-blue-500' 
+                            : 'bg-white border-gray-200 hover:border-blue-400'
+                        }`}
                       >
                         {cantidadEnCarrito > 0 && (
                           <div className="absolute -top-2 -right-2">
@@ -326,8 +328,8 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                           </div>
                         )}
                         <div className="text-3xl mb-2">{prod.tipo === 'bebida' ? '🥤' : '🍔'}</div>
-                        <p className="font-bold text-sm mb-1 line-clamp-2 text-gray-800">{prod.nombre}</p>
-                        <p className="text-lg font-bold text-blue-600">
+                        <p className={`font-bold text-sm mb-1 line-clamp-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{prod.nombre}</p>
+                        <p className={`text-lg font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
                           {user?.local?.moneda || 'Bs'} {parseFloat(prod.precio).toFixed(2)}
                         </p>
                         <p className="text-[10px] mt-1 text-gray-500 uppercase font-semibold">{prod.tipo}</p>
@@ -339,16 +341,18 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                 {/* Pedidos actuales */}
                 {pedidos.length > 0 && (
                   <div className="mb-4">
-                    <h3 className="text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide">📋 Pedidos Actuales</h3>
+                    <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 uppercase tracking-wide`}>📋 Pedidos Actuales</h3>
                     <div className="space-y-2">
                       {pedidos.map((pedido) => (
                         <div
                           key={pedido.id}
-                          className="flex items-center justify-between p-3 bg-white rounded-xl shadow-md border border-gray-200"
+                          className={`flex items-center justify-between p-3 rounded-xl shadow-md border ${
+                            darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                          }`}
                         >
                           <div className="flex-1">
-                            <p className="font-bold text-gray-800 text-sm">{pedido.producto?.nombre}</p>
-                            <p className="text-xs text-gray-600 mt-0.5">
+                            <p className={`font-bold text-sm ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{pedido.producto?.nombre}</p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-0.5`}>
                               {pedido.cantidad} x {user?.local?.moneda || 'Bs'} {parseFloat(pedido.precioUnitario).toFixed(2)}
                               {pedido.producto?.tipo && (
                                 <span className="ml-2 px-2 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded-full font-semibold">
@@ -358,7 +362,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
                             </p>
                           </div>
                           <div className="text-right ml-3">
-                            <p className="font-bold text-blue-600 text-base">
+                            <p className={`font-bold text-base ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
                               {user?.local?.moneda || 'Bs'} {parseFloat(pedido.subtotal).toFixed(2)}
                             </p>
                             <span
@@ -399,7 +403,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
 
           {/* Botón Ver Pedido - Flotante dentro del scroll */}
           {cantidadProductosCarrito > 0 && (
-            <div className="sticky bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-blue-50 to-transparent pointer-events-none">
+            <div className={`sticky bottom-0 left-0 right-0 p-4 pointer-events-none ${
+              darkMode ? 'bg-gradient-to-t from-gray-900 to-transparent' : 'bg-gradient-to-t from-blue-50 to-transparent'
+            }`}>
               <button
                 onClick={() => setMostrarResumen(true)}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-4 rounded-2xl font-bold text-lg shadow-2xl pointer-events-auto"
@@ -412,8 +418,12 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
 
         {/* Footer - Fixed */}
         {cantidadProductosCarrito === 0 && (comanda || pedidos.length > 0) ? (
-          <div className="bg-white/80 backdrop-blur-sm px-4 py-3 flex gap-2 border-t-2 border-gray-200 shadow-lg flex-shrink-0">
-            <button onClick={onClose} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-100">
+          <div className={`px-4 py-3 flex gap-2 border-t-2 shadow-lg flex-shrink-0 ${
+            darkMode ? 'bg-gray-900/80 backdrop-blur-sm border-gray-700' : 'bg-white/80 backdrop-blur-sm border-gray-200'
+          }`}>
+            <button onClick={onClose} className={`flex-1 px-4 py-3 border-2 rounded-xl ${
+              darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+            }`}>
               ← Volver
             </button>
             {comanda && pedidos.length > 0 && (
@@ -427,8 +437,12 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
             )}
           </div>
         ) : cantidadProductosCarrito > 0 ? (
-          <div className="bg-white/90 px-4 py-3 flex gap-2 border-t flex-shrink-0">
-            <button onClick={onClose} className="flex-1 px-4 py-3 border rounded">
+          <div className={`px-4 py-3 flex gap-2 border-t flex-shrink-0 ${
+            darkMode ? 'bg-gray-900/90' : 'bg-white/90'
+          }`}>
+            <button onClick={onClose} className={`flex-1 px-4 py-3 border rounded ${
+              darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-700'
+            }`}>
               Cerrar
             </button>
             <div className="flex-1">
@@ -452,6 +466,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose }) {
           totalGeneral={totalGeneral}
           onClose={() => setMostrarPago(false)}
           onPagoConfirmado={confirmarPago}
+          darkMode={darkMode}
         />
       )}
     </div>
