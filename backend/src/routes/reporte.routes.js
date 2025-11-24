@@ -29,6 +29,11 @@ router.get('/admin/stored', authenticate, authorize('admin'), async (req, res) =
 	}
 });
 
+// Resumen semanal por proveedor (monto adeudado por productos vendidos en rango)
+router.get('/proveedores/semana', authenticate, authorize('admin'), reporteController.getPagosSemanaProveedores);
+// Detalle por proveedor
+router.get('/proveedores/:id/detalle', authenticate, authorize('admin'), reporteController.getDetalleProveedor);
+
 // Dashboard resumen (para admin)
 router.get('/dashboard', authenticate, authorize('admin'), reporteController.getDashboardResumen);
 

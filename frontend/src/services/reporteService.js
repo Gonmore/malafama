@@ -94,4 +94,22 @@ export const reporteService = {
     });
     return response.data;
   }
+
+  ,getPagosSemanaProveedores: async (localId = null, startDate = null, endDate = null, cacheBust = null) => {
+    const params = {};
+    if (localId) params.localId = localId;
+    if (startDate) params.startDate = startDate; // YYYY-MM-DD
+    if (endDate) params.endDate = endDate;
+    if (cacheBust) params.t = cacheBust;
+    const response = await api.get('/reportes/proveedores/semana', { params });
+    return response.data;
+  }
+  ,getDetalleProveedor: async (proveedorId, localId = null, startDate = null, endDate = null) => {
+    const params = {};
+    if (localId) params.localId = localId;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    const response = await api.get(`/reportes/proveedores/${proveedorId}/detalle`, { params });
+    return response.data;
+  }
 };

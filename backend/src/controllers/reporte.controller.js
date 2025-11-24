@@ -223,22 +223,34 @@ const getProductosMasVendidos = async (req, res) => {
   try {
     const { fechaInicio, fechaFin, limit = 20 } = req.query;
 
-    let query = `SELECT * FROM v_productos_mas_vendidos`;
-    const replacements = {};
+    // Hacemos la consulta directamente combinando comandas/pedidos/productos para poder filtrar por rango de fechas
+    const replacements = { limit: parseInt(limit) };
+    let whereClause = `WHERE c.estado = 'cerrada'`;
 
     if (fechaInicio && fechaFin) {
-      query += ` WHERE fecha_ultimo_pedido BETWEEN :fechaInicio AND :fechaFin`;
+      whereClause += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
       replacements.fechaInicio = fechaInicio;
       replacements.fechaFin = fechaFin;
     }
 
-    query += ` ORDER BY total_vendido DESC LIMIT :limit`;
-    replacements.limit = parseInt(limit);
-
-    const productos = await sequelize.query(query, {
-      replacements,
-      type: QueryTypes.SELECT
-    });
+    const productos = await sequelize.query(
+      `SELECT
+         p.id,
+         p.nombre,
+         p.categoria,
+         p.precio,
+         SUM(ped.cantidad) as total_vendido,
+         SUM(ped.subtotal) as ingresos_generados,
+         COUNT(DISTINCT ped.comanda_id) as comandas_incluido
+       FROM productos p
+       INNER JOIN pedidos ped ON p.id = ped.producto_id
+       INNER JOIN comandas c ON ped.comanda_id = c.id
+       ${whereClause}
+       GROUP BY p.id, p.nombre, p.categoria, p.precio
+       ORDER BY total_vendido DESC
+       LIMIT :limit`,
+      { replacements, type: QueryTypes.SELECT }
+    );
 
     const totalIngresos = productos.reduce((sum, p) => sum + parseFloat(p.ingresos_generados || 0), 0);
     const totalUnidades = productos.reduce((sum, p) => sum + parseInt(p.total_vendido || 0), 0);
@@ -269,29 +281,45 @@ const getVentasPorProducto = async (req, res) => {
   try {
     const { fechaInicio, fechaFin, categoria } = req.query;
 
-    let query = `SELECT * FROM v_ventas_por_producto WHERE 1=1`;
+    // Generar ventas por producto con filtrado por fechas sobre comandas
     const replacements = {};
+    let whereClauses = `WHERE c.estado = 'cerrada'`;
 
     if (fechaInicio && fechaFin) {
-      query += ` AND fecha_ultimo_pedido BETWEEN :fechaInicio AND :fechaFin`;
+      whereClauses += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
       replacements.fechaInicio = fechaInicio;
       replacements.fechaFin = fechaFin;
     }
 
     if (categoria) {
-      query += ` AND categoria = :categoria`;
+      whereClauses += ` AND p.categoria = :categoria`;
       replacements.categoria = categoria;
     }
 
-    query += ` ORDER BY total_ingresos DESC`;
+    const ventas = await sequelize.query(
+      `SELECT
+         p.id as producto_id,
+         p.nombre as producto_nombre,
+         p.precio as precio_venta,
+         p.costo,
+         pr.nombre as proveedor,
+         COUNT(ped.id) as total_pedidos,
+         SUM(ped.cantidad) as cantidad_vendida,
+         SUM(ped.subtotal) as total_ventas,
+         SUM(ped.cantidad * p.costo) as costo_total,
+         SUM(ped.subtotal) - SUM(ped.cantidad * p.costo) as ganancia_neta
+      FROM productos p
+      LEFT JOIN pedidos ped ON p.id = ped.producto_id
+      LEFT JOIN proveedores pr ON p.proveedor_id = pr.id
+      LEFT JOIN comandas c ON ped.comanda_id = c.id
+      ${whereClauses}
+      GROUP BY p.id, p.nombre, p.precio, p.costo, pr.nombre
+      ORDER BY total_ventas DESC`,
+      { replacements, type: QueryTypes.SELECT }
+    );
 
-    const ventas = await sequelize.query(query, {
-      replacements,
-      type: QueryTypes.SELECT
-    });
-
-    const totalIngresos = ventas.reduce((sum, v) => sum + parseFloat(v.total_ingresos || 0), 0);
-    const totalUnidades = ventas.reduce((sum, v) => sum + parseInt(v.total_vendido || 0), 0);
+    const totalIngresos = ventas.reduce((sum, v) => sum + parseFloat(v.total_ventas || 0), 0);
+    const totalUnidades = ventas.reduce((sum, v) => sum + parseInt(v.cantidad_vendida || 0), 0);
 
     res.json({
       success: true,
@@ -320,21 +348,32 @@ const getVentasPorMesa = async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query;
 
-    let query = `SELECT * FROM v_ventas_por_mesa WHERE 1=1`;
+    // Calculamos ventas por mesa usando comandas para permitir filtrado por fechas
     const replacements = {};
+    let whereClauses = `WHERE c.estado = 'cerrada'`;
 
     if (fechaInicio && fechaFin) {
-      query += ` AND ultima_comanda BETWEEN :fechaInicio AND :fechaFin`;
+      whereClauses += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
       replacements.fechaInicio = fechaInicio;
       replacements.fechaFin = fechaFin;
     }
 
-    query += ` ORDER BY total_vendido DESC`;
-
-    const ventas = await sequelize.query(query, {
-      replacements,
-      type: QueryTypes.SELECT
-    });
+    const ventas = await sequelize.query(
+      `SELECT
+         m.id as mesa_id,
+         m.nombre as mesa_nombre,
+         m.numero as mesa_numero,
+         COUNT(DISTINCT c.id) as total_comandas,
+         SUM(c.total) as total_vendido,
+         AVG(c.total) as promedio_por_comanda,
+         MAX(c.fecha) as ultima_comanda
+       FROM mesas m
+       LEFT JOIN comandas c ON m.id = c.mesa_id
+       ${whereClauses}
+       GROUP BY m.id, m.nombre, m.numero
+       ORDER BY total_vendido DESC`,
+      { replacements, type: QueryTypes.SELECT }
+    );
 
     const totalIngresos = ventas.reduce((sum, v) => sum + parseFloat(v.total_vendido || 0), 0);
     const totalComandas = ventas.reduce((sum, v) => sum + parseInt(v.total_comandas || 0), 0);
@@ -391,26 +430,130 @@ const getPagosPendientesProveedores = async (req, res) => {
   }
 };
 
+// Resumen por rango (ej. semanal) — monto adeudado por proveedor según costo de productos vendidos
+const getPagosSemanaProveedores = async (req, res) => {
+  try {
+    const adminUser = req.user;
+    const { localId: qLocalId, startDate, endDate, proveedorId } = req.query;
+
+    let localId = qLocalId || adminUser.localId || null;
+    if (!localId) {
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) localId = locales[0].id;
+    }
+    if (!localId) return res.status(400).json({ success: false, message: 'LocalId requerido' });
+
+    // interpret startDate/endDate as business-day dates (YYYY-MM-DD) — day defined as 06:00→06:00
+    const now = new Date();
+    // default last 7 business-days
+    const start = startDate || (() => { const d = new Date(now); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })();
+    const end = endDate || (() => { const d = new Date(now); return d.toISOString().split('T')[0]; })();
+
+    let whereProveedor = '';
+    const replacements = { localId, startDate: start, endDate: end };
+    if (proveedorId) {
+      whereProveedor = ' AND pr.id = :proveedorId';
+      replacements.proveedorId = proveedorId;
+    }
+
+    const query = `
+      SELECT pr.id as proveedor_id, pr.nombre as proveedor, pr.telefono, pr.email,
+             SUM(ped.cantidad * p.costo)::numeric(12,2) as monto_adeudado,
+             SUM(ped.cantidad) as unidades_vendidas,
+             COUNT(DISTINCT c.id) as comandas
+      FROM proveedores pr
+      JOIN productos p ON p.proveedor_id = pr.id AND p.local_id = :localId
+      JOIN pedidos ped ON ped.producto_id = p.id
+      JOIN comandas c ON ped.comanda_id = c.id
+      -- Use business-day window: shift created_at by -6 hours and compare date to provided start/end YYYY-MM-DD
+      WHERE c.estado = 'cerrada' AND ((c.created_at - interval '6 hours')::date) BETWEEN :startDate AND :endDate ${whereProveedor}
+      GROUP BY pr.id, pr.nombre, pr.telefono, pr.email
+      ORDER BY monto_adeudado DESC
+    `;
+
+    const rows = await sequelize.query(query, { replacements, type: QueryTypes.SELECT });
+
+    const total = rows.reduce((s, r) => s + parseFloat(r.monto_adeudado || 0), 0);
+
+    res.json({ success: true, data: { proveedores: rows, resumen: { total: total.toFixed(2), periodo: { inicio: start, fin: end } } } });
+  } catch (error) {
+    console.error('Error en getPagosSemanaProveedores:', error);
+    res.status(500).json({ success: false, message: 'Error al calcular pagos por proveedor', error: error.message });
+  }
+};
+
+// Detalle por proveedor: productos vendidos y monto adeudado por producto en el rango
+const getDetalleProveedor = async (req, res) => {
+  try {
+    const adminUser = req.user;
+    const { id: proveedorId } = req.params;
+    const { localId: qLocalId, startDate, endDate } = req.query;
+
+    if (!proveedorId) return res.status(400).json({ success: false, message: 'ProveedorId requerido' });
+
+    let localId = qLocalId || adminUser.localId || null;
+    if (!localId) {
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) localId = locales[0].id;
+    }
+    if (!localId) return res.status(400).json({ success: false, message: 'LocalId requerido' });
+
+    // Use business-day date strings for filtering
+    const now = new Date();
+    const start = startDate || (() => { const d = new Date(now); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })();
+    const end = endDate || (() => { const d = new Date(now); return d.toISOString().split('T')[0]; })();
+
+    const query = `
+      SELECT p.id as producto_id, p.nombre as producto, SUM(ped.cantidad) as unidades_vendidas, SUM(ped.cantidad * p.costo)::numeric(12,2) as monto_adeudado, COUNT(DISTINCT c.id) as comandas
+      FROM productos p
+      JOIN pedidos ped ON ped.producto_id = p.id
+      JOIN comandas c ON ped.comanda_id = c.id
+      WHERE p.proveedor_id = :proveedorId AND p.local_id = :localId AND c.estado = 'cerrada' AND ((c.created_at - interval '6 hours')::date) BETWEEN :startDate AND :endDate
+      GROUP BY p.id, p.nombre
+      ORDER BY monto_adeudado DESC
+    `;
+
+    const rows = await sequelize.query(query, { replacements: { proveedorId, localId, startDate: start, endDate: end }, type: QueryTypes.SELECT });
+
+    const total = rows.reduce((s, r) => s + parseFloat(r.monto_adeudado || 0), 0);
+
+    res.json({ success: true, data: { proveedor: proveedorId, productos: rows, resumen: { total: total.toFixed(2), periodo: { inicio: start, fin: end } } } });
+  } catch (err) {
+    console.error('Error en getDetalleProveedor:', err);
+    res.status(500).json({ success: false, message: 'Error al obtener detalle del proveedor', error: err.message });
+  }
+};
+
 // Reporte de rendimiento de meseros
 const getRendimientoMeseros = async (req, res) => {
   try {
     const { fechaInicio, fechaFin } = req.query;
 
-    let query = `SELECT * FROM v_rendimiento_meseros WHERE 1=1`;
+    // Calcular rendimiento por mesero usando comandas directamente para permitir filtrado por fechas
     const replacements = {};
+    let whereClause = `WHERE u.tipo = 'atencion' AND c.estado = 'cerrada'`;
 
     if (fechaInicio && fechaFin) {
-      query += ` AND ultima_comanda BETWEEN :fechaInicio AND :fechaFin`;
+      whereClause += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
       replacements.fechaInicio = fechaInicio;
       replacements.fechaFin = fechaFin;
     }
 
-    query += ` ORDER BY total_vendido DESC`;
-
-    const rendimiento = await sequelize.query(query, {
-      replacements,
-      type: QueryTypes.SELECT
-    });
+    const rendimiento = await sequelize.query(
+      `SELECT
+         u.id as usuario_id,
+         u.nombre as mesero,
+         COUNT(DISTINCT c.id) as total_comandas,
+         SUM(c.total) as total_ventas,
+         AVG(c.total) as promedio_por_comanda,
+         COUNT(DISTINCT DATE(c.fecha)) as dias_trabajados
+       FROM usuarios u
+       INNER JOIN comandas c ON u.id = c.usuario_atencion_id
+       ${whereClause}
+       GROUP BY u.id, u.nombre
+       ORDER BY total_ventas DESC`,
+      { replacements, type: QueryTypes.SELECT }
+    );
 
     const totalVentas = rendimiento.reduce((sum, r) => sum + parseFloat(r.total_vendido || 0), 0);
     const totalComandas = rendimiento.reduce((sum, r) => sum + parseInt(r.total_comandas || 0), 0);
@@ -944,14 +1087,26 @@ const getDashboardResumen = async (req, res) => {
       { type: QueryTypes.SELECT }
     );
 
-    // Top 5 productos del mes
+    // Top 5 productos del mes (agregado por fecha en comandas)
     const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    // Usamos las tablas reales (pedidos + comandas + productos) para calcular los top del mes
     const topProductos = await sequelize.query(
-      `SELECT * FROM v_productos_mas_vendidos 
-       WHERE fecha_ultimo_pedido >= :inicioMes 
-       ORDER BY total_vendido DESC LIMIT 5`,
+      `SELECT
+         pr.id as id,
+         pr.nombre as producto_nombre,
+         pr.categoria as categoria,
+         SUM(p.cantidad) as total_vendido,
+         SUM(p.subtotal) as ingresos_generados
+       FROM pedidos p
+       INNER JOIN comandas c ON p.comanda_id = c.id
+       INNER JOIN productos pr ON p.producto_id = pr.id
+       WHERE c.estado = 'cerrada'
+         AND DATE(c.fecha) BETWEEN :inicioMes AND :hoy
+       GROUP BY pr.id, pr.nombre, pr.categoria
+       ORDER BY total_vendido DESC
+       LIMIT 5`,
       {
-        replacements: { inicioMes },
+        replacements: { inicioMes, hoy },
         type: QueryTypes.SELECT
       }
     );
@@ -1233,6 +1388,8 @@ module.exports = {
   getVentasPorProducto,
   getVentasPorMesa,
   getPagosPendientesProveedores,
+  getPagosSemanaProveedores,
+  getDetalleProveedor,
   getRendimientoMeseros,
   getEstadoComandas,
   getInventarioProveedores,

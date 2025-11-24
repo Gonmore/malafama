@@ -10,6 +10,8 @@ import LocalDashboard from './pages/admin/LocalDashboard'
 import UsuariosManagement from './pages/admin/UsuariosManagement'
 import ReportesPage from './pages/admin/ReportesPage'
 import ProductosManagement from './pages/admin/ProductosManagement'
+import ProveedoresManagement from './pages/admin/ProveedoresManagement'
+import MesasManagement from './pages/admin/MesasManagement'
 import AdminDashboardOld from './pages/admin/Dashboard'
 import MeseroView from './pages/mesero/MeseroView'
 import CocinaView from './pages/cocina/CocinaView'
@@ -69,6 +71,16 @@ function App() {
         <Route path="/admin/productos" element={
           <ProtectedRoute role="admin">
             <ProductosManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/proveedores" element={
+          <ProtectedRoute role="admin">
+            <ProveedoresManagement />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/mesas" element={
+          <ProtectedRoute role="admin">
+            <MesasManagement />
           </ProtectedRoute>
         } />
         

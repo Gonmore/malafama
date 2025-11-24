@@ -3,11 +3,10 @@ const { Proveedor, Usuario, Producto } = require('../models');
 // Listar todos los proveedores
 const getAllProveedores = async (req, res) => {
   try {
-    // Filtrar por localId del usuario autenticado
+    // Filtrar por localId: prefer query param ?localId, luego usuario.localId
     const whereClause = {};
-    if (req.user && req.user.localId) {
-      whereClause.localId = req.user.localId;
-    }
+    const qLocal = req.query.localId || (req.user && req.user.localId);
+    if (qLocal) whereClause.localId = qLocal;
 
     const proveedores = await Proveedor.findAll({
       where: whereClause,

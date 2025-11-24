@@ -9,6 +9,7 @@
     "test": "jest --watchAll",
     "db:migrate": "node src/migrations/run.js"
     ,"seed:reportes:fri-sat": "node src/scripts/seed-reportes-fri-sat.js"
+      ,"seed:proveedores:demo": "node src/scripts/seed-proveedores-demo.js"
   },
   "keywords": [
     "restaurant",
