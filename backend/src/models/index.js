@@ -7,6 +7,7 @@ const MesaAsignada = require('./MesaAsignada');
 const Comanda = require('./Comanda');
 const Pedido = require('./Pedido');
 const ConfiguracionRestaurante = require('./ConfiguracionRestaurante');
+const ReporteDiario = require('./ReporteDiario');
 
 // Definir relaciones
 
@@ -66,6 +67,16 @@ Local.hasMany(Comanda, {
   as: 'comandas'
 });
 Comanda.belongsTo(Local, {
+  foreignKey: 'localId',
+  as: 'local'
+});
+
+// Local - ReportesDiarios (1:N)
+Local.hasMany(ReporteDiario, {
+  foreignKey: 'localId',
+  as: 'reportesDiarios'
+});
+ReporteDiario.belongsTo(Local, {
   foreignKey: 'localId',
   as: 'local'
 });
@@ -164,4 +175,5 @@ module.exports = {
   Comanda,
   Pedido,
   ConfiguracionRestaurante
+  ,ReporteDiario
 };

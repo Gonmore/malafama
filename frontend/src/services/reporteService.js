@@ -1,6 +1,12 @@
 import api from './api';
 
 export const reporteService = {
+  // Reporte del día para mesero (6 AM a 6 AM)
+  getReporteDiaMesero: async () => {
+    const response = await api.get('/reportes/mesero/dia');
+    return response.data;
+  },
+
   // Dashboard resumen
   getDashboard: async () => {
     const response = await api.get('/reportes/dashboard');
@@ -52,6 +58,32 @@ export const reporteService = {
   // Estado de comandas
   getEstadoComandas: async () => {
     const response = await api.get('/reportes/estado-comandas');
+    return response.data;
+  },
+
+  // Reportes diarios del local (admin)
+  getReportesDiariosLocal: async (localId = null, date = null) => {
+    const params = {};
+    if (localId) params.localId = localId;
+    if (date) params.date = date; // expected YYYY-MM-DD
+    const response = await api.get('/reportes/admin/dia', { params });
+    return response.data;
+  },
+
+  // Obtener días que tienen reportes (últimos N días) para el local
+  getDiasConReportesLocal: async (localId = null, days = 30) => {
+    const params = { days };
+    if (localId) params.localId = localId;
+    const response = await api.get('/reportes/admin/dias', { params });
+    return response.data;
+  },
+
+  // Obtener reportes almacenados (persistidos) por local
+  getReporteDiarioStored: async (localId = null, date = null) => {
+    const params = {};
+    if (localId) params.localId = localId;
+    if (date) params.date = date;
+    const response = await api.get('/reportes/admin/stored', { params });
     return response.data;
   },
 

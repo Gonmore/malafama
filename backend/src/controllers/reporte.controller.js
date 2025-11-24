@@ -1,5 +1,173 @@
-const { sequelize } = require('../models');
+const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
+const { Comanda, Pedido, Producto, Mesa, Usuario, MesaAsignada, Local } = require('../models');
+const { Op } = require('sequelize');
+
+/**
+ * Obtener reporte del día para el mesero
+ * Un día va de 6 AM a 6 AM del día siguiente
+ */
+const getReporteDiaMesero = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Calcular inicio y fin del día (6 AM a 6 AM)
+    const ahora = new Date();
+    let inicioDia = new Date(ahora);
+    inicioDia.setHours(6, 0, 0, 0);
+    
+    // Si aún no son las 6 AM, el día comenzó ayer a las 6 AM
+    if (ahora.getHours() < 6) {
+      inicioDia.setDate(inicioDia.getDate() - 1);
+    }
+    
+    const finDia = new Date(inicioDia);
+    finDia.setDate(finDia.getDate() + 1);
+    
+    // Obtener mesas asignadas al mesero a través de la tabla de asignaciones
+    const asignaciones = await MesaAsignada.findAll({
+      where: { usuarioId: userId }
+    });
+    
+    const mesaIds = asignaciones.map(a => a.mesaId);
+    
+    if (mesaIds.length === 0) {
+      return res.json({
+        mensaje: 'No tienes mesas asignadas',
+        inicioDia,
+        finDia,
+        mesas: [],
+        totales: {
+          totalDia: 0,
+          totalEfectivo: 0,
+          totalQr: 0,
+          totalMixto: 0,
+          comandasCerradas: 0,
+          comandasAbiertas: 0
+        }
+      });
+    }
+    
+    // Obtener todas las comandas del día de las mesas asignadas
+    const comandas = await Comanda.findAll({
+      where: {
+        mesaId: { [Op.in]: mesaIds },
+        createdAt: {
+          [Op.gte]: inicioDia,
+          [Op.lt]: finDia
+        }
+      },
+      include: [
+        {
+          model: Mesa,
+          as: 'mesa',
+          attributes: ['id', 'numero']
+        },
+        {
+          model: Pedido,
+          as: 'pedidos',
+          include: [
+            {
+              model: Producto,
+              as: 'producto',
+              attributes: ['id', 'nombre', 'precio']
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Agrupar por mesa
+    const mesasReporte = {};
+    let totalDia = 0;
+    let totalEfectivo = 0;
+    let totalQr = 0;
+    let totalMixto = 0;
+    let comandasCerradas = 0;
+    let comandasAbiertas = 0;
+    
+    comandas.forEach(comanda => {
+      const mesaNumero = comanda.mesa.numero;
+      
+      if (!mesasReporte[mesaNumero]) {
+        mesasReporte[mesaNumero] = {
+          numero: mesaNumero,
+          comandas: [],
+          totalMesa: 0
+        };
+      }
+      
+      const comandaData = {
+        id: comanda.id,
+        estado: comanda.estado,
+        total: parseFloat(comanda.total || 0),
+        formaPago: comanda.formaPago,
+        cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
+        cantidadQr: parseFloat(comanda.cantidadQr || 0),
+        comprobante: comanda.comprobante, // URL o base64
+        createdAt: comanda.createdAt,
+        pedidos: comanda.pedidos.map(p => ({
+          id: p.id,
+          cantidad: p.cantidad,
+          precioUnitario: parseFloat(p.precioUnitario),
+          subtotal: parseFloat(p.subtotal),
+          estado: p.estado,
+          producto: p.producto ? {
+            nombre: p.producto.nombre,
+            precio: parseFloat(p.producto.precio)
+          } : null
+        }))
+      };
+      
+      mesasReporte[mesaNumero].comandas.push(comandaData);
+      
+      if (comanda.estado === 'cerrada') {
+        const total = parseFloat(comanda.total || 0);
+        mesasReporte[mesaNumero].totalMesa += total;
+        totalDia += total;
+        comandasCerradas++;
+        
+        // Sumar por forma de pago
+        if (comanda.formaPago === 'efectivo') {
+          totalEfectivo += total;
+        } else if (comanda.formaPago === 'qr') {
+          totalQr += total;
+        } else if (comanda.formaPago === 'mixto') {
+          totalMixto += total;
+          totalEfectivo += parseFloat(comanda.cantidadEfectivo || 0);
+          totalQr += parseFloat(comanda.cantidadQr || 0);
+        }
+      } else {
+        comandasAbiertas++;
+      }
+    });
+    
+    // Convertir objeto a array
+    const mesasArray = Object.values(mesasReporte);
+    
+    res.json({
+      inicioDia,
+      finDia,
+      mesas: mesasArray,
+      totales: {
+        totalDia: totalDia.toFixed(2),
+        totalEfectivo: totalEfectivo.toFixed(2),
+        totalQr: totalQr.toFixed(2),
+        totalMixto: totalMixto.toFixed(2),
+        comandasCerradas,
+        comandasAbiertas
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en getReporteDiaMesero:', error);
+    res.status(500).json({ 
+      message: 'Error al obtener reporte del día',
+      error: error.message 
+    });
+  }
+};
 
 // Reporte de ventas por período
 const getVentasPorPeriodo = async (req, res) => {
@@ -269,6 +437,415 @@ const getRendimientoMeseros = async (req, res) => {
     });
   }
 };
+
+// Obtener reportes diarios (6AM-6AM) para el admin: comandas generadas por los usuarios del mismo local
+const getReportesDiariosLocal = async (req, res) => {
+  try {
+    const adminUser = req.user;
+
+    // Determinar local objetivo: preferir query param, luego req.user.localId, luego el primer local propietario del admin
+    let localId = req.query.localId || adminUser.localId || null;
+
+    if (!localId) {
+      // intentar obtener el primer local cuyo propietario sea el admin
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) {
+        localId = locales[0].id;
+      }
+    }
+
+    if (!localId) {
+      // No hay local disponible para el admin
+      return res.status(400).json({ success: false, message: 'No se encontró un local objetivo para generar reportes. Proporciona ?localId o configura un local para el usuario admin.' });
+    }
+
+    // Calcular inicio y fin del día (6 AM a 6 AM)
+    // Soporta ?date=YYYY-MM-DD para solicitar un día específico
+    const { date } = req.query || {};
+    let inicioDia;
+    if (date) {
+      // Interpretar la fecha como YYYY-MM-DD y empezar a las 06:00
+      inicioDia = new Date(date + 'T06:00:00');
+      // fallback parse if invalid
+      if (isNaN(inicioDia.getTime())) {
+        inicioDia = new Date();
+        inicioDia.setHours(6, 0, 0, 0);
+        if ((new Date()).getHours() < 6) inicioDia.setDate(inicioDia.getDate() - 1);
+      }
+    } else {
+      const ahora = new Date();
+      inicioDia = new Date(ahora);
+      inicioDia.setHours(6, 0, 0, 0);
+      if (ahora.getHours() < 6) {
+        inicioDia.setDate(inicioDia.getDate() - 1);
+      }
+    }
+    const finDia = new Date(inicioDia);
+    finDia.setDate(finDia.getDate() + 1);
+
+    // obtener todos los usuarios del local con tipo atencion/cocina/bar
+    const usuarios = await Usuario.findAll({
+      where: {
+        localId,
+        tipo: { [Op.in]: ['atencion', 'cocina', 'bar'] }
+      },
+      attributes: ['id', 'nombre', 'tipo']
+    });
+
+    if (!usuarios || usuarios.length === 0) {
+      return res.json({ inicioDia, finDia, usuarios: [], totales: { totalDia: 0, totalEfectivo: 0, totalQr: 0, totalMixto: 0 } });
+    }
+
+    const usuarioIds = usuarios.map(u => u.id);
+
+    // Obtener comandas del día por los usuarios del local
+    const comandas = await Comanda.findAll({
+      where: {
+        usuarioAtencionId: { [Op.in]: usuarioIds },
+        createdAt: { [Op.gte]: inicioDia, [Op.lt]: finDia }
+      },
+      include: [
+        { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'tipo'] },
+        { model: Mesa, as: 'mesa', attributes: ['id', 'numero'] },
+        { model: Pedido, as: 'pedidos', include: [ { model: Producto, as: 'producto', attributes: ['id','nombre','precio'] } ] }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Agrupar por usuario
+    const usuariosReporte = {};
+    let totalDia = 0;
+    let totalEfectivo = 0;
+    let totalQr = 0;
+    let totalMixto = 0;
+
+    comandas.forEach(comanda => {
+      const u = comanda.usuarioAtencion;
+      const uid = u ? u.id : 'sin-usuario';
+      const uNombre = u ? u.nombre : 'Sin usuario';
+      const uTipo = u ? u.tipo : 'desconocido';
+
+      if (!usuariosReporte[uid]) {
+        usuariosReporte[uid] = {
+          id: uid,
+          nombre: uNombre,
+          tipo: uTipo,
+          comandas: [],
+          totalUsuario: 0
+        };
+      }
+
+      const comandaObj = {
+        id: comanda.id,
+        mesa: comanda.mesa ? { id: comanda.mesa.id, numero: comanda.mesa.numero } : null,
+        estado: comanda.estado,
+        total: parseFloat(comanda.total || 0),
+        formaPago: comanda.formaPago,
+        cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
+        cantidadQr: parseFloat(comanda.cantidadQr || 0),
+        comprobante: comanda.comprobante,
+        createdAt: comanda.createdAt,
+        pedidos: comanda.pedidos.map(p => ({
+          id: p.id,
+          cantidad: p.cantidad,
+          precioUnitario: parseFloat(p.precioUnitario),
+          subtotal: parseFloat(p.subtotal),
+          estado: p.estado,
+          producto: p.producto ? { nombre: p.producto.nombre, precio: parseFloat(p.producto.precio) } : null
+        }))
+      };
+
+      usuariosReporte[uid].comandas.push(comandaObj);
+
+      if (comanda.estado === 'cerrada') {
+        const total = parseFloat(comanda.total || 0);
+        usuariosReporte[uid].totalUsuario += total;
+        totalDia += total;
+
+        if (comanda.formaPago === 'efectivo') {
+          totalEfectivo += total;
+        } else if (comanda.formaPago === 'qr') {
+          totalQr += total;
+        } else if (comanda.formaPago === 'mixto') {
+          totalMixto += total;
+          totalEfectivo += parseFloat(comanda.cantidadEfectivo || 0);
+          totalQr += parseFloat(comanda.cantidadQr || 0);
+        }
+      }
+    });
+
+    const usuariosArray = Object.values(usuariosReporte);
+
+    res.json({
+      inicioDia,
+      finDia,
+      usuarios: usuariosArray,
+      totales: {
+        totalDia: totalDia.toFixed(2),
+        totalEfectivo: totalEfectivo.toFixed(2),
+        totalQr: totalQr.toFixed(2),
+        totalMixto: totalMixto.toFixed(2)
+      }
+    });
+  } catch (error) {
+    console.error('Error en getReportesDiariosLocal:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener reportes diarios del local', error: error.message });
+  }
+};
+
+// Devuelve los días dentro de un rango (últimos N días) que tienen comandas para el local
+const getDiasConReportesLocal = async (req, res) => {
+  try {
+    const adminUser = req.user;
+    const { days = 30 } = req.query;
+
+    // Determinar local objetivo (acepta ?localId)
+    let localId = req.query.localId || adminUser.localId || null;
+    if (!localId) {
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) localId = locales[0].id;
+    }
+
+    if (!localId) {
+      return res.status(400).json({ success: false, message: 'No se encontró local objetivo (proporciona localId o configura un local para el admin).' });
+    }
+
+    const ahora = new Date();
+    // inicioDia como hoy a las 6AM según regla del negocio
+    let inicioDia = new Date(ahora);
+    inicioDia.setHours(6, 0, 0, 0);
+    if (ahora.getHours() < 6) inicioDia.setDate(inicioDia.getDate() - 1);
+
+    // rango de búsqueda: desde inicioDia - (days-1) hasta inicioDia + 1 (incluir hoy)
+    const inicioRango = new Date(inicioDia);
+    inicioRango.setDate(inicioRango.getDate() - (parseInt(days) - 1));
+    const finRango = new Date(inicioDia);
+    finRango.setDate(finRango.getDate() + 1);
+
+    // Consulta eficiente: ajustar created_at restando 6 horas y agrupar por fecha resultante
+    const query = `
+      SELECT ((created_at - interval '6 hours')::date) AS reporte_fecha, COUNT(*) as total
+      FROM comandas
+      WHERE local_id = :localId
+        AND created_at >= :inicio
+        AND created_at < :fin
+      GROUP BY reporte_fecha
+      ORDER BY reporte_fecha DESC
+    `;
+
+    const dias = await sequelize.query(query, {
+      replacements: {
+        localId,
+        inicio: inicioRango.toISOString(),
+        fin: finRango.toISOString()
+      },
+      type: QueryTypes.SELECT
+    });
+
+    // Formatear fechas en YYYY-MM-DD para frontend
+    const result = dias.map(d => {
+      const rf = d.reporte_fecha;
+      let dateStr = null;
+      if (!rf && rf !== 0) dateStr = null;
+      else if (typeof rf === 'string') dateStr = rf;
+      else if (rf instanceof Date) dateStr = rf.toISOString().split('T')[0];
+      else dateStr = new Date(rf).toISOString().split('T')[0];
+
+      return { date: dateStr, total: parseInt(d.total) };
+    }).filter(x => x.date !== null);
+
+    res.json({ success: true, days: result });
+  } catch (error) {
+    console.error('Error en getDiasConReportesLocal:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener días con reportes', error: error.message });
+  }
+};
+
+/**
+ * Generar y guardar un reporte diario para un local y fecha (fecha en YYYY-MM-DD)
+ * Retorna el objeto del reporte creado o actualizado.
+ */
+const crearReporteDiario = async (req, res) => {
+  try {
+    const adminUser = req.user;
+    const { localId: qLocalId, date } = req.query;
+
+    // determinar target local similar a otras funciones
+    let localId = qLocalId || adminUser.localId || null;
+    if (!localId) {
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) localId = locales[0].id;
+    }
+    if (!localId) return res.status(400).json({ success: false, message: 'Local objetivo no encontrado' });
+
+    // fecha objetivo (YYYY-MM-DD) -> inicio a las 06:00
+    const fechaTarget = date || (new Date()).toISOString().split('T')[0];
+    const inicio = new Date(fechaTarget + 'T06:00:00');
+    const fin = new Date(inicio);
+    fin.setDate(fin.getDate() + 1);
+
+    // Obtener usuarios del local
+    const usuarios = await Usuario.findAll({ where: { localId, tipo: { [Op.in]: ['atencion', 'cocina', 'bar'] } }, attributes: ['id','nombre','tipo'] });
+    const usuarioIds = usuarios.map(u => u.id);
+
+    // Buscar comandas por usuarios del local en el rango
+    const comandas = await Comanda.findAll({
+      where: {
+        usuarioAtencionId: { [Op.in]: usuarioIds },
+        createdAt: { [Op.gte]: inicio, [Op.lt]: fin }
+      },
+      include: [
+        { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'tipo'] },
+        { model: Mesa, as: 'mesa', attributes: ['id', 'numero'] },
+        { model: Pedido, as: 'pedidos', include: [ { model: Producto, as: 'producto', attributes: ['id','nombre','precio'] } ] }
+      ],
+      order: [['createdAt','DESC']]
+    });
+
+    // Agrupar por usuario y calcular totales (mismo formato que getReportesDiariosLocal)
+    const usuariosReporte = {};
+    let totalDia = 0, totalEfectivo = 0, totalQr = 0, totalMixto = 0;
+
+    comandas.forEach(comanda => {
+      const u = comanda.usuarioAtencion;
+      const uid = u ? u.id : 'sin-usuario';
+      const uNombre = u ? u.nombre : 'Sin usuario';
+      const uTipo = u ? u.tipo : 'desconocido';
+      if (!usuariosReporte[uid]) {
+        usuariosReporte[uid] = { id: uid, nombre: uNombre, tipo: uTipo, comandas: [], totalUsuario: 0 };
+      }
+
+      const comandaObj = {
+        id: comanda.id,
+        mesa: comanda.mesa ? { id: comanda.mesa.id, numero: comanda.mesa.numero } : null,
+        estado: comanda.estado,
+        total: parseFloat(comanda.total || 0),
+        formaPago: comanda.formaPago,
+        cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
+        cantidadQr: parseFloat(comanda.cantidadQr || 0),
+        comprobante: comanda.comprobante,
+        createdAt: comanda.createdAt,
+        pedidos: comanda.pedidos.map(p => ({ id: p.id, cantidad: p.cantidad, precioUnitario: parseFloat(p.precioUnitario), subtotal: parseFloat(p.subtotal), estado: p.estado, producto: p.producto ? { nombre: p.producto.nombre, precio: parseFloat(p.producto.precio) } : null }))
+      };
+
+      usuariosReporte[uid].comandas.push(comandaObj);
+      if (comanda.estado === 'cerrada') {
+        const total = parseFloat(comanda.total || 0);
+        usuariosReporte[uid].totalUsuario += total;
+        totalDia += total;
+        if (comanda.formaPago === 'efectivo') totalEfectivo += total;
+        else if (comanda.formaPago === 'qr') totalQr += total;
+        else if (comanda.formaPago === 'mixto') { totalMixto += total; totalEfectivo += parseFloat(comanda.cantidadEfectivo || 0); totalQr += parseFloat(comanda.cantidadQr || 0); }
+      }
+    });
+
+    const usuariosArray = Object.values(usuariosReporte);
+
+    // Guardar o actualizar en tabla reportes_diarios
+    const { ReporteDiario } = require('../models');
+
+    const payload = {
+      localId,
+      fecha: fechaTarget,
+      data: {
+        inicioDia: inicio,
+        finDia: fin,
+        usuarios: usuariosArray,
+        totales: { totalDia: totalDia.toFixed(2), totalEfectivo: totalEfectivo.toFixed(2), totalQr: totalQr.toFixed(2), totalMixto: totalMixto.toFixed(2) }
+      }
+    };
+
+    // Si existe reporte para local+fecha, actualizar; sino crear
+    let reporte = await ReporteDiario.findOne({ where: { localId, fecha: fechaTarget } });
+    if (reporte) {
+      reporte.data = payload.data;
+      await reporte.save();
+    } else {
+      reporte = await ReporteDiario.create(payload);
+    }
+
+    res.json({ success: true, reporte });
+  } catch (error) {
+    console.error('Error en crearReporteDiario:', error);
+    res.status(500).json({ success: false, message: 'Error al crear reporte diario', error: error.message });
+  }
+};
+
+// Generar y guardar reporte (función util para uso interno y scheduler)
+const generarYGuardarReporte = async (localId, fechaTarget) => {
+  // fechaTarget expected YYYY-MM-DD
+  try {
+    const inicio = new Date(fechaTarget + 'T06:00:00');
+    const fin = new Date(inicio);
+    fin.setDate(fin.getDate() + 1);
+
+    const usuarios = await Usuario.findAll({ where: { localId, tipo: { [Op.in]: ['atencion', 'cocina', 'bar'] } }, attributes: ['id','nombre','tipo'] });
+    const usuarioIds = usuarios.map(u => u.id);
+
+    const comandas = await Comanda.findAll({
+      where: { usuarioAtencionId: { [Op.in]: usuarioIds }, createdAt: { [Op.gte]: inicio, [Op.lt]: fin } },
+      include: [ { model: Usuario, as: 'usuarioAtencion', attributes: ['id','nombre','tipo'] }, { model: Mesa, as: 'mesa', attributes: ['id','numero'] }, { model: Pedido, as: 'pedidos', include: [ { model: Producto, as: 'producto', attributes: ['id','nombre','precio'] } ] } ],
+      order: [['createdAt','DESC']]
+    });
+
+    const usuariosReporte = {};
+    let totalDia = 0, totalEfectivo = 0, totalQr = 0, totalMixto = 0;
+
+    comandas.forEach(comanda => {
+      const u = comanda.usuarioAtencion;
+      const uid = u ? u.id : 'sin-usuario';
+      const uNombre = u ? u.nombre : 'Sin usuario';
+      const uTipo = u ? u.tipo : 'desconocido';
+      if (!usuariosReporte[uid]) usuariosReporte[uid] = { id: uid, nombre: uNombre, tipo: uTipo, comandas: [], totalUsuario: 0 };
+
+      const comandaObj = {
+        id: comanda.id,
+        mesa: comanda.mesa ? { id: comanda.mesa.id, numero: comanda.mesa.numero } : null,
+        estado: comanda.estado,
+        total: parseFloat(comanda.total || 0),
+        formaPago: comanda.formaPago,
+        cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
+        cantidadQr: parseFloat(comanda.cantidadQr || 0),
+        comprobante: comanda.comprobante,
+        createdAt: comanda.createdAt,
+        pedidos: comanda.pedidos.map(p => ({ id: p.id, cantidad: p.cantidad, precioUnitario: parseFloat(p.precioUnitario), subtotal: parseFloat(p.subtotal), estado: p.estado, producto: p.producto ? { nombre: p.producto.nombre, precio: parseFloat(p.producto.precio) } : null }))
+      };
+
+      usuariosReporte[uid].comandas.push(comandaObj);
+      if (comanda.estado === 'cerrada') {
+        const total = parseFloat(comanda.total || 0);
+        usuariosReporte[uid].totalUsuario += total;
+        totalDia += total;
+        if (comanda.formaPago === 'efectivo') totalEfectivo += total;
+        else if (comanda.formaPago === 'qr') totalQr += total;
+        else if (comanda.formaPago === 'mixto') { totalMixto += total; totalEfectivo += parseFloat(comanda.cantidadEfectivo || 0); totalQr += parseFloat(comanda.cantidadQr || 0); }
+      }
+    });
+
+    const usuariosArray = Object.values(usuariosReporte);
+    const { ReporteDiario } = require('../models');
+
+    const payload = {
+      localId,
+      fecha: fechaTarget,
+      data: { inicioDia: inicio, finDia: fin, usuarios: usuariosArray, totales: { totalDia: totalDia.toFixed(2), totalEfectivo: totalEfectivo.toFixed(2), totalQr: totalQr.toFixed(2), totalMixto: totalMixto.toFixed(2) } }
+    };
+
+    let reporte = await ReporteDiario.findOne({ where: { localId, fecha: fechaTarget } });
+    if (reporte) {
+      reporte.data = payload.data;
+      await reporte.save();
+    } else {
+      reporte = await ReporteDiario.create(payload);
+    }
+
+    return reporte;
+  } catch (err) {
+    console.error('Error generarYGuardarReporte:', err);
+    throw err;
+  }
+};
+
 
 // Estado de comandas
 const getEstadoComandas = async (req, res) => {
@@ -650,6 +1227,7 @@ const getReportePorPeriodo = async (req, res) => {
 };
 
 module.exports = {
+  getReporteDiaMesero,
   getVentasPorPeriodo,
   getProductosMasVendidos,
   getVentasPorProducto,
@@ -660,4 +1238,11 @@ module.exports = {
   getInventarioProveedores,
   getDashboardResumen,
   getReportePorPeriodo
+  ,
+  getReportesDiariosLocal
+  ,
+  getDiasConReportesLocal
+  ,
+  crearReporteDiario,
+  generarYGuardarReporte
 };

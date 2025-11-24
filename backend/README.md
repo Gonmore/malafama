@@ -102,6 +102,25 @@ backend/
 - `GET /api/v1/reportes/productos` - Productos más vendidos
 - `GET /api/v1/reportes/proveedores` - Pagos a proveedores
 
+#### Reportes diarios persistidos (snapshot)
+
+- El backend genera snapshots diarios por local que capturan el estado del día de negocio (periodo 06:00 → 06:00). Estos se guardan en la tabla `reportes_diarios` y pueden consultarse desde el panel admin.
+- Endpoints útiles:
+	- `POST /api/v1/reportes/admin/generar?localId=<id>&date=YYYY-MM-DD` → Fuerza la generación y persistencia de un reporte diario para el `localId` y `date` (si no se indica `date` se usa la fecha negocio actual). Requiere autenticación y rol `admin`.
+	- `GET /api/v1/reportes/admin/stored?localId=<id>&date=YYYY-MM-DD` → Devuelve los reportes persistidos (si existen) para el local y fecha indicada.
+
+#### Scripts de ayuda (dev)
+
+Hay un pequeño helper para crear reportes de ejemplo para los días Viernes y Sábado de las últimas 3 semanas (útil para probar el calendario del admin):
+
+```bash
+# Desde el directorio backend
+npm run seed:reportes:fri-sat
+```
+
+Este script busca `locales` activos y crea un `ReporteDiario` sintético para cada viernes y sábado recientes (si no existe ya) — útil para probar la UI sin tener que generar comandas reales.
+
+
 ### Scraping
 - `POST /api/v1/scraping/menu` - Extraer menú de URL (admin)
 

@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useLocalStore } from '../../store/localStore';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../components/Navbar';
+import ReportesDiariosModal from './ReportesDiariosModal';
 import localService from '../../services/localService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -12,6 +13,7 @@ export default function LocalesView() {
   const { user } = useAuthStore();
   const { setLocales, setLocalActivo } = useLocalStore();
   const [loading, setLoading] = useState(true);
+  const [showReportesDiarios, setShowReportesDiarios] = useState(false);
   const [locales, setLocalesState] = useState([]);
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export default function LocalesView() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
+      <Navbar onReporteDia={() => setShowReportesDiarios(true)} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
@@ -164,6 +166,10 @@ export default function LocalesView() {
           </div>
         )}
       </div>
+
+      {showReportesDiarios && (
+        <ReportesDiariosModal onClose={() => setShowReportesDiarios(false)} />
+      )}
     </div>
   );
 }

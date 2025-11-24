@@ -76,9 +76,18 @@ const Comanda = sequelize.define('Comanda', {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'cerrada_at'
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    field: 'created_at'
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    field: 'updated_at'
   }
 }, {
-  tableName: 'comandas'
+  tableName: 'comandas',
+  timestamps: true
 });
 
 module.exports = Comanda;

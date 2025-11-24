@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useLocalStore } from '../../store/localStore';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../components/Navbar';
+import ReportesDiariosModal from './ReportesDiariosModal';
 import LocalSelector from '../../components/LocalSelector';
 import {
   Chart as ChartJS,
@@ -46,6 +47,7 @@ export default function LocalDashboard() {
   const { user, setUser } = useAuthStore();
   const { localActivo, setLocalActivo, locales } = useLocalStore();
   const [loading, setLoading] = useState(true);
+  const [showReportesDiarios, setShowReportesDiarios] = useState(false);
   const [mostrarConfigMoneda, setMostrarConfigMoneda] = useState(false);
   const [monedaSeleccionada, setMonedaSeleccionada] = useState('Bs');
   const [stats, setStats] = useState({
@@ -234,7 +236,7 @@ export default function LocalDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
-      <Navbar />
+      <Navbar onReporteDia={() => setShowReportesDiarios(true)} />
 
       {/* Header Info - Mobile Optimized */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -660,6 +662,10 @@ export default function LocalDashboard() {
           </div>
         )}
       </main>
+
+      {showReportesDiarios && (
+        <ReportesDiariosModal onClose={() => setShowReportesDiarios(false)} />
+      )}
 
       {/* Modal de Configuración de Moneda */}
       {mostrarConfigMoneda && (

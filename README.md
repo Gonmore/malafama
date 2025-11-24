@@ -22,6 +22,9 @@ MalaFama es una solución integral que digitaliza y optimiza el flujo de trabajo
 - ✅ **Notificaciones en tiempo real** con Socket.io
 - ✅ **Web Scraping avanzado** para importar menús (Preview + Import)
 - ✅ **Reportes avanzados** con vistas SQL optimizadas
+ - ✅ **Reportes avanzados** con vistas SQL optimizadas
+ - ✅ **Generación automática de reportes diarios** a las 06:00 (snapshot por local) — los reportes se guardan en la tabla `reportes_diarios` y están disponibles para revisión en el panel admin
+  - Sistema adicional de reportes diarios automáticos (6AM): el backend genera y persiste un snapshot por cada local con la información del periodo 06:00→06:00 para que el admin los consulte o descargue.
 - ✅ **Control de costos** y cálculo de márgenes automático
 - ✅ **Gestión completa de comandas** con estados
 - 🔄 **Sistema de pedidos** con actualización en tiempo real
@@ -244,6 +247,34 @@ psql -U postgres -d malafama -f database/views.sql
 - Web scraping de menús online
 - Asignación de costos y proveedores
 - Reportes y analytics completos
+
+## 🗂️ Reportes diarios — snapshots y pruebas
+
+El sistema crea un snapshot persistido por local cada día a las 06:00 (definición de día negocio: 06:00 → 06:00). Estos reportes se guardan en la tabla `reportes_diarios` y están disponibles en el panel de administración.
+
+Si quieres generar o probar reportes manualmente (útil en desarrollo):
+
+- Endpoint manual (requiere admin):
+
+```bash
+# Generar reporte para local y fecha (YYYY-MM-DD)
+curl -X POST "http://localhost:5000/api/v1/reportes/admin/generar?localId=<LOCAL_ID>&date=2025-11-21" -H "Authorization: Bearer <TOKEN>"
+
+# PowerShell (Windows)
+Invoke-RestMethod -Uri "http://localhost:5000/api/v1/reportes/admin/generar?localId=<LOCAL_ID>&date=2025-11-21" `
+  -Method POST `
+  -Headers @{"Authorization" = "Bearer <TOKEN>"}
+```
+
+- Seed helper (dev): el backend incluye un script que crea reportes de ejemplo para Fridays/Saturdays recientes:
+
+```powershell
+cd backend
+npm run seed:reportes:fri-sat
+```
+
+En la UI admin (Reportes diarios) verás ahora una vista de mes con días marcados. Los días con reporte persistido muestran un marcador diferente (📌) de los días que sólo tienen actividad calculada (📝). Además, la vista del calendario muestra qué día de la semana corresponde a cada fecha (Lun..Dom) para navegación más intuitiva.
+
 - Control de pagos a proveedores
 
 ### 🤵 Atención (Mesero)

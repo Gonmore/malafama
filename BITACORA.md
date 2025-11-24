@@ -14,6 +14,18 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
 
+### Sesión del 24 de Noviembre 2025 - Reportes diarios automáticos y UI mensual
+
+#### ✅ Cambios principales
+- Se añadió persistencia de reportes diarios en la nueva tabla/modelo `reportes_diarios` (campo `data` JSONB) — `backend/src/models/ReporteDiario.js`.
+- Se implementó un scheduler en el backend que genera automáticamente los reportes diarios a las 06:00 (ventana 06:00-06:01) y persiste un snapshot por local — `backend/src/services/reportes.scheduler.js`.
+- Se añadió endpoint para generar manualmente reportes: `POST /api/v1/reportes/admin/generar?localId=&date=` (útil para pruebas/depuración) y endpoint para listar reportes persistidos `GET /api/v1/reportes/admin/stored?localId=&date=`.
+- El modal de Admin para "Reportes diarios" ahora muestra una vista por mes (todos los días del mes) y marca con un icono 📝 los días que tienen reportes persistidos o calculados.
+
+#### ✅ Por qué antes no había reportes disponibles
+- Antes no existía la generación programada; los reportes diarios se calculaban bajo demanda pero no se guardaban automáticamente. Con el scheduler los reportes se crean y persisten diariamente a las 06:00.
+
+
 ### Sesión del 21 de Noviembre 2025 - Dark Mode y Sistema de Acknowledgment
 
 #### ✅ Tareas Completadas

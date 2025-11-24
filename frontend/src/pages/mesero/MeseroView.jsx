@@ -5,6 +5,7 @@ import { mesaService } from '../../services/mesaService';
 import ComandaModal from './ComandaModal';
 import MesaConComandaModal from './MesaConComandaModal';
 import AssignMesasModal from './AssignMesasModal';
+import ReporteDiaMesero from './ReporteDiaMesero';
 import Navbar from '../../components/Navbar';
 import io from 'socket.io-client';
 
@@ -25,6 +26,7 @@ export default function MeseroView() {
   const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
   const [tiempoActual, setTiempoActual] = useState(new Date());
+  const [showReporteDia, setShowReporteDia] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('mesero_vista_mode', vistaMode);
@@ -578,7 +580,10 @@ export default function MeseroView() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'}`}>
       {/* Navbar */}
-      <Navbar />
+      <Navbar 
+        darkMode={darkMode}
+        onReporteDia={() => setShowReporteDia(true)}
+      />
       
       {/* Controles superiores */}
       <div className="flex justify-between items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2 gap-2">
@@ -804,6 +809,14 @@ export default function MeseroView() {
             cargarMesas();
           }}
           onClose={() => setShowAssignModal(false)}
+        />
+      )}
+
+      {/* Modal de Reporte del Día */}
+      {showReporteDia && (
+        <ReporteDiaMesero
+          onClose={() => setShowReporteDia(false)}
+          darkMode={darkMode}
         />
       )}
     </div>

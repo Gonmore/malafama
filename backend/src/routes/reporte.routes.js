@@ -3,6 +3,32 @@ const router = express.Router();
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 const reporteController = require('../controllers/reporte.controller');
 
+// Reporte del día para mesero (6 AM a 6 AM)
+router.get('/mesero/dia', authenticate, authorize('atencion'), reporteController.getReporteDiaMesero);
+
+// Reportes diarios del local (para admin) - muestra comandas por usuario del local en el día 6AM-6AM
+router.get('/admin/dia', authenticate, authorize('admin'), reporteController.getReportesDiariosLocal);
+// Obtener días (últimos N) que tienen reportes para el local
+router.get('/admin/dias', authenticate, authorize('admin'), reporteController.getDiasConReportesLocal);
+// Generar manualmente (útil para debug): POST /reportes/admin/generar?localId=...&date=YYYY-MM-DD
+router.post('/admin/generar', authenticate, authorize('admin'), reporteController.crearReporteDiario);
+
+// Obtener reportes persistidos para un local
+router.get('/admin/stored', authenticate, authorize('admin'), async (req, res) => {
+	try {
+		const { ReporteDiario } = require('../models');
+		const { localId, date } = req.query;
+		if (!localId) return res.status(400).json({ success: false, message: 'Debe proporcionar localId' });
+		const where = { localId };
+		if (date) where.fecha = date;
+		const items = await ReporteDiario.findAll({ where, order: [['fecha','DESC']] });
+		res.json({ success: true, reportes: items });
+	} catch (error) {
+		console.error('Error fetching stored reportes:', error);
+		res.status(500).json({ success: false, message: 'Error al obtener reportes almacenados', error: error.message });
+	}
+});
+
 // Dashboard resumen (para admin)
 router.get('/dashboard', authenticate, authorize('admin'), reporteController.getDashboardResumen);
 

@@ -150,6 +150,13 @@ const startServer = async () => {
       console.log(`✓ API Version: ${API_VERSION}`);
       console.log(`✓ Socket.io inicializado`);
     });
+    // Start background scheduler for daily reports (6 AM run)
+    try {
+      const { scheduleDailyReports } = require('./services/reportes.scheduler');
+      scheduleDailyReports();
+    } catch (err) {
+      console.error('No se pudo iniciar reportes.scheduler:', err.message || err);
+    }
   } catch (error) {
     console.error('✗ Error al iniciar el servidor:', error);
     process.exit(1);
