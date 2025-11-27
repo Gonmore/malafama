@@ -914,6 +914,93 @@ const crearReporteDiario = async (req, res) => {
   }
 };
 
+// Scheduled reports CRUD and run
+const createScheduledReport = async (req, res) => {
+  try {
+    const { localId, nombre, frecuencia = 'daily', tiempo = '06:00', diaSemana = null, diaMes = null, formato = 'csv', destinatarios = null, activo = true } = req.body;
+    if (!localId) return res.status(400).json({ success: false, message: 'localId es requerido' });
+
+    const { ScheduledReport } = require('../models');
+    const schedule = await ScheduledReport.create({ localId, nombre, frecuencia, tiempo, diaSemana, diaMes, formato, destinatarios, activo });
+    res.json({ success: true, data: schedule });
+  } catch (error) {
+    console.error('Error creating scheduled report:', error);
+    res.status(500).json({ success: false, message: 'Error al crear reporte programado', error: error.message });
+  }
+};
+
+const listScheduledReports = async (req, res) => {
+  try {
+    const { localId } = req.query;
+    const { ScheduledReport } = require('../models');
+    const where = {};
+    if (localId) where.localId = localId;
+    const items = await ScheduledReport.findAll({ where, order: [['created_at','DESC']] });
+    res.json({ success: true, data: items });
+  } catch (error) {
+    console.error('Error listing scheduled reports:', error);
+    res.status(500).json({ success: false, message: 'Error al listar reportes programados', error: error.message });
+  }
+};
+
+const updateScheduledReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    const { ScheduledReport } = require('../models');
+    const item = await ScheduledReport.findByPk(id);
+    if (!item) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+    await item.update(updates);
+    res.json({ success: true, data: item });
+  } catch (error) {
+    console.error('Error updating scheduled report:', error);
+    res.status(500).json({ success: false, message: 'Error al actualizar reporte programado', error: error.message });
+  }
+};
+
+const deleteScheduledReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ScheduledReport } = require('../models');
+    const item = await ScheduledReport.findByPk(id);
+    if (!item) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+    await item.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting scheduled report:', error);
+    res.status(500).json({ success: false, message: 'Error al eliminar reporte programado', error: error.message });
+  }
+};
+
+const runScheduledReportNow = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date } = req.query; // optional YYYY-MM-DD
+    const { ScheduledReport } = require('../models');
+    const sched = await ScheduledReport.findByPk(id);
+    if (!sched) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+
+    // Determine target date for report (if provided use date else use previous business day)
+    let fechaTarget;
+    if (date) fechaTarget = date;
+    else {
+      const now = new Date();
+      const target = new Date(now);
+      target.setDate(target.getDate() - 1);
+      fechaTarget = target.toISOString().split('T')[0];
+    }
+
+    await generarYGuardarReporte(sched.localId, fechaTarget);
+    sched.lastRunAt = new Date();
+    await sched.save();
+
+    res.json({ success: true, message: 'Reporte ejecutado', fecha: fechaTarget });
+  } catch (error) {
+    console.error('Error running scheduled report now:', error);
+    res.status(500).json({ success: false, message: 'Error al ejecutar reporte programado', error: error.message });
+  }
+};
+
 // Generar y guardar reporte (función util para uso interno y scheduler)
 const generarYGuardarReporte = async (localId, fechaTarget) => {
   // fechaTarget expected YYYY-MM-DD
@@ -1382,24 +1469,39 @@ const getReportePorPeriodo = async (req, res) => {
 };
 
 module.exports = {
+  // daily and period reports
   getReporteDiaMesero,
+  getReportesDiariosLocal,
+  crearReporteDiario,
+
+  // period/analytics
   getVentasPorPeriodo,
+  getReportePorPeriodo,
   getProductosMasVendidos,
   getVentasPorProducto,
   getVentasPorMesa,
+
+  // proveedores
   getPagosPendientesProveedores,
   getPagosSemanaProveedores,
   getDetalleProveedor,
+
+  // meseros/comandas
   getRendimientoMeseros,
   getEstadoComandas,
+
+  // inventory / dashboard
   getInventarioProveedores,
   getDashboardResumen,
-  getReportePorPeriodo
-  ,
-  getReportesDiariosLocal
-  ,
-  getDiasConReportesLocal
-  ,
-  crearReporteDiario,
+
+  // scheduled reports management
+  createScheduledReport,
+  listScheduledReports,
+  updateScheduledReport,
+  deleteScheduledReport,
+  runScheduledReportNow,
+
+  // utilities
+  getDiasConReportesLocal,
   generarYGuardarReporte
 };

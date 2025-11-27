@@ -37,6 +37,13 @@ router.get('/proveedores/:id/detalle', authenticate, authorize('admin'), reporte
 // Dashboard resumen (para admin)
 router.get('/dashboard', authenticate, authorize('admin'), reporteController.getDashboardResumen);
 
+// Schedule endpoints for admin
+router.get('/schedules', authenticate, authorize('admin'), reporteController.listScheduledReports);
+router.post('/schedules', authenticate, authorize('admin'), reporteController.createScheduledReport);
+router.put('/schedules/:id', authenticate, authorize('admin'), reporteController.updateScheduledReport);
+router.delete('/schedules/:id', authenticate, authorize('admin'), reporteController.deleteScheduledReport);
+router.post('/schedules/:id/run', authenticate, authorize('admin'), reporteController.runScheduledReportNow);
+
 // Reporte por período (mensual, trimestral, semestral, anual) con análisis completo
 router.get('/periodo', authenticate, authorize('admin'), reporteController.getReportePorPeriodo);
 
