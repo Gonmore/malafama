@@ -77,7 +77,8 @@ const mesaSchemas = {
     nombre: Joi.string().max(50).required(),
     numero: Joi.number().integer().min(1).required(),
     ubicacion: Joi.string().max(255).allow('', null),
-    capacidad: Joi.number().integer().min(1).default(4)
+    capacidad: Joi.number().integer().min(1).default(4),
+    localId: Joi.string().uuid().allow(null)
   }),
   update: Joi.object({
     nombre: Joi.string().max(50),

@@ -53,10 +53,25 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    console.log('🔑 Intento de login:', { 
-      email, 
+    // Extra logging to help identify where login attempts come from (e.g., mobile device)
+    const origin = req.get('origin') || req.get('host') || 'unknown';
+    const userAgent = req.get('user-agent') || 'unknown';
+    const clientIp = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+
+    // Mask password when logging
+    const maskedBody = {
+      ...req.body,
+      password: password ? `***len:${password.length}` : undefined,
+    };
+
+    console.log('🔑 Intento de login:', {
+      email,
       tienePassword: !!password,
-      passwordLength: password?.length 
+      passwordLength: password?.length,
+      origin,
+      userAgent,
+      clientIp,
+      body: maskedBody,
     });
 
     if (!email || !password) {
@@ -117,11 +132,13 @@ const login = async (req, res) => {
       tipo: usuario.tipo
     });
 
+    // Include `user` in addition to `usuario` for a stable API response shape
     res.json({
       success: true,
       message: 'Login exitoso',
       data: {
         usuario,
+        user: usuario,
         token
       }
     });

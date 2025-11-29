@@ -526,6 +526,48 @@ Estado actual de comandas abiertas
 Inventario de proveedores (Admin/Proveedor)
 - Query: `?proveedorId=1`
 
+### GET `/reportes/periodo`
+Obtener reporte por período predefinido (usado por el front-end para 'mensual', 'trimestral', 'semestral', 'anual').
+- Query: `?localId=<uuid>&periodo=mensual|trimestral|semestral|anual`
+- Response: `data` contiene resumen (resumen, ventasPorDia, productosMasVendidos, insights, etc.)
+
+### Reportes programados / Schedules (`/reportes/schedules`)
+**Acceso:** Admin
+
+### GET `/reportes/schedules`
+Listar programaciones de reportes (schedules)
+
+### POST `/reportes/schedules`
+Crear una nueva programación de reporte
+```json
+{
+  "localId": "uuid-del-local",
+  "nombre": "Reporte mensual Ventas",
+  "frecuencia": "monthly|weekly|daily",
+  "tiempo": "HH:MM",
+  "diaSemana": 1, // opcional para weekly
+  "diaMes": 1, // opcional para monthly
+  "formato": "pdf|xlsx|csv",
+  "destinatarios": ["a@dominio.com","+59112345678"],
+  "activo": true
+}
+```
+
+### POST `/reportes/schedules/:id/run`
+Ejecutar (run) inmediatamente una programación existente (genera y envía el reporte según settings del schedule).
+
+### DELETE `/reportes/schedules/:id`
+Eliminar una programación existente.
+
+### Admin manual generation endpoints
+### POST `/reportes/admin/generar`
+Generar manualmente reportes para debug o pruebas
+- Query: `?localId=<uuid>&date=YYYY-MM-DD`
+
+### GET `/reportes/admin/stored`
+Listar reportes persistidos (reportes diarios guardados)
+- Query: `?localId=<uuid>&date=YYYY-MM-DD`
+
 ---
 
 ## 🔔 WebSocket Events

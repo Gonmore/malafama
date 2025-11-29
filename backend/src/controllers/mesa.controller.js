@@ -103,10 +103,12 @@ const getMesaById = async (req, res) => {
 // Crear mesa
 const createMesa = async (req, res) => {
   try {
-    const { nombre, numero, ubicacion, capacidad } = req.body;
+    const { nombre, numero, ubicacion, capacidad, localId } = req.body;
 
-    // Verificar que el número no esté en uso
-    const mesaExistente = await Mesa.findOne({ where: { numero } });
+    // Verificar que el número no esté en uso. If a localId is provided, verify within that local only,
+    // otherwise fall back to global uniqueness.
+    const existsQuery = localId ? { numero, localId } : { numero };
+    const mesaExistente = await Mesa.findOne({ where: existsQuery });
     if (mesaExistente) {
       return res.status(400).json({
         success: false,
@@ -118,7 +120,8 @@ const createMesa = async (req, res) => {
       nombre,
       numero,
       ubicacion,
-      capacidad: capacidad || 4
+      capacidad: capacidad || 4,
+      localId: localId || null
     });
 
     res.status(201).json({
@@ -404,6 +407,7 @@ module.exports = {
   createMultipleMesas,
   updateMesa,
   deleteMesa,
-  getEstadoOcupacion
-  ,getMesasAsignadas, assignMesas
+  getEstadoOcupacion,
+  getMesasAsignadas,
+  assignMesas
 };

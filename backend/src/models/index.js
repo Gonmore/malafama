@@ -9,6 +9,7 @@ const Pedido = require('./Pedido');
 const ConfiguracionRestaurante = require('./ConfiguracionRestaurante');
 const ReporteDiario = require('./ReporteDiario');
 const ScheduledReport = require('./ScheduledReport');
+const PagoProveedor = require('./PagoProveedor');
 
 // Definir relaciones
 
@@ -102,6 +103,36 @@ Producto.belongsTo(Proveedor, {
   as: 'proveedor'
 });
 
+// Proveedor - PagosProveedor (1:N)
+Proveedor.hasMany(PagoProveedor, {
+  foreignKey: 'proveedor_id',
+  as: 'pagos'
+});
+PagoProveedor.belongsTo(Proveedor, {
+  foreignKey: 'proveedor_id',
+  as: 'proveedor'
+});
+
+// Local - PagosProveedor (1:N)
+Local.hasMany(PagoProveedor, {
+  foreignKey: 'local_id',
+  as: 'pagosProveedores'
+});
+PagoProveedor.belongsTo(Local, {
+  foreignKey: 'local_id',
+  as: 'local'
+});
+
+// Usuario - PagosProveedor (1:N)
+Usuario.hasMany(PagoProveedor, {
+  foreignKey: 'creado_por',
+  as: 'pagosCreados'
+});
+PagoProveedor.belongsTo(Usuario, {
+  foreignKey: 'creado_por',
+  as: 'creador'
+});
+
 // Local - Mesas (1:N)
 Local.hasMany(Mesa, {
   foreignKey: 'localId',
@@ -185,7 +216,8 @@ module.exports = {
   MesaAsignada,
   Comanda,
   Pedido,
-  ConfiguracionRestaurante
-  ,ReporteDiario
-  ,ScheduledReport
+  ConfiguracionRestaurante,
+  ReporteDiario,
+  ScheduledReport,
+  PagoProveedor
 };

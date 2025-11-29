@@ -4,30 +4,10 @@
     "slug": "malafama-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ef4444"
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.malafama.mobile"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ef4444"
-      },
-      "package": "com.malafama.mobile"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.malafama.mobile" },
+    "android": { "package": "com.malafama.mobile" },
     "scheme": "malafama"
   }
 }

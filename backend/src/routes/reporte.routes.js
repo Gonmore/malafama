@@ -71,4 +71,9 @@ router.get('/estado-comandas', authenticate, reporteController.getEstadoComandas
 // Inventario de proveedores
 router.get('/inventario-proveedores', authenticate, authorize('admin', 'proveedor'), reporteController.getInventarioProveedores);
 
+// Gestión de pagos a proveedores
+router.post('/pagos-proveedores', authenticate, authorize('admin'), reporteController.registrarPagoProveedor);
+router.get('/pagos-proveedores/verificar', authenticate, authorize('admin'), reporteController.verificarPagoProveedor);
+router.get('/pagos-proveedores/listar', authenticate, authorize('admin'), reporteController.listarPagosProveedores);
+
 module.exports = router;

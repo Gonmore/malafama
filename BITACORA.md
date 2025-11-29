@@ -1,6 +1,6 @@
 # Bitácora del Proyecto MalaFama - Sistema de Gestión de Pedidos para Restaurante
 
-**Última actualización:** 20 de Noviembre 2025
+**Última actualización:** 27 de Noviembre 2025
 
 ## 📋 Descripción del Proyecto
 
@@ -14,6 +14,42 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
 
+### Sesión del 27 de Noviembre 2025 - App Móvil: Paridad Bar/Cocina, Vistas Compactas y "Recientes"
+
+#### ✅ Cambios principales (mobile)
+- Paridad con web en Bar y Cocina: modos de vista por pedido, agrupado por producto y agrupado por mesa (Bar), con variantes compactas para móvil.
+- Vistas compactas por defecto en móvil para Bar y Cocina; preferencia persistida con `AsyncStorage` (`bar_modo_vista`, `cocina_modo_vista`).
+- Nueva pestaña "Recientes" en Bar y Cocina (historial corto de pedidos/comandas recientes) con actualización en tiempo real.
+- Filtros por `tipo` y `localId` en servicios: Bar usa `tipo: 'bebida'`, Cocina usa `tipo: 'comida'`; `localId` derivado automáticamente con fallback a primer local disponible.
+- Socket.IO: suscripción a salas por rol y por local (`bar`, `bar:<localId>`, `cocina`, `cocina:<localId>`) para limitar el alcance de eventos.
+- Feedback de UX móvil: vibración/haptics y audio corto compatibles con Expo Go en eventos relevantes.
+- Configuración por variables de entorno públicas de Expo: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_WS_URL` (permite alternar entre backend local y nube sin cambios de código).
+
+#### ✅ Archivos modificados / claves
+- `mobile/app/bar/index.tsx` — Modos agrupados, vistas compactas (default), pestaña "Recientes", unión a salas de socket por local, filtros `tipo/localId`, acciones batch por mesa.
+- `mobile/app/cocina/index.tsx` — Modos agrupados, vistas compactas (default), pestaña "Recientes", unión a salas de socket por local, filtros `tipo/localId`.
+- `mobile/src/services/pedido.ts` — `getPendientesCocina({ estado, tipo, localId })`, `getRecientes({ tipo, localId })`; expansión de tipos.
+- `mobile/src/services/local.ts` — `obtenerLocales()` para fallback de `localId` en móvil.
+- `mobile/src/services/socket.ts` — Singleton de Socket.IO leyendo `EXPO_PUBLIC_WS_URL`.
+- `mobile/src/utils/notify.ts` — Haptics + sonido breve para confirmaciones y llegada de eventos.
+
+#### ✅ Notas de integración
+- Endpoints utilizados: `GET /pedidos/cocina/pendientes?estado=&tipo=&localId=`, `GET /pedidos/cocina/recientes?tipo=&localId=`, `POST /pedidos/:id/listo`, `PATCH /pedidos/:id/estado`.
+- Persistencia de modo de vista: `bar_modo_vista`, `cocina_modo_vista` (valores incluyen compactos, p. ej. `por-pedido-compacto`).
+- Salas Socket.IO: unión doble por rol y por local para reducir ruido de eventos y mejorar el rendimiento en ambientes multi-sede.
+- Consideración Expo Go: solo dependencias compatibles (haptics/audio de Expo), sin nativos personalizados.
+
+#### ▶️ Cómo probar (Expo Go)
+```powershell
+cd mobile
+$env:EXPO_PUBLIC_API_URL="http://<LAN-IP>:5000/api/v1"
+$env:EXPO_PUBLIC_WS_URL="http://<LAN-IP>:5000"
+npx expo start
+```
+- Conecta el dispositivo a la misma red LAN; en Android emulador, puedes usar `10.0.2.2` como host.
+- Inicia sesión y navega a Bar/Cocina para ver "Cola" y "Recientes"; cambia a vistas compactas (deberían ser default) y verifica que la preferencia persista tras reiniciar.
+
+
 ### Sesión del 24 de Noviembre 2025 - Reportes diarios automáticos y UI mensual
 
 #### ✅ Cambios principales
@@ -21,6 +57,29 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 - Se implementó un scheduler en el backend que genera automáticamente los reportes diarios a las 06:00 (ventana 06:00-06:01) y persiste un snapshot por local — `backend/src/services/reportes.scheduler.js`.
 - Se añadió endpoint para generar manualmente reportes: `POST /api/v1/reportes/admin/generar?localId=&date=` (útil para pruebas/depuración) y endpoint para listar reportes persistidos `GET /api/v1/reportes/admin/stored?localId=&date=`.
 - El modal de Admin para "Reportes diarios" ahora muestra una vista por mes (todos los días del mes) y marca con un icono 📝 los días que tienen reportes persistidos o calculados.
+
+### Sesión (24 - 27 de Noviembre 2025) - Reportes UI: Rediseño y UX avanzado (frontend)
+
+#### ✅ Cambios principales (frontend)
+- Rediseño completo de la página de reportes `frontend/src/pages/admin/ReportesPage.jsx` para convertirla en la pieza diferencial del admin.
+- Se añadieron tres tipos de reportes interactivos: **Ejecutivo** (KPIs), **Detallado** (análisis y gráficas), **Comparativo** (periodo vs periodo).
+- UI/UX premium: tarjetas con gradientes, sombras, animaciones hover y animación `fadeIn` para secciones.
+- Añadido botón llamativo **"Generar Reporte"** con animaciones y estado de carga; la generación ahora es manual y valida filtros antes de la petición.
+- Selector de `local` mejorado:
+  - Si el admin tiene varios locales, aparece un modal de selección al generar reporte para elegir en el momento.
+  - Se puede preseleccionar un local (opcional) o elegir en el modal antes de generar.
+- Manejo correcto de moneda por local: se agregó lógica cliente `getMoneda()` para mostrar la divisa del local (ej. "Bs") en todos los montos.
+- Funciones robustas de carga: `cargarLocales()` ahora retorna la lista y maneja formatos `response.data.locales | response.data`.
+- Se resolvieron errores de JSX y correcciones en charts y callbacks para prevenir fallos en Vite/React.
+
+#### ✅ Archivos modificados / claves
+- `frontend/src/pages/admin/ReportesPage.jsx` — Rediseño UI, selectors, modal de local, botón Generar, chart gradients, getMoneda(), carga y validaciones.
+- `src/index.css` / animaciones (se agregó animate-fadeIn inline desde el componente cuando hace falta).
+
+#### ✅ Notas de integración
+- El backend acepta peticiones de reportes por local: `GET /api/v1/reportes/periodo?localId=&periodo=` — ahora el cliente siempre envía un `localId` válido o muestra modal para elegir.
+- El flujo de reportes programados (schedules) ya cuenta con endpoints y handlers: listado, ejecutar ahora y eliminar; la UI del administrador permite administrar schedules.
+
 
 #### ✅ Por qué antes no había reportes disponibles
 - Antes no existía la generación programada; los reportes diarios se calculaban bajo demanda pero no se guardaban automáticamente. Con el scheduler los reportes se crean y persisten diariamente a las 06:00.
@@ -484,7 +543,7 @@ Ninguna tarea en progreso actualmente.
 
 ---
 
-*Última actualización: 2025-11-12*
+*Última actualización: 2025-11-27*
 
 ---
 
@@ -694,6 +753,27 @@ POST /api/v1/config/finalizar
 - ✅ `.gitignore`
 - ✅ `README.md` - Documentación completa
 - ✅ Estructura base creada
+
+### 2025-11-27 - Sesión móvil: migración SDK / pruebas LAN
+
+#### ✅ Resumen rápido
+- Migración completa de la app móvil a **Expo SDK 54** y sincronización de dependencias.
+- Ajustes en toolchain: `tsconfig.json` (moduleResolution: "bundler") y `babel.config.js` (usar `babel-preset-expo`) para evitar errores de Metro/TypeScript.
+- Se creó `mobile/.env` con la IP LAN solicitada y variables públicas:
+  - EXPO_PUBLIC_API_URL="http://192.168.10.252:5000"
+  - EXPO_PUBLIC_WS_URL="http://192.168.10.252:5000"
+- Backend temporalmente con `CORS_ORIGIN=*` (solo para pruebas en LAN). Ver recomendaciones para revertir antes de producción.
+
+#### 🔍 Verificaciones realizadas
+- `expo-doctor` validado ✅
+- Prueba HTTP a `/api/v1/pedidos/cocina/pendientes`: respuesta 401 (requiere token) — CORS preflight devuelto con `Access-Control-Allow-Origin: *` ✅
+- Simulación Socket.IO desde dev host hacia `http://192.168.10.252:5000`: conexión, registro y `join-room` completados ✅
+
+#### ▶️ Recomendaciones / Siguientes pasos
+1. Actualiza Expo Go en tu dispositivo (compatible con SDK 54) o usa un dev-client si necesitas APIs nativas.
+2. Ejecutar pruebas manuales Bar / Cocina (pedidos, marcar listo, haptics/audio) en un dispositivo físico.
+3. Antes de subir a staging/producción, revertir `backend/.env` CORS_ORIGIN a orígenes concretos y documentar la configuración.
+
 
 ---
 

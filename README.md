@@ -26,6 +26,7 @@ MalaFama es una solución integral que digitaliza y optimiza el flujo de trabajo
  - ✅ **Generación automática de reportes diarios** a las 06:00 (snapshot por local) — los reportes se guardan en la tabla `reportes_diarios` y están disponibles para revisión en el panel admin
   - Sistema adicional de reportes diarios automáticos (6AM): el backend genera y persiste un snapshot por cada local con la información del periodo 06:00→06:00 para que el admin los consulte o descargue.
 - ✅ **Control de costos** y cálculo de márgenes automático
+ - ✅ **Frontend: Reportes Admin (UI & UX mejorado)** — Nueva experiencia premium en `Reportes` (admin): tres tipos de reportes (Ejecutivo, Detallado, Comparativo), gráficos mejorados con gradientes, animaciones, y tarjetas KPI. Añadido botón "Generar Reporte" para control manual, modal de selección de local cuando el admin tiene múltiples locales, y visualización de moneda por local (p.ej. "Bs"). La interfaz también soporta gestión de programaciones (schedules): listar, ejecutar ahora y eliminar.
 - ✅ **Gestión completa de comandas** con estados
 - 🔄 **Sistema de pedidos** con actualización en tiempo real
 - ⏳ App móvil (estructura básica creada)

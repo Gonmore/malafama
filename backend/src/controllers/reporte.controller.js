@@ -1,6 +1,6 @@
 const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
-const { Comanda, Pedido, Producto, Mesa, Usuario, MesaAsignada, Local } = require('../models');
+const { Comanda, Pedido, Producto, Mesa, Usuario, MesaAsignada, Local, PagoProveedor, Proveedor } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -172,7 +172,7 @@ const getReporteDiaMesero = async (req, res) => {
 // Reporte de ventas por período
 const getVentasPorPeriodo = async (req, res) => {
   try {
-    const { fechaInicio, fechaFin } = req.query;
+    const { fechaInicio, fechaFin, localId } = req.query;
 
     if (!fechaInicio || !fechaFin) {
       return res.status(400).json({
@@ -181,28 +181,57 @@ const getVentasPorPeriodo = async (req, res) => {
       });
     }
 
-    const ventas = await sequelize.query(
-      `SELECT * FROM v_ventas_diarias 
-       WHERE fecha BETWEEN :fechaInicio AND :fechaFin 
-       ORDER BY fecha DESC`,
-      {
-        replacements: { fechaInicio, fechaFin },
-        type: QueryTypes.SELECT
+    const whereClause = {
+      estado: 'cerrada',
+      cerradaAt: {
+        [Op.gte]: new Date(fechaInicio),
+        [Op.lte]: new Date(fechaFin + 'T23:59:59')
       }
-    );
+    };
 
+    if (localId) {
+      whereClause.localId = localId;
+    }
+
+    // Obtener ventas agrupadas por fecha
+    const ventas = await Comanda.findAll({
+      where: whereClause,
+      attributes: [
+        [sequelize.fn('DATE', sequelize.col('cerrada_at')), 'fecha'],
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_comandas'],
+        [sequelize.fn('SUM', sequelize.col('total')), 'total_ventas']
+      ],
+      group: [sequelize.fn('DATE', sequelize.col('cerrada_at'))],
+      order: [[sequelize.fn('DATE', sequelize.col('cerrada_at')), 'DESC']],
+      raw: true
+    });
+
+    // Calcular totales
     const totalVentas = ventas.reduce((sum, v) => sum + parseFloat(v.total_ventas || 0), 0);
     const totalComandas = ventas.reduce((sum, v) => sum + parseInt(v.total_comandas || 0), 0);
-    const totalPedidos = ventas.reduce((sum, v) => sum + parseInt(v.total_pedidos || 0), 0);
+
+    // Contar total de pedidos
+    const totalPedidosResult = await Pedido.count({
+      include: [{
+        model: Comanda,
+        as: 'comanda',
+        where: whereClause,
+        attributes: []
+      }]
+    });
 
     res.json({
       success: true,
       data: {
-        ventas,
+        ventas: ventas.map(v => ({
+          fecha: v.fecha,
+          total_ventas: parseFloat(v.total_ventas || 0),
+          total_comandas: parseInt(v.total_comandas || 0)
+        })),
         resumen: {
           totalVentas: totalVentas.toFixed(2),
           totalComandas,
-          totalPedidos,
+          totalPedidos: totalPedidosResult,
           ticketPromedio: totalComandas > 0 ? (totalVentas / totalComandas).toFixed(2) : 0,
           dias: ventas.length
         }
@@ -1157,60 +1186,100 @@ const getInventarioProveedores = async (req, res) => {
 // Dashboard general (resumen de todo)
 const getDashboardResumen = async (req, res) => {
   try {
-    const hoy = new Date().toISOString().split('T')[0];
+    const { localId } = req.query;
 
-    // Ventas del día
-    const ventasHoy = await sequelize.query(
-      `SELECT * FROM v_ventas_diarias WHERE fecha = :hoy`,
-      {
-        replacements: { hoy },
-        type: QueryTypes.SELECT
+    if (!localId) {
+      return res.status(400).json({
+        success: false,
+        message: 'localId es requerido'
+      });
+    }
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const manana = new Date(hoy);
+    manana.setDate(manana.getDate() + 1);
+
+    // Pedidos del día
+    const pedidosHoy = await Comanda.count({
+      where: {
+        localId,
+        estado: 'cerrada',
+        cerradaAt: {
+          [Op.gte]: hoy,
+          [Op.lt]: manana
+        }
       }
-    );
+    });
 
-    // Comandas abiertas
-    const comandasAbiertas = await sequelize.query(
-      `SELECT COUNT(*) as total FROM v_estado_comandas`,
-      { type: QueryTypes.SELECT }
-    );
-
-    // Top 5 productos del mes (agregado por fecha en comandas)
-    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    // Usamos las tablas reales (pedidos + comandas + productos) para calcular los top del mes
-    const topProductos = await sequelize.query(
-      `SELECT
-         pr.id as id,
-         pr.nombre as producto_nombre,
-         pr.categoria as categoria,
-         SUM(p.cantidad) as total_vendido,
-         SUM(p.subtotal) as ingresos_generados
-       FROM pedidos p
-       INNER JOIN comandas c ON p.comanda_id = c.id
-       INNER JOIN productos pr ON p.producto_id = pr.id
-       WHERE c.estado = 'cerrada'
-         AND DATE(c.fecha) BETWEEN :inicioMes AND :hoy
-       GROUP BY pr.id, pr.nombre, pr.categoria
-       ORDER BY total_vendido DESC
-       LIMIT 5`,
-      {
-        replacements: { inicioMes, hoy },
-        type: QueryTypes.SELECT
+    // Ingresos del día
+    const ingresosHoy = await Comanda.sum('total', {
+      where: {
+        localId,
+        estado: 'cerrada',
+        cerradaAt: {
+          [Op.gte]: hoy,
+          [Op.lt]: manana
+        }
       }
-    );
+    }) || 0;
 
-    // Pagos pendientes
-    const pagosPendientes = await sequelize.query(
-      `SELECT SUM(monto_pendiente) as total FROM v_pagos_pendientes_proveedores`,
-      { type: QueryTypes.SELECT }
-    );
+    // Comandas abiertas actualmente
+    const comandasAbiertas = await Comanda.count({
+      where: {
+        localId,
+        estado: 'abierta'
+      }
+    });
+
+    // Top 5 productos del mes usando Sequelize
+    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    
+    const topProductos = await Pedido.findAll({
+      attributes: [
+        'productoId',
+        [sequelize.fn('SUM', sequelize.col('cantidad')), 'cantidad'],
+        [sequelize.fn('SUM', sequelize.col('subtotal')), 'total']
+      ],
+      include: [
+        {
+          model: Comanda,
+          as: 'comanda',
+          where: {
+            localId,
+            estado: 'cerrada',
+            cerradaAt: {
+              [Op.gte]: inicioMes
+            }
+          },
+          attributes: []
+        },
+        {
+          model: Producto,
+          as: 'producto',
+          attributes: ['id', 'nombre', 'categoria']
+        }
+      ],
+      group: ['Pedido.producto_id', 'producto.id', 'producto.nombre', 'producto.categoria'],
+      order: [[sequelize.fn('SUM', sequelize.col('cantidad')), 'DESC']],
+      limit: 5,
+      raw: false
+    });
 
     res.json({
       success: true,
       data: {
-        ventasHoy: ventasHoy[0] || { total_ventas: 0, total_comandas: 0, total_pedidos: 0 },
-        comandasAbiertas: comandasAbiertas[0]?.total || 0,
-        topProductos,
-        pagosPendientes: parseFloat(pagosPendientes[0]?.total || 0).toFixed(2)
+        totalPedidos: pedidosHoy,
+        totalIngresos: parseFloat(ingresosHoy),
+        comandasAbiertas,
+        productosTop: topProductos.map(p => ({
+          id: p.producto.id,
+          nombre: p.producto.nombre,
+          categoria: p.producto.categoria,
+          cantidad: parseInt(p.dataValues.cantidad),
+          total: parseFloat(p.dataValues.total)
+        }))
       }
     });
   } catch (error) {
@@ -1468,6 +1537,160 @@ const getReportePorPeriodo = async (req, res) => {
   }
 };
 
+/**
+ * Registrar pago a proveedor con comprobante
+ */
+const registrarPagoProveedor = async (req, res) => {
+  try {
+    const { 
+      proveedorId, 
+      localId, 
+      fechaInicio, 
+      fechaFin, 
+      montoPagado, 
+      comprobanteUrl, 
+      detalle,
+      observaciones 
+    } = req.body;
+
+    // Validar que no exista ya un pago para este proveedor y período
+    const pagoExistente = await PagoProveedor.findOne({
+      where: {
+        proveedor_id: proveedorId,
+        local_id: localId,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin
+      }
+    });
+
+    if (pagoExistente) {
+      return res.status(400).json({ 
+        error: 'Ya existe un pago registrado para este proveedor en este período' 
+      });
+    }
+
+    // Crear el registro de pago
+    const pago = await PagoProveedor.create({
+      proveedor_id: proveedorId,
+      local_id: localId,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin,
+      monto_pagado: montoPagado,
+      comprobante_url: comprobanteUrl,
+      detalle: detalle,
+      observaciones: observaciones,
+      creado_por: req.user?.id
+    });
+
+    res.json({
+      mensaje: 'Pago registrado exitosamente',
+      pago
+    });
+  } catch (error) {
+    console.error('Error registrando pago:', error);
+    res.status(500).json({ 
+      error: 'Error registrando pago a proveedor',
+      detalle: error.message 
+    });
+  }
+};
+
+/**
+ * Verificar si existe un pago para un proveedor en un período específico
+ */
+const verificarPagoProveedor = async (req, res) => {
+  try {
+    const { proveedorId, localId, fechaInicio, fechaFin } = req.query;
+
+    const pago = await PagoProveedor.findOne({
+      where: {
+        proveedor_id: proveedorId,
+        local_id: localId,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin
+      },
+      include: [
+        {
+          model: Usuario,
+          as: 'creador',
+          attributes: ['id', 'nombre', 'email']
+        }
+      ]
+    });
+
+    if (pago) {
+      res.json({
+        pagado: true,
+        pago: {
+          id: pago.id,
+          monto_pagado: pago.monto_pagado,
+          fecha_pago: pago.created_at,
+          comprobante_url: pago.comprobante_url,
+          observaciones: pago.observaciones,
+          creado_por: pago.creador
+        }
+      });
+    } else {
+      res.json({ pagado: false });
+    }
+  } catch (error) {
+    console.error('Error verificando pago:', error);
+    res.status(500).json({ 
+      error: 'Error verificando pago',
+      detalle: error.message 
+    });
+  }
+};
+
+/**
+ * Listar pagos realizados a proveedores
+ */
+const listarPagosProveedores = async (req, res) => {
+  try {
+    const { localId, proveedorId, fechaDesde, fechaHasta } = req.query;
+
+    const whereClause = { local_id: localId };
+    
+    if (proveedorId) {
+      whereClause.proveedor_id = proveedorId;
+    }
+
+    if (fechaDesde && fechaHasta) {
+      whereClause.fecha_inicio = {
+        [Op.gte]: fechaDesde
+      };
+      whereClause.fecha_fin = {
+        [Op.lte]: fechaHasta
+      };
+    }
+
+    const pagos = await PagoProveedor.findAll({
+      where: whereClause,
+      include: [
+        {
+          model: Proveedor,
+          as: 'proveedor',
+          attributes: ['id', 'nombre', 'telefono', 'email']
+        },
+        {
+          model: Usuario,
+          as: 'creador',
+          attributes: ['id', 'nombre', 'email']
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    res.json({ pagos });
+  } catch (error) {
+    console.error('Error listando pagos:', error);
+    res.status(500).json({ 
+      error: 'Error listando pagos',
+      detalle: error.message 
+    });
+  }
+};
+
 module.exports = {
   // daily and period reports
   getReporteDiaMesero,
@@ -1503,5 +1726,10 @@ module.exports = {
 
   // utilities
   getDiasConReportesLocal,
-  generarYGuardarReporte
+  generarYGuardarReporte,
+
+  // pagos proveedores
+  registrarPagoProveedor,
+  verificarPagoProveedor,
+  listarPagosProveedores
 };

@@ -77,7 +77,7 @@ const getProveedorById = async (req, res) => {
 // Crear proveedor
 const createProveedor = async (req, res) => {
   try {
-    const { nombre, contacto, telefono, email, esPropio, usuarioId } = req.body;
+    const { nombre, contacto, telefono, email, esPropio, usuarioId, localId } = req.body;
 
     // Si se proporciona usuarioId, verificar que existe y es tipo proveedor
     if (usuarioId) {
@@ -96,8 +96,8 @@ const createProveedor = async (req, res) => {
       }
     }
 
-    // Asignar localId del usuario autenticado
-    const localId = req.user?.localId || null;
+    // Asignar localId: primero del body, luego del usuario autenticado
+    const proveedorLocalId = localId || req.user?.localId || null;
 
     const proveedor = await Proveedor.create({
       nombre,
@@ -106,7 +106,7 @@ const createProveedor = async (req, res) => {
       email,
       esPropio: esPropio || false,
       usuarioId,
-      localId
+      localId: proveedorLocalId
     });
 
     const proveedorCompleto = await Proveedor.findByPk(proveedor.id, {
@@ -246,8 +246,12 @@ const deleteProveedor = async (req, res) => {
 // Obtener proveedor "Propio"
 const getProveedorPropio = async (req, res) => {
   try {
+    const localId = req.query.localId || req.user?.localId || null;
+    const whereClause = { esPropio: true };
+    if (localId) whereClause.localId = localId;
+    
     const proveedorPropio = await Proveedor.findOne({
-      where: { esPropio: true }
+      where: whereClause
     });
 
     if (!proveedorPropio) {
@@ -255,7 +259,8 @@ const getProveedorPropio = async (req, res) => {
       const nuevo = await Proveedor.create({
         nombre: 'Propio',
         esPropio: true,
-        contacto: 'Productos elaborados en el establecimiento'
+        contacto: 'Productos elaborados en el establecimiento',
+        localId
       });
 
       return res.json({

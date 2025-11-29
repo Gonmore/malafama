@@ -5,7 +5,7 @@ Aplicación móvil React Native con Expo para el sistema de gestión de pedidos 
 ## Stack Tecnológico
 
 - React Native
-- Expo (~50.0.0)
+- Expo (SDK 54)
 - Expo Router (File-based routing)
 - Zustand (State Management)
 - Axios
@@ -19,7 +19,7 @@ Aplicación móvil React Native con Expo para el sistema de gestión de pedidos 
 npm install
 ```
 
-2. Iniciar Expo:
+2. Iniciar Expo (Expo Go):
 ```bash
 # Iniciar en modo desarrollo
 npm start
@@ -33,6 +33,8 @@ npm run ios
 # Web
 npm run web
 ```
+
+> Para probar en Expo Go (sin builds nativas), evita librerías no soportadas. Este proyecto usa sólo APIs compatibles (Socket.IO, Axios, Zustand, Expo Haptics/AV).
 
 ## Estructura del Proyecto (Planeada)
 
@@ -118,13 +120,60 @@ npm run ios      # iOS (solo macOS)
 
 ## Variables de Entorno
 
-Crear archivo `.env`:
+Expo (SDK 54) expone variables que empiecen con `EXPO_PUBLIC_` en tiempo de ejecución.
+
+Crear archivo `.env` (o exportarlas en tu shell):
 ```
-API_URL=http://tu-ip-local:5000/api/v1
-SOCKET_URL=http://tu-ip-local:5000
+EXPO_PUBLIC_BACKEND_ENV=local
+# Nota: la app añade `/api/v1` al consumir `EXPO_PUBLIC_API_URL`. Define aquí solo el host y puerto (sin `/api/v1`):
+EXPO_PUBLIC_API_URL=http://localhost:5000
+EXPO_PUBLIC_WS_URL=http://localhost:5000
 ```
 
-> **Nota**: En desarrollo móvil, usar IP local en lugar de localhost
+- En dispositivo físico, reemplaza `localhost` por tu IP de red LAN, por ejemplo:
+	- `EXPO_PUBLIC_API_URL=http://192.168.1.50:5000/api/v1`
+	- `EXPO_PUBLIC_WS_URL=http://192.168.1.50:5000`
+
+PowerShell (Windows) ejemplo temporal por sesión:
+```powershell
+$env:EXPO_PUBLIC_BACKEND_ENV="local"; $env:EXPO_PUBLIC_API_URL="http://localhost:5000/api/v1"; $env:EXPO_PUBLIC_WS_URL="http://localhost:5000"; npm start
+```
+
+Para emulador Android con backend local:
+```powershell
+$env:EXPO_PUBLIC_API_URL="http://10.0.2.2:5000/api/v1"; $env:EXPO_PUBLIC_WS_URL="http://10.0.2.2:5000"; npm start
+```
+
+## Guía Rápida Expo Go (LAN)
+
+```powershell
+cd mobile
+	# Para pruebas en dispositivo físico usa SOLO el host: puerto (sin /api/v1)
+	$env:EXPO_PUBLIC_API_URL="http://<LAN-IP>:5000"
+$env:EXPO_PUBLIC_WS_URL="http://<LAN-IP>:5000"
+npx expo start
+```
+
+- Asegúrate que el backend esté accesible desde la red LAN (firewall permitido en el puerto 5000).
+- En emulador Android, usa `10.0.2.2` para apuntar al host local.
+- Si usas túnel de Expo, evita websockets en producción; preferible LAN para Socket.IO.
+
+## Notas de Integración (Sockets y Alcance)
+
+- Salas Socket.IO por rol y local: la app se une a `bar`, `bar:<localId>`, `cocina`, `cocina:<localId>` para recibir solo eventos de tu sede.
+- Persistencia de modos de vista en móvil: `bar_modo_vista`, `cocina_modo_vista` (por defecto vistas compactas: `por-pedido-compacto` / `por-producto-compacto`).
+- Servicios con filtros: Bar usa `tipo: 'bebida'`, Cocina usa `tipo: 'comida'`; `localId` se deriva de `/locales` si no está definido.
+
+## Estado Actual (Mobile)
+
+📱 **Paridad con Web en Bar/Cocina**
+- Modos de vista por pedido y agrupados (producto/mesa en Bar) con variantes compactas.
+- Pestaña "Recientes" disponible en Bar y Cocina con actualización en tiempo real.
+- Haptics y sonido corto compatibles con Expo.
+
+🔧 **Config y Entorno**
+- Variables `EXPO_PUBLIC_API_URL` y `EXPO_PUBLIC_WS_URL` para alternar entre backend local y nube.
+- Salas por local para reducir ruido de eventos en multi-sede.
 
 ## Build para Producción
 
