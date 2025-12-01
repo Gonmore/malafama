@@ -17,12 +17,17 @@ export const localService = {
     if (data?.local) return data.local;
     return data;
   },
+  update: async (id: string | number, payload: Record<string, any>) => {
+    const { data } = await api.put(`/locales/${id}`, payload);
+    return data;
+  },
 };
 
 export type Local = {
   id: number;
   nombre?: string;
   logo?: string | null;
+  qr?: string | null;
   direccion?: string | null;
   descripcion?: string | null;
   productos?: any[];

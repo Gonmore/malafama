@@ -65,6 +65,8 @@ export default function LocalDetail() {
   const [semanasConDatos, setSemanasConDatos] = useState<Set<string>>(new Set());
   // Estados para comprobante de pago
   const [comprobanteImagen, setComprobanteImagen] = useState<string | null>(null);
+  // QR image for local (admin can upload) — data:image/... base64 or URL
+  const [localQrImage, setLocalQrImage] = useState<string | null>(null);
   const [pagoRegistrado, setPagoRegistrado] = useState<any | null>(null);
   const [observacionesPago, setObservacionesPago] = useState('');
 
@@ -171,6 +173,7 @@ export default function LocalDetail() {
         const d = await localService.obtenerLocalPorId(id);
         // local details loaded — processed below
         setLocal(d);
+        setLocalQrImage(d?.qr || null);
         
         // Cargar proveedores
         const provs = await (await import('../../../src/services/proveedor')).proveedorService.obtenerProveedores(id);
@@ -189,6 +192,7 @@ export default function LocalDetail() {
     try {
       const d = await localService.obtenerLocalPorId(id);
       setLocal(d);
+      setLocalQrImage(d?.qr || null);
       // Recargar proveedores también
       const provs = await (await import('../../../src/services/proveedor')).proveedorService.obtenerProveedores(id);
       setProveedores(Array.isArray(provs) ? provs : []);
@@ -954,6 +958,61 @@ export default function LocalDetail() {
           )}
         </ScrollView>
       )}
+
+      {/* ---------------------- Admin: QR del local ---------------------- */}
+      <View style={{ marginTop: 8, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB', backgroundColor: dark ? '#0b1220' : 'white' }}>
+        <Text style={{ fontWeight: '700', color: fg, marginBottom: 8 }}>📱 QR de pago del local</Text>
+        <Text style={{ color: muted, fontSize: 12, marginBottom: 8 }}>Sube o toma una imagen del QR que se usará para pagos por QR.</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+          <TouchableOpacity onPress={async () => {
+            const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permissionResult.granted) return Alert.alert('Permiso requerido', 'Necesitas dar permiso para usar la cámara');
+            const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8, base64: true });
+            if (!result.canceled && result.assets[0]) {
+              setLocalQrImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
+            }
+          }} style={{ flex: 1, padding: 10, backgroundColor: '#3b82f6', borderRadius: 8, alignItems: 'center' }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>📷 Tomar foto</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={async () => {
+            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8, base64: true });
+            if (!result.canceled && result.assets[0]) {
+              setLocalQrImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
+            }
+          }} style={{ flex: 1, padding: 10, backgroundColor: '#8b5cf6', borderRadius: 8, alignItems: 'center' }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>🖼️ Galería</Text>
+          </TouchableOpacity>
+        </View>
+
+        {localQrImage && (
+          <View style={{ marginBottom: 8 }}>
+            <Image source={{ uri: localQrImage }} style={{ width: '100%', height: 180, borderRadius: 8 }} resizeMode='contain' />
+            <TouchableOpacity onPress={() => setLocalQrImage(null)} style={{ marginTop: 8, padding: 8, backgroundColor: '#ef4444', borderRadius: 6, alignItems: 'center' }}>
+              <Text style={{ color: 'white', fontSize: 12 }}>✕ Quitar imagen</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity onPress={async () => {
+            try {
+              if (!localQrImage) return Alert.alert('Error', 'Sube primero una imagen del QR');
+              await (await import('../../../src/services/local')).localService.update(id, { qr: localQrImage });
+              Alert.alert('QR', 'QR guardado correctamente');
+              await reload();
+            } catch (e: any) {
+              const msg = e?.response?.data?.message || e?.message || 'Error guardando QR';
+              Alert.alert('QR', msg);
+            }
+          }} style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#10b981', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#10b981', fontWeight: '700' }}>Guardar QR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setLocalQrImage(local?.qr || null)} style={{ flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#6B7280', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#6B7280', fontWeight: '700' }}>Restaurar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Modal para crear proveedor */}
       {creatingProveedor && (

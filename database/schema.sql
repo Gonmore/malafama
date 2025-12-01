@@ -75,6 +75,7 @@ CREATE TABLE comandas (
     usuario_atencion_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE SET NULL,
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     estado VARCHAR(50) DEFAULT 'abierta' CHECK (estado IN ('abierta', 'cerrada', 'cancelada')),
+    entregado BOOLEAN DEFAULT false,
     total DECIMAL(10, 2) DEFAULT 0,
     cerrada_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

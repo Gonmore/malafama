@@ -213,6 +213,12 @@ export default function AdminDashboard() {
                 {item.logo ? (
                   <Image source={{ uri: item.logo }} style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: '#fff' }} />
                 ) : null}
+                {/* Small QR indicator if the local has a QR set */}
+                {item.qr ? (
+                  <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: '#f59e0b', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+                    <Text style={{ color: 'white', fontWeight: '700', fontSize: 12 }}>QR</Text>
+                  </View>
+                ) : null}
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '700', color: fg }}>{item.nombre || `Local ${item.id}`}</Text>
                   <Text style={{ color: muted, marginTop: 2 }}>{item.direccion || ''}</Text>

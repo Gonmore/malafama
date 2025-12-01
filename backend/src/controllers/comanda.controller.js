@@ -625,6 +625,40 @@ const getAllComandas = async (req, res) => {
   }
 };
 
+// Marcar comanda como entregada (no necesariamente cerrada)
+const marcarComandaEntregada = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const comanda = await Comanda.findByPk(id, {
+      include: [
+        { model: Mesa, as: 'mesa' },
+        { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
+        { model: Pedido, as: 'pedidos', include: [{ model: Producto, as: 'producto' }] }
+      ]
+    });
+
+    if (!comanda) {
+      return res.status(404).json({ success: false, message: 'Comanda no encontrada' });
+    }
+
+    // marcar entregado true (permite que siga 'abierta')
+    await comanda.update({ entregado: true });
+
+    // Emitir evento a atención para actualizar interfaces
+    if (io) {
+      io.to('atencion').emit('comanda-entregada', { comandaId: comanda.id, mesaId: comanda.mesaId, mesa: comanda.mesa?.numero });
+      const atencionRoom = `atencion:${comanda.localId || ''}`;
+      io.to(atencionRoom).emit('comanda-entregada', { comandaId: comanda.id, mesaId: comanda.mesaId, mesa: comanda.mesa?.numero });
+    }
+
+    res.json({ success: true, message: 'Comanda marcada como entregada', data: comanda });
+  } catch (error) {
+    console.error('Error en marcarComandaEntregada:', error);
+    res.status(500).json({ success: false, message: 'Error al marcar comanda como entregada', error: error.message });
+  }
+};
+
 module.exports = {
   setSocketIO,
   createComanda,
@@ -633,5 +667,6 @@ module.exports = {
   getAllComandasAbiertas,
   getComandasByMesa,
   getComandaById,
-  getAllComandas
+  getAllComandas,
+  marcarComandaEntregada
 };

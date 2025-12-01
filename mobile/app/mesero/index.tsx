@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Animated, Image, Dimensions } from 'react-native';
 import { useThemeStore } from '../../src/store/theme';
 import { useRouter } from 'expo-router';
 import { mesaService, Mesa } from '../../src/services/mesa';
+import { comandaService } from '../../src/services/comanda';
 import { useAuthStore } from '../../src/store/auth';
 import { getSocket } from '../../src/services/socket';
 
@@ -15,6 +16,7 @@ export default function MeseroDashboard() {
   const [mesas, setMesas] = useState<MesaConComanda[]>([]);
   const [verSoloAsignadas, setVerSoloAsignadas] = useState(true);
   const [tiempoActual, setTiempoActual] = useState(new Date());
+  // (no local entregada set anymore — persisted on server via comanda.entregado)
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
   const theme = useThemeStore((s) => s.theme);
@@ -72,6 +74,136 @@ export default function MeseroDashboard() {
     }
   };
 
+  // Componente que representa una comanda completa (maneja animación del borde cuando TODOS los pedidos están listos)
+  const ComandaRow = ({ comanda, idx, dark, fg, onOpen, estaEntregada = false, onMarcarEntregada }: any) => {
+    const todosListos = comanda.pedidos && comanda.pedidos.length > 0 && comanda.pedidos.every((p: any) => p.estado === 'listo');
+    const borderAnim = useRef(new Animated.Value(1)).current;
+    const bounceAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+      // solo animar borde + manita cuando TODOS los pedidos están listos y aún NO está marcada como entregada
+      if (todosListos && !estaEntregada) {
+        const blink = Animated.loop(
+          Animated.sequence([
+            // borde más relajado: parpadeo un poco más lento
+            Animated.timing(borderAnim, { toValue: 0.3, duration: 2800, useNativeDriver: true }),
+              Animated.timing(borderAnim, { toValue: 1, duration: 2800, useNativeDriver: true }),
+          ])
+        );
+
+        const bounce = Animated.loop(
+          Animated.sequence([
+            // manita bounce más suave
+              Animated.timing(bounceAnim, { toValue: -6, duration: 1800, useNativeDriver: true }),
+                Animated.timing(bounceAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+          ])
+        );
+
+        blink.start();
+        bounce.start();
+        return () => {
+          blink.stop();
+          bounce.stop();
+        };
+      } else {
+        borderAnim.setValue(1);
+        bounceAnim.setValue(0);
+      }
+    }, [todosListos, borderAnim, bounceAnim]);
+
+    return (
+      <Animated.View
+        key={comanda.id}
+        style={{
+          marginBottom: idx < 999 ? 8 : 0,
+          flexDirection: 'row',
+          backgroundColor: dark ? '#111827' : 'white',
+          borderRadius: 6,
+          overflow: 'hidden',
+          // si ya fue entregada, mantener borde verde fijo y opacidad 1
+          borderWidth: (todosListos || estaEntregada) ? 2 : 0,
+          borderColor: '#22c55e',
+          opacity: estaEntregada ? 1 : (todosListos ? borderAnim : 1),
+        }}
+      >
+        {/* Botón de comanda */}
+        <TouchableOpacity
+          onPress={() => {
+            // si la comanda está lista y aún no fue marcada entregada, marcarla como entregada
+            if (todosListos && !estaEntregada) {
+              onMarcarEntregada && onMarcarEntregada();
+            } else {
+              onOpen && onOpen();
+            }
+          }}
+          style={{
+            width: 48,
+            backgroundColor: dark ? '#111827' : '#F3F4F6',
+            borderRightWidth: 2,
+            borderRightColor: todosListos ? '#22c55e' : (dark ? '#4B5563' : '#D1D5DB'),
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingVertical: 8,
+            position: 'relative',
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '700', color: fg }}>
+            C{idx + 1}
+          </Text>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: '#ef4444' }}>
+            {formatTiempo(comanda.createdAt || comanda.created_at)}
+          </Text>
+
+            {/* manita indicadora cuando la comanda está lista y NO está entregada */}
+            {todosListos && !estaEntregada && (
+              <Animated.View style={{ position: 'absolute', bottom: -6, right: -6, transform: [{ translateY: bounceAnim }] }}>
+                <Text style={{ fontSize: 22 }}>👆🏽</Text>
+              </Animated.View>
+            )}
+        </TouchableOpacity>
+
+        {/* Pedidos */}
+        <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6 }}>
+          {(comanda.pedidos || []).map((pedido: any) => (
+            <View key={pedido.id} style={{ marginRight: 8 }}>
+              <PedidoChip pedido={pedido} dark={dark} fg={fg} comandaReady={todosListos || estaEntregada} />
+            </View>
+          ))}
+          {/* Checkmark cuando la comanda fue marcada como entregada */}
+          {estaEntregada && (
+            <View 
+              style={{
+                position: 'absolute',
+                bottom: 6,
+                right: 6,
+                width: 26,
+                height: 26,
+                backgroundColor: '#16a34a',
+                borderRadius: 13,
+                borderWidth: 2,
+                borderColor: 'white',
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.2,
+                shadowRadius: 2,
+              }}
+            >
+              <Text style={{ color: 'white', fontSize: 14, fontWeight: '700' }}>✓</Text>
+            </View>
+          )}
+          {/* Si la comanda además está cerrada (pagada) mostramos un pequeño badge $ */}
+          {estaEntregada && (comanda?.estado === 'cerrada' || comanda?.estado === 'CERRADA') && (
+            <View style={{ position: 'absolute', bottom: 6, right: 38, width: 20, height: 20, backgroundColor: '#f59e0b', borderRadius: 10, borderWidth: 1, borderColor: 'white', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>$</Text>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
+  };
+
   useEffect(() => {
     load();
 
@@ -93,10 +225,15 @@ export default function MeseroDashboard() {
         load();
       });
 
+      socket.on('comanda-entregada', () => {
+        load();
+      });
+
       return () => {
         socket.off('pedido-listo');
         socket.off('comanda-actualizada');
         socket.off('comanda-completa');
+        socket.off('comanda-entregada');
       };
     }
   }, [user?.localId, verSoloAsignadas]);
@@ -130,6 +267,18 @@ export default function MeseroDashboard() {
     return `${diff}m`;
   };
 
+  // Marcar comanda como entregada (persist via backend)
+  const marcarComandaEntregada = async (comandaId: string) => {
+    try {
+      await comandaService.marcarEntregada(comandaId);
+      // recargar mesas para obtener estado persistido
+      await load();
+    } catch (err) {
+      console.error('[Mesero] error marcando comanda entregada ->', err);
+      Alert.alert('Error', 'No se pudo marcar la comanda como entregada');
+    }
+  };
+
   const getEmojiPorTipo = (key?: string) => {
     if (!key) return '';
     const t = (key || '').toString().toLowerCase();
@@ -140,31 +289,38 @@ export default function MeseroDashboard() {
     return '🍽️';
   };
 
-  // Componente para pedido con animación de parpadeo
-  const PedidoChip = ({ pedido, dark, fg }: any) => {
+  // Componente para pedido con animación de parpadeo (se silencia si la comanda completa está lista)
+  const PedidoChip = ({ pedido, dark, fg, comandaReady = false }: any) => {
     const listo = pedido.estado === 'listo';
-    const [fadeAnim] = useState(new Animated.Value(1));
+    // si la comanda completa está lista, no queremos que los pedidos individuales parpadeen,
+    // solo el borde de la comanda parpadeará.
+    const shouldBlink = listo && !comandaReady;
+    const fadeAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
-      if (listo) {
+      if (shouldBlink) {
         const blink = Animated.loop(
           Animated.sequence([
+            // parpadeo por pedido más relajado (más lento)
             Animated.timing(fadeAnim, {
               toValue: 0.3,
-              duration: 500,
+              duration: 2400,
               useNativeDriver: true,
             }),
             Animated.timing(fadeAnim, {
               toValue: 1,
-              duration: 500,
+              duration: 2400,
               useNativeDriver: true,
             }),
           ])
         );
         blink.start();
         return () => blink.stop();
+      } else {
+        // Asegurarnos que quede opacidad 1 cuando no debe parpadear
+        fadeAnim.setValue(1);
       }
-    }, [listo]);
+    }, [shouldBlink, fadeAnim]);
 
     // prefer the product category first so 'Pizzas' wins over generic tipo='comida'
     const key = pedido.producto?.categoria || pedido.producto?.tipo || pedido.producto?.nombre;
@@ -183,7 +339,7 @@ export default function MeseroDashboard() {
           borderColor: listo 
             ? '#059669' 
             : (dark ? '#4B5563' : '#D1D5DB'),
-          opacity: listo ? fadeAnim : 1,
+          opacity: shouldBlink ? fadeAnim : 1,
         }}
       >
         <Text style={{ fontSize: 11, color: listo ? 'white' : fg, fontWeight: listo ? '600' : '400' }}>
@@ -199,7 +355,20 @@ export default function MeseroDashboard() {
   };
 
   const renderMesaConComanda = (mesa: MesaConComanda) => {
-    const comandasAbiertas = (mesa.comandas || []).filter((c: any) => c.estado === 'abierta');
+    const isSameDay = (a?: string | Date | null) => {
+      if (!a) return false;
+      try {
+        const d = new Date(a);
+        const now = new Date();
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+      } catch (err) {
+        return false;
+      }
+    };
+
+    // Mostrar comandas abiertas y además comandas cerradas+entregadas del mismo día
+    const comandasAbiertas = (mesa.comandas || []).filter((c: any) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt || (c as any).cerrada_at)));
+    const todasComandasEntregadas = (mesa.comandas || []).length > 0 && (mesa.comandas || []).every((c: any) => c.entregado === true);
     
     return (
       <View
@@ -208,8 +377,8 @@ export default function MeseroDashboard() {
           marginBottom: 12,
           borderRadius: 8,
           overflow: 'hidden',
-          borderWidth: 1,
-          borderColor: dark ? '#374151' : '#E5E7EB',
+          borderWidth: 2,
+          borderColor: todasComandasEntregadas ? '#16a34a' : (dark ? '#374151' : '#E5E7EB'),
         }}
       >
         {/* Botón de mesa vertical a la izquierda */}
@@ -218,9 +387,9 @@ export default function MeseroDashboard() {
             onPress={() => onAbrirComanda(mesa)}
             style={{
               width: 60,
-              backgroundColor: dark ? '#1F2937' : '#F3F4F6',
+              backgroundColor: todasComandasEntregadas ? '#16a34a' : (dark ? '#1F2937' : '#F3F4F6'),
               borderRightWidth: 2,
-              borderRightColor: dark ? '#4B5563' : '#D1D5DB',
+              borderRightColor: todasComandasEntregadas ? '#16a34a' : (dark ? '#4B5563' : '#D1D5DB'),
               alignItems: 'center',
               justifyContent: 'center',
               padding: 8,
@@ -230,7 +399,7 @@ export default function MeseroDashboard() {
               style={{
                 fontSize: 14,
                 fontWeight: '700',
-                color: fg,
+                color: todasComandasEntregadas ? 'white' : fg,
                 transform: [{ rotate: '0deg' }],
                 textAlign: 'center',
               }}
@@ -241,48 +410,21 @@ export default function MeseroDashboard() {
 
           {/* Comandas */}
           <View style={{ flex: 1, backgroundColor: dark ? '#1F2937' : '#F9FAFB', padding: 8 }}>
-            {comandasAbiertas.map((comanda: any, idx: number) => (
-              <View
-                key={comanda.id}
-                style={{
-                  marginBottom: idx < comandasAbiertas.length - 1 ? 8 : 0,
-                  flexDirection: 'row',
-                  backgroundColor: dark ? '#111827' : 'white',
-                  borderRadius: 6,
-                  overflow: 'hidden',
-                }}
-              >
-                {/* Botón de comanda */}
-                <TouchableOpacity
-                  onPress={() => onAbrirComanda(mesa)}
-                  style={{
-                    width: 48,
-                    backgroundColor: dark ? '#111827' : '#F3F4F6',
-                    borderRightWidth: 2,
-                    borderRightColor: dark ? '#4B5563' : '#D1D5DB',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: fg }}>
-                    C{idx + 1}
-                  </Text>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#ef4444' }}>
-                    {formatTiempo(comanda.createdAt || comanda.created_at)}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Pedidos */}
-                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6 }}>
-                  {(comanda.pedidos || []).map((pedido: any) => (
-                    <View key={pedido.id} style={{ marginRight: 8 }}>
-                      <PedidoChip pedido={pedido} dark={dark} fg={fg} />
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ))}
+            {comandasAbiertas.map((comanda: any, idx: number) => {
+              const yaEntregada = !!comanda.entregado;
+              return (
+                <ComandaRow
+                  key={comanda.id}
+                  comanda={comanda}
+                  idx={idx}
+                  dark={dark}
+                  fg={fg}
+                  onOpen={() => onAbrirComanda(mesa)}
+                  estaEntregada={yaEntregada}
+                  onMarcarEntregada={() => marcarComandaEntregada(comanda.id)}
+                />
+              );
+            })}
           </View>
         </View>
       </View>

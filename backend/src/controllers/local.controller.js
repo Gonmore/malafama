@@ -3,7 +3,7 @@ const { Local, Mesa, Producto, Usuario } = require('../models');
 // Crear un nuevo local (solo admin)
 const crearLocal = async (req, res) => {
   try {
-    const { nombre, descripcion, direccion, telefono, email, logo } = req.body;
+    const { nombre, descripcion, direccion, telefono, email, logo, qr } = req.body;
     const usuarioId = req.user.id;
 
     // Validar que el usuario sea admin
@@ -22,6 +22,7 @@ const crearLocal = async (req, res) => {
       telefono,
       email,
       logo,
+      qr,
       usuarioPropietarioId: usuarioId,
       plan: 'gratuito' // Por defecto
     });
@@ -173,7 +174,7 @@ const obtenerLocalPorId = async (req, res) => {
 const actualizarLocal = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, descripcion, direccion, telefono, email, logo, moneda } = req.body;
+    const { nombre, descripcion, direccion, telefono, email, logo, moneda, qr } = req.body;
     const usuarioId = req.user.id;
 
     const local = await Local.findOne({
@@ -197,6 +198,7 @@ const actualizarLocal = async (req, res) => {
       telefono,
       email,
       logo,
+      qr,
       moneda
     });
 

@@ -39,6 +39,22 @@ export default function MesaProductos() {
   const [comprobanteImagen, setComprobanteImagen] = useState<string | null>(null);
   const [montoEfectivoPago, setMontoEfectivoPago] = useState<string>('');
   const [loadingPago, setLoadingPago] = useState(false);
+  // Prefill comprobanteImagen with local QR when payment modal opens for QR or mixto
+  useEffect(() => {
+    (async () => {
+      try {
+        if (showPaymentModal && (pagoMetodo === 'qr' || pagoMetodo === 'mixto') && !comprobanteImagen) {
+          const localId = (user as any)?.localId;
+          if (!localId) return;
+          const local = await (await import('../../../src/services/local')).localService.obtenerLocalPorId(localId);
+          const qr = local?.qr || local?.data?.qr || null;
+          if (qr) setComprobanteImagen(qr);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [showPaymentModal, pagoMetodo]);
   const [showSuccessGif, setShowSuccessGif] = useState(false);
   const [comandaContraida, setComandaContraida] = useState(false);
   // controls whether product selection grid is visible: null = hidden when a comanda exists
@@ -88,6 +104,17 @@ export default function MesaProductos() {
     console.log('[MesaProductos] modo vista actual:', viewMode);
   }, [viewMode]);
 
+  const isSameDay = (a?: string | Date | null) => {
+    if (!a) return false;
+    try {
+      const d = new Date(a);
+      const now = new Date();
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    } catch (err) {
+      return false;
+    }
+  };
+
   const cargarComandas = async () => {
     try {
       const data = await comandaService.getByMesa(id);
@@ -99,7 +126,9 @@ export default function MesaProductos() {
       if (Array.isArray(data)) lista = data as Comanda[];
       else if (Array.isArray((data as any)?.data)) lista = (data as any).data;
       else if (Array.isArray((data as any)?.comandas)) lista = (data as any).comandas;
-      const abiertas = lista.filter((c) => c.estado === 'abierta');
+
+      // Mostrar comandas abiertas + las que están cerradas y entregadas del mismo día (solo informativas)
+      const abiertas = lista.filter((c) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt || (c as any).cerrada_at)));
       setComandas(abiertas);
       
       // Obtener info de la mesa desde la primera comanda
@@ -525,7 +554,11 @@ export default function MesaProductos() {
       </View>
 
       {/* Mostrar todas las comandas abiertas de la mesa */}
-      {tieneComandas && comandas.map((comanda, index) => (
+      {tieneComandas && comandas.map((comanda, index) => {
+        // si la comanda está cerrada y entregada y fue cerrada hoy, la tratamos como informativa
+        // (se sigue mostrando pero sin permitir agregar/editar ni volver a cobrar)
+        const isClosedAndEntregada = comanda.estado === 'cerrada' && comanda.entregado === true && isSameDay((comanda as any).cerradaAt || (comanda as any).cerrada_at);
+        return (
         <TouchableOpacity
           key={comanda.id}
           onPress={() => { if (!comandaContraida) { setSelectedComanda(comanda); setShowComandaDetalle(true); } }}
@@ -548,10 +581,17 @@ export default function MesaProductos() {
             <Text style={{ fontSize: comandaContraida ? 16 : 22 }}>📌</Text>
           </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: '800', color: dark ? 'white' : '#92400E', fontSize: comandaContraida ? 14 : 16, marginBottom: comandaContraida ? 0 : 6 }}>
-              {comandaContraida ? `Comanda ${index + 1} • ${mesaInfo?.nombre ?? (mesaInfo?.numero ? `Mesa ${mesaInfo.numero}` : '')}` : `Comanda ${index + 1} • ${mesaInfo?.nombre ?? (mesaInfo?.numero ? `Mesa ${mesaInfo.numero}` : '')}`}
-            </Text>
+            <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontWeight: '800', color: dark ? 'white' : '#92400E', fontSize: comandaContraida ? 14 : 16, marginBottom: comandaContraida ? 0 : 6 }}>
+                {comandaContraida ? `Comanda ${index + 1} • ${mesaInfo?.nombre ?? (mesaInfo?.numero ? `Mesa ${mesaInfo.numero}` : '')}` : `Comanda ${index + 1} • ${mesaInfo?.nombre ?? (mesaInfo?.numero ? `Mesa ${mesaInfo.numero}` : '')}`}
+              </Text>
+              {isClosedAndEntregada && (
+                <View style={{ marginLeft: 6, backgroundColor: '#16a34a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>✓ $</Text>
+                </View>
+              )}
+            </View>
             
             {!comandaContraida && (
               <>
@@ -569,18 +609,22 @@ export default function MesaProductos() {
                 </ScrollView>
 
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity onPress={() => { setShowProductsMode('add'); setSelectedComanda(comanda); setShowComandaDetalle(false); }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', backgroundColor: dark ? '#0b1220' : 'white' }}>
-                    <Text style={{ color: dark ? '#D1D5DB' : '#374151', fontWeight: '700' }}>➕ Agregar productos</Text>
-                  </TouchableOpacity>
+                  {!isClosedAndEntregada && (
+                    <TouchableOpacity onPress={() => { setShowProductsMode('add'); setSelectedComanda(comanda); setShowComandaDetalle(false); }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', backgroundColor: dark ? '#0b1220' : 'white' }}>
+                      <Text style={{ color: dark ? '#D1D5DB' : '#374151', fontWeight: '700' }}>➕ Agregar productos</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity onPress={() => { setSelectedComanda(comanda); setShowComandaDetalle(true); }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#3b82f6' }}>
-                    <Text style={{ color: 'white', fontWeight: '700' }}>Abrir comanda</Text>
+                    <Text style={{ color: 'white', fontWeight: '700' }}>{isClosedAndEntregada ? 'Ver comanda (informativo)' : 'Abrir comanda'}</Text>
                   </TouchableOpacity>
                 </View>
               </>
             )}
           </View>
         </TouchableOpacity>
-      ))}
+        );
+
+      })}
 
       {/* Crear nueva comanda CTA -- outside and below the pinned comanda card */}
       {tieneComandas && !comandaContraida && (
@@ -857,7 +901,15 @@ export default function MesaProductos() {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 20, paddingBottom: 20, maxHeight: '85%' }}>
             <View style={{ paddingHorizontal: 20, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>🧾 Comanda • {mesaInfo?.nombre ?? mesaInfo?.numero}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>🧾 Comanda • {mesaInfo?.nombre ?? mesaInfo?.numero}</Text>
+                {/* Mostrar badge de cobrado+entregado cuando aplica */}
+                {selectedComanda && selectedComanda.estado === 'cerrada' && selectedComanda.entregado === true && isSameDay((selectedComanda as any).cerradaAt || (selectedComanda as any).cerrada_at) && (
+                  <View style={{ marginLeft: 6, backgroundColor: '#16a34a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>✓ $ cobrado</Text>
+                  </View>
+                )}
+              </View>
               <TouchableOpacity onPress={() => { setShowComandaDetalle(false); setSelectedComanda(null); }}>
                 <Text style={{ color: '#ef4444', fontSize: 20 }}>✕</Text>
               </TouchableOpacity>
@@ -882,13 +934,21 @@ export default function MesaProductos() {
               </View>
             </ScrollView>
 
-            <View style={{ paddingHorizontal: 20, paddingTop: 12, flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity onPress={() => { setShowProductsMode('add'); setShowComandaDetalle(false); }} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center' }}>
-                <Text style={{ color: muted, fontWeight: '700' }}>➕ Agregar productos</Text>
-              </TouchableOpacity>
 
-              {/* Mostrar Generar cuenta sólo si no hay pedidos pendientes */}
-              {selectedComanda && ((selectedComanda.pedidos || []).filter((p: any) => p.estado !== 'listo' && p.estado !== 'cancelado').length === 0) && (
+            <View style={{ paddingHorizontal: 20, paddingTop: 12, flexDirection: 'row', gap: 8 }}>
+              {/* si la comanda ya fue cerrada y entregada hoy, no permitimos agregar ni cobrar — acceso informativo */}
+              {!(selectedComanda?.estado === 'cerrada' && selectedComanda?.entregado === true && isSameDay((selectedComanda as any)?.cerradaAt || (selectedComanda as any)?.cerrada_at)) ? (
+                <TouchableOpacity onPress={() => { setShowProductsMode('add'); setShowComandaDetalle(false); }} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center' }}>
+                  <Text style={{ color: muted, fontWeight: '700' }}>➕ Agregar productos</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center', justifyContent: 'center', backgroundColor: dark ? '#0b1220' : '#F3F4F6' }}>
+                  <Text style={{ color: muted, fontWeight: '700' }}>🔒 Comanda cerrada — sólo lectura</Text>
+                </View>
+              )}
+
+              {/* Mostrar Generar cuenta sólo si no hay pedidos pendientes y comanda no está cerrada+entregada */}
+              {selectedComanda && ((selectedComanda.pedidos || []).filter((p: any) => p.estado !== 'listo' && p.estado !== 'cancelado').length === 0) && !(selectedComanda?.estado === 'cerrada' && selectedComanda?.entregado === true && isSameDay((selectedComanda as any)?.cerradaAt || (selectedComanda as any)?.cerrada_at)) && (
                 <TouchableOpacity onPress={() => setShowPaymentModal(true)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#10b981', alignItems: 'center' }}>
                   <Text style={{ color: 'white', fontWeight: '700' }}>💳 Generar cuenta</Text>
                 </TouchableOpacity>
@@ -924,6 +984,13 @@ export default function MesaProductos() {
               <View style={{ marginBottom: 12 }}>
                 <Text style={{ color: muted, fontSize: 12 }}>Monto en efectivo</Text>
                 <TextInput value={montoEfectivoPago} onChangeText={setMontoEfectivoPago} keyboardType="numeric" placeholder="Ej. 50.00" placeholderTextColor={muted} style={{ borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB', padding: 8, borderRadius: 8, color: fg, marginTop: 6 }} />
+
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: muted, fontSize: 12 }}>Monto QR calculado</Text>
+                  <Text style={{ color: fg, fontWeight: '700', marginTop: 6 }}>
+                    Bs {Number((Number((selectedComanda?.pedidos || []).reduce((s: number, x: any) => s + Number(x.subtotal || (x.precioUnitario || x.producto?.precio || 0) * x.cantidad), 0)) - Number(montoEfectivoPago || '0')) || 0).toFixed(2)}
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -967,6 +1034,10 @@ export default function MesaProductos() {
                 // validate
                 const total = Number((selectedComanda?.pedidos || []).reduce((s: number, x: any) => s + Number(x.subtotal || (x.precioUnitario || x.producto?.precio || 0) * x.cantidad), 0));
                 if (!selectedComanda) return Alert.alert('Error', 'No hay comanda seleccionada');
+                // safety: if comanda was closed+entregada today it's readonly / already charged
+                if (selectedComanda.estado === 'cerrada' && selectedComanda.entregado === true && isSameDay((selectedComanda as any).cerradaAt || (selectedComanda as any).cerrada_at)) {
+                  return Alert.alert('Comanda', 'Esta comanda ya fue cerrada y entregada (y cobrada) — solo lectura');
+                }
                 if ((pagoMetodo === 'qr' || pagoMetodo === 'mixto') && !comprobanteImagen) return Alert.alert('Error', 'Debes adjuntar el comprobante');
                 let montoEfectivo = 0;
                 if (pagoMetodo === 'mixto') {

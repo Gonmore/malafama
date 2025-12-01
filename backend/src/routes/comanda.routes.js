@@ -33,4 +33,7 @@ router.post('/:id/pedidos', authenticate, authorize('admin', 'atencion'), comand
 // Cerrar comanda (admin y atención)
 router.put('/:id/cerrar', authenticate, authorize('admin', 'atencion'), comandaController.cerrarComanda);
 
+// Marcar comanda como entregada (admin/atencion)
+router.put('/:id/entregar', authenticate, authorize('admin', 'atencion'), comandaController.marcarComandaEntregada);
+
 module.exports = router;

@@ -21,12 +21,17 @@ export const comandaService = {
     const { data } = await api.put(`/comandas/${comandaId}/cerrar`, payload);
     return data;
   },
+  marcarEntregada: async (comandaId: string | number) => {
+    const { data } = await api.put(`/comandas/${comandaId}/entregar`);
+    return data;
+  },
 };
 
 export type Comanda = {
   id: string; // UUID
   mesaId: string; // UUID
   estado: 'abierta' | 'cerrada' | 'cancelada' | string;
+  entregado?: boolean;
   created_at?: string;
   mesa?: {
     id: string;

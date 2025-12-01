@@ -28,6 +28,11 @@ const Local = sequelize.define('Local', {
     allowNull: true,
     comment: 'Logo del local en formato Base64'
   },
+  qr: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'QR de pago del local (Base64 o URL)'
+  },
   moneda: {
     type: DataTypes.STRING(10),
     defaultValue: 'Bs',

@@ -36,6 +36,12 @@ const Comanda = sequelize.define('Comanda', {
       isIn: [['abierta', 'cerrada', 'cancelada']]
     }
   },
+  entregado: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Indica si la comanda fue entregada por el mesero'
+  },
   total: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0
