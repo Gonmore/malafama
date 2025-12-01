@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, SafeAreaView, Text, TouchableOpacity, View, ScrollView } from 'react-native';
+import { Alert, FlatList, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Image, Dimensions, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { pedidoService, Pedido } from '../../src/services/pedido';
-import { formatTimeShort } from '../../src/utils/time';
+import { formatTimeShort, getMinutosTranscurridos } from '../../src/utils/time';
 import { useThemeStore } from '../../src/store/theme';
 import { getSocket } from '../../src/services/socket';
 import { notifySuccess } from '../../src/utils/notify';
@@ -20,12 +20,25 @@ export default function CocinaDashboard() {
   const bg = dark ? '#111827' : 'white';
   const fg = dark ? 'white' : '#111827';
   const muted = dark ? '#9CA3AF' : '#6B7280';
+
+  let lightFooterLogo: any = null;
+  let darkFooterLogo: any = null;
+  try {
+    lightFooterLogo = require('../../assets/SNT_logo/Logo_Azul.png');
+    darkFooterLogo = require('../../assets/SNT_logo/Logo_Blanco.png');
+  } catch (err) {
+    // fallback to text
+  }
+
+  const window = Dimensions.get('window');
+  const footerHeight = Math.max(56, Math.round(window.height * 0.072));
   const [localId, setLocalId] = useState<number | null>(user?.localId ?? null);
   const [items, setItems] = useState<Pedido[]>([]);
   const [recents, setRecents] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<Mode>('por-pedido-compacto');
+  const [mode, setMode] = useState<Mode>('por-producto-compacto');
   const [tab, setTab] = useState<Tab>('cola');
+  const [notaModal, setNotaModal] = useState<{ visible: boolean; nota: string }>({ visible: false, nota: '' });
 
   const load = async () => {
       try {
@@ -116,6 +129,15 @@ export default function CocinaDashboard() {
     }
   };
 
+  const desmarcarListo = async (id: number) => {
+    try {
+      await pedidoService.desmarcarListo(id);
+      load();
+    } catch (e) {
+      Alert.alert('Pedido', 'No se pudo desmarcar como listo');
+    }
+  };
+
   const router = useRouter();
 
   return (
@@ -139,12 +161,9 @@ export default function CocinaDashboard() {
         </TouchableOpacity>
       </View>
 
-      <View style={{ padding: 16 }}>
+      <View style={{ padding: 16, paddingTop: 60 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>Cocina — Pendientes</Text>
-          <TouchableOpacity onPress={load} disabled={loading} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Text style={{ color: '#0ea5e9' }}>{loading ? 'Cargando…' : 'Actualizar'}</Text>
-          </TouchableOpacity>
         </View>
         {/* Tabs: Cola | Recientes */}
         <View style={{ flexDirection: 'row', marginTop: 12 }}>
@@ -168,10 +187,10 @@ export default function CocinaDashboard() {
           ))}
         </View>
 
-        <View style={{ flexDirection: 'row', marginTop: 12 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
           {([
-            { key: 'por-pedido-compacto', label: 'Por pedido · compacto' },
             { key: 'por-producto-compacto', label: 'Por producto · compacto' },
+            { key: 'por-pedido-compacto', label: 'Por pedido · compacto' },
             { key: 'por-pedido', label: 'Por pedido' },
             { key: 'por-producto', label: 'Por producto' },
           ] as { key: Mode; label: string }[]).map((b) => (
@@ -188,15 +207,15 @@ export default function CocinaDashboard() {
                 paddingVertical: 8,
                 marginRight: 8,
                 borderRadius: 8,
-                backgroundColor: mode === b.key ? '#DBEAFE' : '#F3F4F6',
+                backgroundColor: mode === b.key ? (dark ? '#1E3A8A' : '#DBEAFE') : (dark ? '#1F2937' : '#F3F4F6'),
                 borderWidth: 1,
-                borderColor: mode === b.key ? '#60A5FA' : '#E5E7EB',
+                borderColor: mode === b.key ? '#60A5FA' : (dark ? '#374151' : '#E5E7EB'),
               }}
             >
-              <Text style={{ color: mode === b.key ? '#1D4ED8' : '#374151', fontWeight: '600' }}>{b.label}</Text>
+              <Text style={{ color: mode === b.key ? (dark ? '#DBEAFE' : '#1D4ED8') : (dark ? '#D1D5DB' : '#374151'), fontWeight: '600' }}>{b.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       {tab === 'cola' && (mode === 'por-pedido' || mode === 'por-pedido-compacto') && (
@@ -252,63 +271,155 @@ export default function CocinaDashboard() {
 
       {tab === 'cola' && (mode === 'por-producto' || mode === 'por-producto-compacto') && (
         <ScrollView contentContainerStyle={{ padding: 12 }}>
-          {Array.from(groupByProducto.entries()).map(([producto, pedidos]) => (
-            <View key={producto} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' }}>
-              <View style={{ backgroundColor: '#111827', paddingHorizontal: 12, paddingVertical: 8 }}>
-                <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>{producto}</Text>
-                <Text style={{ color: '#D1D5DB' }}>{pedidos.length} pendiente(s)</Text>
-              </View>
-                {mode === 'por-producto-compacto' ? (
-                <ScrollView horizontal contentContainerStyle={{ padding: 12 }} showsHorizontalScrollIndicator={false}>
-                  {pedidos.map((p) => (
-                    <View
-                      key={p.id}
-                      style={{
-                        width: 120,
-                        backgroundColor: '#F9FAFB',
-                        borderColor: '#E5E7EB',
-                        borderWidth: 1,
-                        borderRadius: 10,
-                        padding: 10,
-                        marginRight: 8,
-                      }}
-                    >
-                      <Text style={{ fontWeight: '700', color: fg, textAlign: 'center' }}>x{p.cantidad}</Text>
-                      <Text style={{ color: muted, textAlign: 'center', marginTop: 2 }}>Mesa {p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '—'}</Text>
-                      <Text style={{ color: muted, textAlign: 'center', marginTop: 2 }}>{formatTimeShort(p?.createdAt || p?.created_at)}</Text>
-                      <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 8, backgroundColor: '#22c55e', paddingVertical: 8, borderRadius: 999 }}>
-                        <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>✓</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </ScrollView>
-              ) : (
-                <View style={{ padding: 12 }}>
-                  {pedidos.map((p) => (
-                    <View
-                      key={p.id}
-                      style={{
-                        backgroundColor: '#F9FAFB',
-                        borderColor: '#E5E7EB',
-                        borderWidth: 1,
-                        borderRadius: 10,
-                        padding: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <Text style={{ fontWeight: '700', color: '#111827' }}>x{p.cantidad}</Text>
-                      </View>
-                      {!!p.notas && <Text style={{ color: '#6B7280', marginTop: 4 }}>📝 {p.notas}</Text>}
-                      <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 8, backgroundColor: '#22c55e', padding: 8, borderRadius: 8 }}>
-                        <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>Listo</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+          {Array.from(groupByProducto.entries()).map(([producto, pedidos]) => {
+            // Ordenar por antigüedad (más antiguos primero)
+            const pedidosOrdenados = pedidos.sort((a, b) => {
+              const timeA = new Date(a?.createdAt || a?.created_at || 0).getTime();
+              const timeB = new Date(b?.createdAt || b?.created_at || 0).getTime();
+              return timeA - timeB;
+            });
+            return (
+              <View key={producto} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' }}>
+                <View style={{ backgroundColor: '#111827', paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>{producto}</Text>
+                  <Text style={{ color: '#D1D5DB' }}>{pedidos.length} pendiente(s)</Text>
                 </View>
-              )}
-            </View>
-          ))}
+                {mode === 'por-producto' ? (
+                  <ScrollView horizontal contentContainerStyle={{ padding: 12 }} showsHorizontalScrollIndicator={false}>
+                    {pedidosOrdenados.map((p) => {
+                      const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
+                      const esListo = p?.estado === 'listo';
+                      const puedeDesmarcar = esListo && minutos <= 5;
+                      // Colores según tiempo: verde <=5, amarillo 5-8, rojo >8
+                      const colorTiempo = esListo ? '#9CA3AF' : minutos <= 5 ? '#10B981' : minutos <= 8 ? '#F59E0B' : '#EF4444';
+                      return (
+                        <View
+                          key={p.id}
+                          style={{
+                            flexDirection: 'row',
+                            backgroundColor: esListo ? '#E5E7EB' : (dark ? '#1F2937' : '#F9FAFB'),
+                            borderColor: esListo ? '#9CA3AF' : (dark ? '#374151' : '#E5E7EB'),
+                            borderWidth: 1,
+                            borderRadius: 8,
+                            padding: 8,
+                            marginRight: 8,
+                            opacity: esListo ? 0.6 : 1,
+                            minHeight: 100,
+                          }}
+                        >
+                          {!!p.notas && (
+                            <TouchableOpacity 
+                              onPress={() => setNotaModal({ visible: true, nota: p.notas || '' })}
+                              style={{ 
+                                backgroundColor: esListo ? '#D1D5DB' : '#FEF3C7', 
+                                paddingHorizontal: 2, 
+                                paddingVertical: 4, 
+                                borderRadius: 4, 
+                                marginRight: 4,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                width: 14,
+                              }}
+                            >
+                              <Text style={{ 
+                                color: esListo ? '#374151' : '#78350F', 
+                                fontSize: 9,
+                                fontWeight: '600',
+                                writingDirection: 'ltr',
+                                transform: [{ rotate: '-90deg' }],
+                                width: 80,
+                                textAlign: 'center',
+                              }} numberOfLines={1}>{p.notas}</Text>
+                            </TouchableOpacity>
+                          )}
+                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontWeight: '700', color: esListo ? '#6B7280' : (dark ? '#F3F4F6' : fg), textAlign: 'center', fontSize: 16 }}>x{p.cantidad}</Text>
+                            <Text style={{ color: esListo ? '#9CA3AF' : (dark ? '#D1D5DB' : muted), textAlign: 'center', marginTop: 2, fontSize: 11 }}>Mesa {p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '—'}</Text>
+                            <Text style={{ color: colorTiempo, textAlign: 'center', marginTop: 2, fontSize: 12, fontWeight: '600' }}>{minutos} min</Text>
+                            {!esListo ? (
+                              <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 6, backgroundColor: '#22c55e', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
+                                <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700', fontSize: 14 }}>✓</Text>
+                              </TouchableOpacity>
+                            ) : puedeDesmarcar ? (
+                              <TouchableOpacity onPress={() => desmarcarListo(p.id)} style={{ marginTop: 6, backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
+                                <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700', fontSize: 14 }}>↻</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                ) : (
+                  <ScrollView horizontal contentContainerStyle={{ padding: 8 }} showsHorizontalScrollIndicator={false}>
+                    {pedidosOrdenados.map((p) => {
+                      const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
+                      const esListo = p?.estado === 'listo';
+                      const puedeDesmarcar = esListo && minutos <= 5;
+                      const colorTiempo = esListo ? '#9CA3AF' : minutos <= 5 ? '#10B981' : minutos <= 8 ? '#F59E0B' : '#EF4444';
+                      return (
+                        <View
+                          key={p.id}
+                          style={{
+                            flexDirection: 'row',
+                            backgroundColor: esListo ? '#E5E7EB' : (dark ? '#1F2937' : '#F9FAFB'),
+                            borderColor: esListo ? '#9CA3AF' : (dark ? '#374151' : '#E5E7EB'),
+                            borderWidth: 1,
+                            borderRadius: 8,
+                            padding: 6,
+                            marginRight: 6,
+                            opacity: esListo ? 0.6 : 1,
+                            minHeight: 100,
+                          }}
+                        >
+                          {!!p.notas && (
+                            <TouchableOpacity 
+                              onPress={() => setNotaModal({ visible: true, nota: p.notas || '' })}
+                              style={{ 
+                                backgroundColor: esListo ? '#D1D5DB' : '#FEF3C7', 
+                                paddingHorizontal: 1, 
+                                paddingVertical: 3, 
+                                borderRadius: 3, 
+                                marginRight: 3,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                width: 10,
+                              }}
+                            >
+                              <Text style={{ 
+                                color: esListo ? '#374151' : '#78350F', 
+                                fontSize: 8,
+                                fontWeight: '600',
+                                writingDirection: 'ltr',
+                                transform: [{ rotate: '-90deg' }],
+                                width: 60,
+                                textAlign: 'center',
+                              }} numberOfLines={1}>{p.notas}</Text>
+                            </TouchableOpacity>
+                          )}
+                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontWeight: '700', color: esListo ? '#6B7280' : (dark ? '#F3F4F6' : fg), fontSize: 18 }}>x{p.cantidad}</Text>
+                            <View style={{ height: 1, width: '100%', backgroundColor: esListo ? '#D1D5DB' : (dark ? '#4B5563' : '#E5E7EB'), marginVertical: 4 }} />
+                            <Text style={{ color: esListo ? '#9CA3AF' : (dark ? '#D1D5DB' : muted), fontSize: 9, textAlign: 'center' }}>M{p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '?'}</Text>
+                            <Text style={{ color: colorTiempo, fontSize: 10, fontWeight: '600', marginTop: 2 }}>{minutos}m</Text>
+                            {!esListo ? (
+                              <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#22c55e', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>✓</Text>
+                              </TouchableOpacity>
+                            ) : puedeDesmarcar ? (
+                              <TouchableOpacity onPress={() => desmarcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#F59E0B', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 14 }}>↻</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            );
+          })}
           {items.length === 0 && (
             <View style={{ padding: 24 }}>
               <Text style={{ textAlign: 'center', color: '#6B7280' }}>No hay pedidos pendientes</Text>
@@ -322,25 +433,48 @@ export default function CocinaDashboard() {
           contentContainerStyle={{ padding: 12 }}
           data={recents}
           keyExtractor={(p) => String(p.id)}
-          renderItem={({ item }) => (
-            <View
-              style={{
-                backgroundColor: '#ECFDF5',
-                borderColor: '#10B981',
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 12,
-                marginBottom: 10,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontWeight: '700', color: '#065F46' }}>
-                  ✓ {item.cantidad}× {item.producto?.nombre || 'Producto'}
-                </Text>
+          renderItem={({ item }) => {
+            const minutosDesdeListo = item.listoAt ? getMinutosTranscurridos(item.listoAt) : 999;
+            const puedeDesmarcar = minutosDesdeListo <= 3;
+            return (
+              <View
+                style={{
+                  backgroundColor: '#ECFDF5',
+                  borderColor: '#10B981',
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', color: '#065F46' }}>
+                      ✓ {item.cantidad}× {item.producto?.nombre || 'Producto'}
+                    </Text>
+                    <Text style={{ color: '#047857', marginTop: 2, fontSize: 12 }}>
+                      Mesa {item?.comanda?.mesa?.numero ?? item?.comanda?.mesa?.nombre ?? '—'} • {formatTimeShort(item?.listoAt || item?.createdAt || item?.created_at)}
+                    </Text>
+                  </View>
+                  {puedeDesmarcar && (
+                    <TouchableOpacity 
+                      onPress={() => desmarcarListo(item.id)} 
+                      style={{ 
+                        backgroundColor: '#F59E0B', 
+                        paddingHorizontal: 10, 
+                        paddingVertical: 6, 
+                        borderRadius: 6, 
+                        marginLeft: 8 
+                      }}
+                    >
+                      <Text style={{ color: 'white', fontWeight: '700', fontSize: 12 }}>↻ No listo</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {!!item.notas && <Text style={{ color: '#047857', marginTop: 4 }}>📝 {item.notas}</Text>}
               </View>
-              {!!item.notas && <Text style={{ color: '#047857', marginTop: 4 }}>📝 {item.notas}</Text>}
-            </View>
-          )}
+            );
+          }}
           ListEmptyComponent={() => (
             <View style={{ padding: 24 }}>
               <Text style={{ textAlign: 'center', color: '#6B7280' }}>No hay pedidos recientes</Text>
@@ -348,6 +482,78 @@ export default function CocinaDashboard() {
           )}
         />
       )}
+
+      {/* Modal de nota tipo notepad */}
+      <Modal
+        visible={notaModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNotaModal({ visible: false, nota: '' })}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ 
+            backgroundColor: '#FEF3C7', 
+            borderRadius: 12, 
+            padding: 20, 
+            width: '90%', 
+            maxWidth: 400,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 5,
+          }}>
+            {/* Header tipo notepad */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderBottomWidth: 2, borderBottomColor: '#F59E0B', paddingBottom: 8 }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: '#78350F', flex: 1 }}>📝 Nota del Pedido</Text>
+              <TouchableOpacity 
+                onPress={() => setNotaModal({ visible: false, nota: '' })}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ fontSize: 24, color: '#78350F', fontWeight: '700' }}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Contenido de la nota */}
+            <View style={{ 
+              backgroundColor: '#FFFBEB', 
+              borderRadius: 8, 
+              padding: 16, 
+              minHeight: 100,
+              borderWidth: 1,
+              borderColor: '#FCD34D',
+            }}>
+              <Text style={{ fontSize: 16, color: '#78350F', lineHeight: 24 }}>{notaModal.nota}</Text>
+            </View>
+            
+            {/* Botón cerrar */}
+            <TouchableOpacity 
+              onPress={() => setNotaModal({ visible: false, nota: '' })}
+              style={{ 
+                marginTop: 16, 
+                backgroundColor: '#F59E0B', 
+                padding: 12, 
+                borderRadius: 8, 
+                alignItems: 'center' 
+              }}
+            >
+              <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Fixed footer — powered by */}
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: footerHeight, paddingVertical: 8, borderTopWidth: 1, borderColor: dark ? '#111827' : '#E5E7EB', backgroundColor: dark ? '#0b0f13' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: muted, marginRight: 8 }}>powered by</Text>
+          {dark ? (
+            darkFooterLogo ? <Image source={darkFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          ) : (
+            lightFooterLogo ? <Image source={lightFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          )}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }

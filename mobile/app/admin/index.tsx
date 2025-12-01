@@ -1,4 +1,4 @@
-import { SafeAreaView, Text, View, FlatList, TouchableOpacity, Image, TextInput, Alert, ScrollView } from 'react-native';
+import { SafeAreaView, Text, View, FlatList, TouchableOpacity, Image, TextInput, Alert, ScrollView, Dimensions } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { localService, Local } from '../../src/services/local';
@@ -12,6 +12,18 @@ export default function AdminDashboard() {
   const bg = dark ? '#111827' : 'white';
   const fg = dark ? 'white' : '#111827';
   const muted = dark ? '#9CA3AF' : '#6B7280';
+
+  let lightFooterLogo: any = null;
+  let darkFooterLogo: any = null;
+  try {
+    lightFooterLogo = require('../../assets/SNT_logo/Logo_Azul.png');
+    darkFooterLogo = require('../../assets/SNT_logo/Logo_Blanco.png');
+  } catch (err) {
+    // fallback to text
+  }
+
+  const window = Dimensions.get('window');
+  const footerHeight = Math.max(56, Math.round(window.height * 0.072));
 
   const [locales, setLocales] = useState<Local[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -165,7 +177,7 @@ export default function AdminDashboard() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, padding: 24, paddingTop: 60, backgroundColor: bg }}>
+    <SafeAreaView style={{ flex: 1, padding: 24, paddingTop: 60, paddingBottom: footerHeight + 12, backgroundColor: bg }}>
       {/* Botón de retroceso */}
       <View style={{ position: 'absolute', top: 45, right: 20, zIndex: 10 }}>
         <TouchableOpacity
@@ -541,6 +553,18 @@ export default function AdminDashboard() {
           )}
         </ScrollView>
       )}
+
+      {/* Fixed footer — powered by */}
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: footerHeight, paddingVertical: 8, borderTopWidth: 1, borderColor: dark ? '#111827' : '#E5E7EB', backgroundColor: dark ? '#0b0f13' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: muted, marginRight: 8 }}>powered by</Text>
+          {dark ? (
+            darkFooterLogo ? <Image source={darkFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          ) : (
+            lightFooterLogo ? <Image source={lightFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          )}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }

@@ -20,6 +20,10 @@ export const pedidoService = {
     const { data } = await api.put(`/pedidos/${id}/listo`);
     return data;
   },
+  desmarcarListo: async (id: number) => {
+    const { data } = await api.put(`/pedidos/${id}/estado`, { estado: 'pendiente' });
+    return data;
+  },
   getRecientes: async (params?: { tipo?: string; localId?: number }) => {
     const tipo = params?.tipo;
     const localId = params?.localId;

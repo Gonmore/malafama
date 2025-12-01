@@ -7,3 +7,15 @@ export function formatTimeShort(ts?: string | null) {
     return '';
   }
 }
+
+export function getMinutosTranscurridos(ts?: string | null) {
+  if (!ts) return 0;
+  try {
+    const ahora = new Date().getTime();
+    const creacion = new Date(ts).getTime();
+    const diff = ahora - creacion;
+    return Math.floor(diff / 60000); // milisegundos a minutos
+  } catch (e) {
+    return 0;
+  }
+}

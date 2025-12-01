@@ -1,10 +1,11 @@
 import api from './api';
 
 export type Producto = {
-  id: number;
+  id: string;
   nombre: string;
   precio?: number;
   categoria?: string | null;
+  tipo?: string | null;
 };
 
 export const productoService = {

@@ -3,16 +3,11 @@ import { Audio } from 'expo-av';
 
 export async function notifySuccess() {
   try {
+    // Haptic feedback siempre funciona bien
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  } catch {}
-  try {
-    const { sound } = await Audio.Sound.createAsync(
-      // Minimal click beep using Expo asset-less tone is not available, use short duration silence if needed
-      // For now attempt to load a system sound URI is not supported; skip sound if fails
-      require('../../assets/empty.mp3')
-    );
-    await sound.playAsync();
-    setTimeout(() => sound.unloadAsync(), 1500);
+    // Multiple short vibrations for success feel
+    setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light), 100);
+    setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 200);
   } catch {}
 }
 

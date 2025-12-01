@@ -13,7 +13,7 @@ export const mesaService = {
     const { data } = await api.get('/mesas/ocupacion');
     return data;
   },
-  getById: async (id: number) => {
+  getById: async (id: string | number) => {
     const { data } = await api.get(`/mesas/${id}`);
     return data;
   },
@@ -44,7 +44,7 @@ export const mesaService = {
 };
 
 export type Mesa = {
-  id: number;
+  id: string; // UUID
   nombre: string;
   numero?: number;
   ubicacion?: string;

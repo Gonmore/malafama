@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Animated } from 'react-native';
+import { Alert, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Animated, Image, Dimensions } from 'react-native';
 import { useThemeStore } from '../../src/store/theme';
 import { useRouter } from 'expo-router';
 import { mesaService, Mesa } from '../../src/services/mesa';
@@ -14,6 +14,7 @@ type MesaConComanda = Mesa & {
 export default function MeseroDashboard() {
   const [mesas, setMesas] = useState<MesaConComanda[]>([]);
   const [verSoloAsignadas, setVerSoloAsignadas] = useState(true);
+  const [tiempoActual, setTiempoActual] = useState(new Date());
   const user = useAuthStore((s) => s.user);
   const router = useRouter();
   const theme = useThemeStore((s) => s.theme);
@@ -22,6 +23,26 @@ export default function MeseroDashboard() {
   const fg = dark ? 'white' : '#111827';
   const muted = dark ? '#9CA3AF' : '#6B7280';
   const isAdmin = user?.tipo === 'admin';
+
+  let lightFooterLogo: any = null;
+  let darkFooterLogo: any = null;
+  try {
+    lightFooterLogo = require('../../assets/SNT_logo/Logo_Azul.png');
+    darkFooterLogo = require('../../assets/SNT_logo/Logo_Blanco.png');
+  } catch (err) {
+    // fallback to text
+  }
+
+  const window = Dimensions.get('window');
+  const footerHeight = Math.max(56, Math.round(window.height * 0.072));
+
+  // Actualizar tiempo cada segundo para mostrar tiempos dinámicos
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      setTiempoActual(new Date());
+    }, 1000);
+    return () => clearInterval(intervalo);
+  }, []);
 
   const load = async () => {
     try {
@@ -97,7 +118,8 @@ export default function MeseroDashboard() {
     return { mesasConComandas: conComandas, mesasLibres: libres };
   }, [mesas]);
 
-  const onAbrirComanda = async (mesa: MesaConComanda) => {
+  const onAbrirComanda = (mesa: MesaConComanda) => {
+    console.log('[MeseroDashboard] Navegando a mesa:', mesa.id, 'numero:', mesa.numero);
     router.push(`/mesero/mesa/${mesa.id}`);
   };
 
@@ -108,12 +130,14 @@ export default function MeseroDashboard() {
     return `${diff}m`;
   };
 
-  const getEmojiPorTipo = (tipo: string) => {
-    if (!tipo) return '';
-    const t = tipo.toLowerCase();
-    if (t.includes('comida') || t.includes('food')) return '🍽️';
+  const getEmojiPorTipo = (key?: string) => {
+    if (!key) return '';
+    const t = (key || '').toString().toLowerCase();
+    // tolerant pizza matching (pizza, pizzas, pizz.. etc.)
+    if (/pizz/i.test(t)) return '🍕';
+    if (t.includes('comida') || t.includes('food') || t.includes('dish')) return '🍔';
     if (t.includes('bebida') || t.includes('drink') || t.includes('bar')) return '🍹';
-    return '';
+    return '🍽️';
   };
 
   // Componente para pedido con animación de parpadeo
@@ -142,7 +166,9 @@ export default function MeseroDashboard() {
       }
     }, [listo]);
 
-    const emoji = getEmojiPorTipo(pedido.producto?.tipo);
+    // prefer the product category first so 'Pizzas' wins over generic tipo='comida'
+    const key = pedido.producto?.categoria || pedido.producto?.tipo || pedido.producto?.nombre;
+    const emoji = getEmojiPorTipo(key);
 
     return (
       <Animated.View
@@ -163,6 +189,11 @@ export default function MeseroDashboard() {
         <Text style={{ fontSize: 11, color: listo ? 'white' : fg, fontWeight: listo ? '600' : '400' }}>
           {emoji} {pedido.cantidad}x {pedido.producto?.nombre || 'Producto'}
         </Text>
+        {pedido.notas ? (
+          <View style={{ marginTop: 6, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: 'rgba(245, 158, 11, 0.12)' }}>
+            <Text style={{ color: '#92400E', fontWeight: '700', fontSize: 11 }}>{pedido.notas}</Text>
+          </View>
+        ) : null}
       </Animated.View>
     );
   };
@@ -245,7 +276,9 @@ export default function MeseroDashboard() {
                 {/* Pedidos */}
                 <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6 }}>
                   {(comanda.pedidos || []).map((pedido: any) => (
-                    <PedidoChip key={pedido.id} pedido={pedido} dark={dark} fg={fg} />
+                    <View key={pedido.id} style={{ marginRight: 8 }}>
+                      <PedidoChip pedido={pedido} dark={dark} fg={fg} />
+                    </View>
                   ))}
                 </View>
               </View>
@@ -372,6 +405,18 @@ export default function MeseroDashboard() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Fixed footer — powered by */}
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: footerHeight, paddingVertical: 8, borderTopWidth: 1, borderColor: dark ? '#111827' : '#E5E7EB', backgroundColor: dark ? '#0b0f13' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: muted, marginRight: 8 }}>powered by</Text>
+          {dark ? (
+            darkFooterLogo ? <Image source={darkFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          ) : (
+            lightFooterLogo ? <Image source={lightFooterLogo} style={{ width: Math.round(window.width * 0.36), height: Math.round(footerHeight * 0.5), resizeMode: 'contain' }} /> : <Text style={{ color: muted }}>SNT</Text>
+          )}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
