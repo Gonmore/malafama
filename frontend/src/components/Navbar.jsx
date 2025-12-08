@@ -37,14 +37,16 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
           {/* Logo como Home */}
           <button 
             onClick={handleHomeClick}
-            className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-2 rounded-lg hover:bg-white/30 transition-all"
+            className="flex items-center gap-3 px-2 py-1 rounded-lg hover:bg-white/10 transition-all"
           >
             {user?.local?.logo ? (
-              <img 
-                src={user.local.logo} 
-                alt="Home"
-                className="h-8 w-8 object-contain bg-white rounded p-0.5"
-              />
+              <div className="bg-white rounded-md p-1 shadow-sm" style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img 
+                  src={user.local.logo} 
+                  alt="Home"
+                  className="h-6 w-6 object-contain"
+                />
+              </div>
             ) : (
               <span className="text-2xl">🏠</span>
             )}
@@ -94,6 +96,19 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
 
           {/* Info Usuario y UserDropdown */}
           <div className="flex items-center gap-3">
+            {/* Mostrar botón Asignar Mesas visible en la barra para meseros */}
+            {user?.tipo === 'atencion' && (
+              <button
+                onClick={() => {
+                  try { window.dispatchEvent(new CustomEvent('open-assign-modal')); } catch (e) {}
+                  navigate('/mesero');
+                }}
+                className="px-3 py-2 rounded-lg border transition-colors bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hidden md:inline"
+              >
+                Asignar mesas
+              </button>
+            )}
+
             <div className="text-right hidden sm:block">
               <p className="text-white font-semibold text-sm">{user?.nombre}</p>
               <p className="text-blue-100 text-xs capitalize">{user?.tipo}</p>

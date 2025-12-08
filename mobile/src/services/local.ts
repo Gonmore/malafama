@@ -17,8 +17,22 @@ export const localService = {
     if (data?.local) return data.local;
     return data;
   },
+  obtenerLogoLocal: async () => {
+    const { data } = await api.get('/locales/logo');
+    // backend returns { success: true, data: { id, logo } }
+    if (data?.data && typeof data.data === 'object') return data.data.logo;
+    if (data?.logo) return data.logo;
+    return data;
+  },
   update: async (id: string | number, payload: Record<string, any>) => {
     const { data } = await api.put(`/locales/${id}`, payload);
+    return data;
+  },
+  crear: async (payload: Record<string, any>) => {
+    const { data } = await api.post('/locales', payload);
+    // backend returns { success: true, data: { local: {...} } }
+    if (data?.data?.local) return data.data.local;
+    if (data?.local) return data.local;
     return data;
   },
 };

@@ -39,6 +39,19 @@ api.interceptors.response.use(
       // Auto-logout on unauthorized
       useAuthStore.getState().logout();
     }
+    // Simple retry strategy for 429 Too Many Requests
+    if (status === 429) {
+      const config = err.config || {};
+      config.__retryCount = config.__retryCount || 0;
+      const maxRetries = 3;
+      if (config.__retryCount < maxRetries) {
+        config.__retryCount += 1;
+        // Respect Retry-After header if present (seconds), otherwise exponential backoff
+        const ra = err.response?.headers?.['retry-after'];
+        const delaySec = ra ? Math.max(1, parseInt(String(ra), 10) || 1) : Math.pow(2, config.__retryCount) * 0.5;
+        return new Promise((resolve) => setTimeout(resolve, delaySec * 1000)).then(() => api.request(config));
+      }
+    }
     return Promise.reject(err);
   }
 );

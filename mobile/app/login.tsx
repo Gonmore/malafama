@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useRouter } from 'expo-router';
-import { Alert, SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../src/services/api';
 import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';

@@ -1,5 +1,7 @@
 const { Local, Mesa, Producto, Usuario } = require('../models');
 
+const { saveBase64ToUploads } = require('../services/storage.service');
+
 // Crear un nuevo local (solo admin)
 const crearLocal = async (req, res) => {
   try {
@@ -14,18 +16,35 @@ const crearLocal = async (req, res) => {
       });
     }
 
-    // Crear local
-    const local = await Local.create({
+    // If logo is base64/data URI, save to uploads and set logo_url
+    const localData = {
       nombre,
       descripcion,
       direccion,
       telefono,
       email,
-      logo,
       qr,
       usuarioPropietarioId: usuarioId,
-      plan: 'gratuito' // Por defecto
-    });
+      plan: 'gratuito'
+    };
+
+    if (logo && typeof logo === 'string') {
+      try {
+        if (/^data:/i.test(logo) || /^[A-Za-z0-9+/=\s]+$/.test(logo)) {
+          const publicPath = await saveBase64ToUploads(logo, 'local');
+          localData.logoUrl = publicPath;
+          localData.logo = null;
+        } else {
+          localData.logo = logo;
+        }
+      } catch (err) {
+        console.warn('Failed saving local logo to uploads', err.message || err);
+        localData.logo = logo;
+      }
+    }
+
+    // Crear local
+    const local = await Local.create(localData);
 
     // Crear usuarios automáticos para el local
     const passwordDefault = 'password123'; // Password por defecto
@@ -170,6 +189,31 @@ const obtenerLocalPorId = async (req, res) => {
   }
 };
 
+// Obtener logo del local al que pertenece el usuario autenticado
+const obtenerLogoLocal = async (req, res) => {
+  try {
+    const localId = req.user.localId;
+
+    if (!localId) {
+      return res.status(400).json({ success: false, message: 'El usuario no está asociado a un local' });
+    }
+
+    const local = await Local.findByPk(localId, { attributes: ['id', 'logo', 'logo_url'] });
+
+    if (!local) {
+      return res.status(404).json({ success: false, message: 'Local no encontrado' });
+    }
+
+    // Prefer logo_url if available (public URL), otherwise return inline logo field
+    const logoValue = local.logo_url || local.logo || null;
+
+    res.json({ success: true, data: { id: local.id, logo: logoValue } });
+  } catch (error) {
+    console.error('Error al obtener logo del local:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener logo del local', error: error.message });
+  }
+};
+
 // Actualizar local
 const actualizarLocal = async (req, res) => {
   try {
@@ -191,16 +235,33 @@ const actualizarLocal = async (req, res) => {
       });
     }
 
-    await local.update({
+    // Handle logo if provided (base64 or URL)
+    const updates = {
       nombre,
       descripcion,
       direccion,
       telefono,
       email,
-      logo,
       qr,
       moneda
-    });
+    };
+
+    if (logo !== undefined) {
+      try {
+        if (logo && typeof logo === 'string' && (/^data:/i.test(logo) || /^[A-Za-z0-9+/=\s]+$/.test(logo))) {
+          const publicPath = await saveBase64ToUploads(logo, 'local');
+          updates.logoUrl = publicPath;
+          updates.logo = null;
+        } else {
+          updates.logo = logo;
+        }
+      } catch (err) {
+        console.warn('Failed saving updated local logo to uploads', err.message || err);
+        updates.logo = logo;
+      }
+    }
+
+    await local.update(updates);
 
     res.json({
       success: true,
@@ -257,6 +318,7 @@ module.exports = {
   crearLocal,
   obtenerLocales,
   obtenerLocalPorId,
+  obtenerLogoLocal,
   actualizarLocal,
   eliminarLocal
 };

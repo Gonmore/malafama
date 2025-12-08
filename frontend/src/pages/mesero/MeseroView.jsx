@@ -63,6 +63,9 @@ export default function MeseroView() {
     };
 
     cargarAsignaciones();
+    // Escuchar evento global para abrir modal de asignación desde la Navbar
+    const openAssignHandler = () => setShowAssignModal(true);
+    try { window.addEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
     
     // Conectar a Socket.io para recibir notificaciones
     const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
@@ -144,6 +147,7 @@ export default function MeseroView() {
 
     return () => {
       socket.disconnect();
+      try { window.removeEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
     };
   }, []);
 
@@ -392,6 +396,18 @@ export default function MeseroView() {
                 } rounded-lg px-4 py-3 transition-all duration-200 hover:shadow-md`}
               >
                 <div className="flex items-center justify-between">
+                  {/* Avatares de meseros asignados (si hay) */}
+                  {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
+                    <div className="flex items-center mr-3 -space-x-2">
+                      {mesa.usuariosAsignados.slice(0,3).map((u) => (
+                        u.foto ? (
+                          <img key={u.id} src={u.foto} alt={u.nombre} className="w-6 h-6 rounded-full border-2 border-white shadow-sm" />
+                        ) : (
+                          <div key={u.id} className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-gray-700 border-2 border-white shadow-sm">{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
+                        )
+                      ))}
+                    </div>
+                  )}
                   <span className={`text-base font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Mesa {mesa.numero}</span>
                   <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Sin comandas</span>
                 </div>
@@ -414,6 +430,18 @@ export default function MeseroView() {
               }`}
               style={{ minHeight: '100px' }}
             >
+              {/* Avatares de meseros asignados en la esquina superior derecha */}
+              {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
+                <div className="absolute top-2 right-2 flex -space-x-2 z-20">
+                  {mesa.usuariosAsignados.slice(0,3).map(u => (
+                    u.foto ? (
+                      <img key={u.id} src={u.foto} alt={u.nombre} className={`w-7 h-7 rounded-full border-2 ${u.id === user?.id ? 'border-blue-400' : 'border-white'}`} />
+                    ) : (
+                      <div key={u.id} className={`w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold ${u.id === user?.id ? 'ring-2 ring-blue-400' : ''}`}>{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
+                    )
+                  ))}
+                </div>
+              )}
               {/* Etiqueta de Mesa VERTICAL - 10% width */}
               <button
                 onClick={() => handleMesaClick(mesa)}
@@ -728,6 +756,18 @@ export default function MeseroView() {
                     className={`relative p-3 rounded-xl shadow-md transition-all duration-200 active:scale-95 hover:shadow-xl ${colorClass}`}
                   >
                     {getIndicadorMesa(estado)}
+                      {/* Avatares de meseros asignados (grid) */}
+                      {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
+                        <div className="absolute left-2 top-2 flex -space-x-2 z-10">
+                          {mesa.usuariosAsignados.slice(0,3).map(u => (
+                            u.foto ? (
+                              <img key={u.id} src={u.foto} alt={u.nombre} className={`w-6 h-6 rounded-full border-2 ${u.id === user?.id ? 'border-blue-400' : 'border-white'}`} />
+                            ) : (
+                              <div key={u.id} className={`w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold ${u.id === user?.id ? 'ring-2 ring-blue-400' : ''}`}>{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
+                            )
+                          ))}
+                        </div>
+                      )}
                     
                     <div className="text-center">
                       <div className="text-3xl mb-1">🪑</div>

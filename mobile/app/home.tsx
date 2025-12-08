@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useRouter } from 'expo-router';
-import { SafeAreaView, Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
+import { Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../src/store/auth';
 import { createSocket, disconnectSocket } from '../src/services/socket';
 import { useThemeStore } from '../src/store/theme';

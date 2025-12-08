@@ -33,6 +33,12 @@ const Local = sequelize.define('Local', {
     allowNull: true,
     comment: 'QR de pago del local (Base64 o URL)'
   },
+  logoUrl: {
+    type: DataTypes.STRING(1000),
+    allowNull: true,
+    field: 'logo_url',
+    comment: 'URL pública al logo del local (en /uploads o CDN)'
+  },
   moneda: {
     type: DataTypes.STRING(10),
     defaultValue: 'Bs',

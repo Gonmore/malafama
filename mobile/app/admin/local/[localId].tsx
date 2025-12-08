@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView, ScrollView, Text, View, FlatList, Image, Alert, TouchableOpacity, TextInput, Button, Dimensions } from 'react-native';
+import { ScrollView, Text, View, FlatList, Image, Alert, TouchableOpacity, TextInput, Button, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { localService } from '../../../src/services/local';
 import { useThemeStore } from '../../../src/store/theme';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { PRIMARY, PRIMARY_TRANSPARENT } from '../../../src/constants/colors';
 
 export default function LocalDetail() {
   const router = useRouter();
@@ -438,7 +440,7 @@ export default function LocalDetail() {
                 borderRadius: 10, 
                 backgroundColor: activeTab === t.key ? (dark ? '#1e40af' : '#3b82f6') : (dark ? '#0b1220' : '#F3F4F6'), 
                 borderWidth: 1, 
-                borderColor: activeTab === t.key ? (dark ? '#2563eb' : '#60a5fa') : (dark ? '#1F2937' : '#E5E7EB'), 
+                borderColor: activeTab === t.key ? (dark ? '#2563eb' : PRIMARY) : (dark ? '#1F2937' : '#E5E7EB'), 
                 alignItems: 'center' 
               }}
             >
@@ -467,7 +469,7 @@ export default function LocalDetail() {
                 <TextInput value={newMesaCapacidad} onChangeText={setNewMesaCapacidad} keyboardType="numeric" style={{ borderWidth: 1, borderColor: '#E5E7EB', padding: 8, marginTop: 8, borderRadius: 6, color: fg }} />
                 <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Button title="Cancelar" onPress={() => setCreatingMesa(false)} color="#6B7280" />
-                  <Button title="Crear" onPress={handleCreateMesa} color="#0ea5e9" />
+                  <Button title="Crear" onPress={handleCreateMesa} color={PRIMARY} />
                 </View>
               </View>
             ) : null}
@@ -494,14 +496,14 @@ export default function LocalDetail() {
                         setEditingMesaId(null);
                         setEditingMesaCapacidad('');
                       }}>
-                        <Text style={{ color: '#0ea5e9', fontSize: 11 }}>Guardar</Text>
+                        <Text style={{ color: PRIMARY, fontSize: 11 }}>Guardar</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                 ) : (
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                    <TouchableOpacity onPress={() => { setEditingMesaId(item.id); setEditingMesaCapacidad(String(item.capacidad ?? 4)); }}>
-                      <Text style={{ color: '#0ea5e9' }}>✏️</Text>
+                      <TouchableOpacity onPress={() => { setEditingMesaId(item.id); setEditingMesaCapacidad(String(item.capacidad ?? 4)); }}>
+                      <Text style={{ color: PRIMARY }}>✏️</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDeleteMesa(item.id)}>
                       <Text style={{ color: '#ef4444' }}>🗑️</Text>
@@ -534,14 +536,14 @@ export default function LocalDetail() {
                 <Text style={{ color: muted, marginTop: 8 }}>Tipo</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                   {['atencion', 'cocina', 'bar', 'admin'].map((tipo) => (
-                    <TouchableOpacity key={tipo} onPress={() => setNewUserTipo(tipo as any)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: newUserTipo === tipo ? '#0ea5e9' : '#E5E7EB', backgroundColor: newUserTipo === tipo ? '#0ea5e91a' : 'transparent' }}>
-                      <Text style={{ color: newUserTipo === tipo ? '#0ea5e9' : muted, fontSize: 13 }}>{tipo}</Text>
+                    <TouchableOpacity key={tipo} onPress={() => setNewUserTipo(tipo as any)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: newUserTipo === tipo ? PRIMARY : '#E5E7EB', backgroundColor: newUserTipo === tipo ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                      <Text style={{ color: newUserTipo === tipo ? PRIMARY : muted, fontSize: 13 }}>{tipo}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
                 <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Button title="Cancelar" onPress={() => setCreatingUser(false)} color="#6B7280" />
-                  <Button title="Crear" onPress={handleCreateUser} color="#0ea5e9" />
+                  <Button title="Crear" onPress={handleCreateUser} color={PRIMARY} />
                 </View>
               </View>
             )}
@@ -574,7 +576,7 @@ export default function LocalDetail() {
                           setEditingUserTipo(item.tipo || 'atencion');
                         }
                       }}>
-                        <Text style={{ color: '#0ea5e9' }}>✏️</Text>
+                        <Text style={{ color: PRIMARY }}>✏️</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={async () => {
                         try {
@@ -599,8 +601,8 @@ export default function LocalDetail() {
                       <Text style={{ color: muted, fontSize: 12, marginBottom: 6 }}>Tipo</Text>
                       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                         {['atencion', 'cocina', 'bar', 'admin'].map((tipo) => (
-                          <TouchableOpacity key={tipo} onPress={() => setEditingUserTipo(tipo as any)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: editingUserTipo === tipo ? '#0ea5e9' : '#E5E7EB', backgroundColor: editingUserTipo === tipo ? '#0ea5e91a' : 'transparent' }}>
-                            <Text style={{ color: editingUserTipo === tipo ? '#0ea5e9' : muted, fontSize: 12 }}>{tipo}</Text>
+                          <TouchableOpacity key={tipo} onPress={() => setEditingUserTipo(tipo as any)} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: editingUserTipo === tipo ? PRIMARY : '#E5E7EB', backgroundColor: editingUserTipo === tipo ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                            <Text style={{ color: editingUserTipo === tipo ? PRIMARY : muted, fontSize: 12 }}>{tipo}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -623,7 +625,7 @@ export default function LocalDetail() {
                             Alert.alert('Usuarios', msg);
                           }
                         }}>
-                          <Text style={{ color: '#0ea5e9' }}>Guardar</Text>
+                          <Text style={{ color: PRIMARY }}>Guardar</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -652,11 +654,11 @@ export default function LocalDetail() {
                 <TextInput value={newProductPrice} onChangeText={setNewProductPrice} keyboardType="numeric" style={{ borderWidth: 1, borderColor: '#E5E7EB', padding: 8, marginTop: 8, borderRadius: 6, color: fg }} />
                 <Text style={{ color: muted, marginTop: 8 }}>Tipo</Text>
                 <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                  <TouchableOpacity onPress={() => setNewProductTipo('comida')} style={{ flex: 1, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: newProductTipo === 'comida' ? '#0ea5e9' : '#E5E7EB', backgroundColor: newProductTipo === 'comida' ? '#0ea5e91a' : 'transparent' }}>
-                    <Text style={{ color: newProductTipo === 'comida' ? '#0ea5e9' : muted, textAlign: 'center' }}>🍽️ Comida</Text>
+                  <TouchableOpacity onPress={() => setNewProductTipo('comida')} style={{ flex: 1, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: newProductTipo === 'comida' ? PRIMARY : '#E5E7EB', backgroundColor: newProductTipo === 'comida' ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                    <Text style={{ color: newProductTipo === 'comida' ? PRIMARY : muted, textAlign: 'center' }}>🍽️ Comida</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setNewProductTipo('bebida')} style={{ flex: 1, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: newProductTipo === 'bebida' ? '#0ea5e9' : '#E5E7EB', backgroundColor: newProductTipo === 'bebida' ? '#0ea5e91a' : 'transparent' }}>
-                    <Text style={{ color: newProductTipo === 'bebida' ? '#0ea5e9' : muted, textAlign: 'center' }}>🥤 Bebida</Text>
+                  <TouchableOpacity onPress={() => setNewProductTipo('bebida')} style={{ flex: 1, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: newProductTipo === 'bebida' ? PRIMARY : '#E5E7EB', backgroundColor: newProductTipo === 'bebida' ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                    <Text style={{ color: newProductTipo === 'bebida' ? PRIMARY : muted, textAlign: 'center' }}>🥤 Bebida</Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={{ color: muted, marginTop: 8 }}>Costo</Text>
@@ -670,14 +672,14 @@ export default function LocalDetail() {
                       } else {
                         setNewProductProveedor(prov);
                       }
-                    }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: newProductProveedor === prov ? '#0ea5e9' : '#E5E7EB', backgroundColor: newProductProveedor === prov ? '#0ea5e91a' : 'transparent' }}>
-                      <Text style={{ color: newProductProveedor === prov ? '#0ea5e9' : muted, fontSize: 12 }}>{prov === 'Otro' ? '+ Nuevo' : prov}</Text>
+                    }} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: newProductProveedor === prov ? PRIMARY : '#E5E7EB', backgroundColor: newProductProveedor === prov ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                      <Text style={{ color: newProductProveedor === prov ? PRIMARY : muted, fontSize: 12 }}>{prov === 'Otro' ? '+ Nuevo' : prov}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
                 <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Button title="Cancelar" onPress={() => setCreatingProduct(false)} color="#6B7280" />
-                  <Button title="Crear" onPress={handleCreateProduct} color="#0ea5e9" />
+                  <Button title="Crear" onPress={handleCreateProduct} color={PRIMARY} />
                 </View>
               </View>
             )}
@@ -698,12 +700,12 @@ export default function LocalDetail() {
                       <TextInput value={editingProductName} onChangeText={setEditingProductName} placeholder="Nombre" style={{ borderWidth: 1, borderColor: '#E5E7EB', padding: 6, borderRadius: 6, color: fg, fontSize: 12, marginBottom: 6 }} />
                       <TextInput value={editingProductPrice} onChangeText={setEditingProductPrice} placeholder="Precio" keyboardType="numeric" style={{ borderWidth: 1, borderColor: '#E5E7EB', padding: 6, borderRadius: 6, color: fg, fontSize: 12, marginBottom: 6 }} />
                       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-                        <TouchableOpacity onPress={() => setEditingProductTipo('comida')} style={{ flex: 1, padding: 6, borderRadius: 4, borderWidth: 1, borderColor: editingProductTipo === 'comida' ? '#0ea5e9' : '#E5E7EB', backgroundColor: editingProductTipo === 'comida' ? '#0ea5e91a' : 'transparent' }}>
-                          <Text style={{ color: editingProductTipo === 'comida' ? '#0ea5e9' : muted, textAlign: 'center', fontSize: 10 }}>🍽️</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setEditingProductTipo('bebida')} style={{ flex: 1, padding: 6, borderRadius: 4, borderWidth: 1, borderColor: editingProductTipo === 'bebida' ? '#0ea5e9' : '#E5E7EB', backgroundColor: editingProductTipo === 'bebida' ? '#0ea5e91a' : 'transparent' }}>
-                          <Text style={{ color: editingProductTipo === 'bebida' ? '#0ea5e9' : muted, textAlign: 'center', fontSize: 10 }}>🥤</Text>
-                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setEditingProductTipo('comida')} style={{ flex: 1, padding: 6, borderRadius: 4, borderWidth: 1, borderColor: editingProductTipo === 'comida' ? PRIMARY : '#E5E7EB', backgroundColor: editingProductTipo === 'comida' ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                            <Text style={{ color: editingProductTipo === 'comida' ? PRIMARY : muted, textAlign: 'center', fontSize: 10 }}>🍽️</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => setEditingProductTipo('bebida')} style={{ flex: 1, padding: 6, borderRadius: 4, borderWidth: 1, borderColor: editingProductTipo === 'bebida' ? PRIMARY : '#E5E7EB', backgroundColor: editingProductTipo === 'bebida' ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                            <Text style={{ color: editingProductTipo === 'bebida' ? PRIMARY : muted, textAlign: 'center', fontSize: 10 }}>🥤</Text>
+                          </TouchableOpacity>
                       </View>
                       <TextInput value={editingProductCosto} onChangeText={setEditingProductCosto} placeholder="Costo" keyboardType="numeric" style={{ borderWidth: 1, borderColor: '#E5E7EB', padding: 6, borderRadius: 6, color: fg, fontSize: 12, marginBottom: 6 }} />
                       <View style={{ flexDirection: 'row', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -714,8 +716,8 @@ export default function LocalDetail() {
                             } else {
                               setEditingProductProveedor(prov);
                             }
-                          }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: editingProductProveedor === prov ? '#0ea5e9' : '#E5E7EB', backgroundColor: editingProductProveedor === prov ? '#0ea5e91a' : 'transparent' }}>
-                            <Text style={{ color: editingProductProveedor === prov ? '#0ea5e9' : muted, fontSize: 10 }}>{prov === 'Otro' ? '+ Nuevo' : prov}</Text>
+                          }} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, borderWidth: 1, borderColor: editingProductProveedor === prov ? PRIMARY : '#E5E7EB', backgroundColor: editingProductProveedor === prov ? PRIMARY_TRANSPARENT : 'transparent' }}>
+                            <Text style={{ color: editingProductProveedor === prov ? PRIMARY : muted, fontSize: 10 }}>{prov === 'Otro' ? '+ Nuevo' : prov}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -743,7 +745,7 @@ export default function LocalDetail() {
                             Alert.alert('Productos', msg);
                           }
                         }}>
-                          <Text style={{ color: '#0ea5e9', fontSize: 11 }}>Guardar</Text>
+                          <Text style={{ color: PRIMARY, fontSize: 11 }}>Guardar</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -757,7 +759,7 @@ export default function LocalDetail() {
                         setEditingProductCosto(item.costo ? String(item.costo) : '');
                         setEditingProductProveedor(item.proveedor || '');
                       }}>
-                        <Text style={{ color: '#0ea5e9' }}>✏️</Text>
+                        <Text style={{ color: PRIMARY }}>✏️</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => handleDeleteProduct(item.id)}>
                         <Text style={{ color: '#ef4444' }}>🗑️</Text>
@@ -967,7 +969,7 @@ export default function LocalDetail() {
           <TouchableOpacity onPress={async () => {
             const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
             if (!permissionResult.granted) return Alert.alert('Permiso requerido', 'Necesitas dar permiso para usar la cámara');
-            const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8, base64: true });
+            const result = await ImagePicker.launchCameraAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, quality: 0.8, base64: true });
             if (!result.canceled && result.assets[0]) {
               setLocalQrImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
             }
@@ -976,7 +978,7 @@ export default function LocalDetail() {
           </TouchableOpacity>
 
           <TouchableOpacity onPress={async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.8, base64: true });
+            const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, quality: 0.8, base64: true });
             if (!result.canceled && result.assets[0]) {
               setLocalQrImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
             }
@@ -1415,7 +1417,7 @@ export default function LocalDetail() {
                                 return;
                               }
                               const result = await ImagePicker.launchCameraAsync({
-                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images),
                                 allowsEditing: true,
                                 quality: 0.7,
                                 base64: true
@@ -1432,7 +1434,7 @@ export default function LocalDetail() {
                           <TouchableOpacity
                             onPress={async () => {
                               const result = await ImagePicker.launchImageLibraryAsync({
-                                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images),
                                 allowsEditing: true,
                                 quality: 0.7,
                                 base64: true

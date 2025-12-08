@@ -1,26 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Image, Dimensions, Modal } from 'react-native';
+import { Alert, FlatList, Text, TouchableOpacity, View, ScrollView, Image, Dimensions, Modal, TextInput, Switch } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import TopNav from '../components/TopNav';
 import { pedidoService, Pedido } from '../../src/services/pedido';
 import { formatTimeShort, getMinutosTranscurridos } from '../../src/utils/time';
 import { useThemeStore } from '../../src/store/theme';
+import { PRIMARY } from '../../src/constants/colors';
 import { getSocket } from '../../src/services/socket';
 import { notifySuccess } from '../../src/utils/notify';
 import { useAuthStore } from '../../src/store/auth';
 import { localService } from '../../src/services/local';
+import * as ImagePicker from 'expo-image-picker';
 
 type Mode = 'por-pedido' | 'por-pedido-compacto' | 'por-producto' | 'por-producto-compacto' | 'por-mesa';
 type Tab = 'cola' | 'recientes';
 
 export default function BarDashboard() {
   const { user } = useAuthStore();
+  const logout = useAuthStore((s) => s.logout);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const [localId, setLocalId] = useState<number | null>(user?.localId ?? null);
   const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggle);
+  const setTheme = useThemeStore((s) => s.set);
   const dark = theme === 'dark';
   const bg = dark ? '#111827' : 'white';
   const fg = dark ? 'white' : '#111827';
   const muted = dark ? '#9CA3AF' : '#6B7280';
+  const isAdmin = user?.tipo === 'admin';
+  const router = useRouter();
 
   let lightFooterLogo: any = null;
   let darkFooterLogo: any = null;
@@ -39,6 +49,9 @@ export default function BarDashboard() {
   const [mode, setMode] = useState<Mode>('por-producto-compacto');
   const [tab, setTab] = useState<Tab>('cola');
   const [notaModal, setNotaModal] = useState<{ visible: boolean; nota: string }>({ visible: false, nota: '' });
+  const [showModal, setShowModal] = useState(false);
+  const [tempNombre, setTempNombre] = useState(user?.nombre || '');
+  const [localLogo, setLocalLogo] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -87,31 +100,47 @@ export default function BarDashboard() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [localId]);
+    setTempNombre(user?.nombre || '');
+  }, [user?.nombre]);
 
   useEffect(() => {
-    const s = getSocket();
-    const onConnect = () => {
-      // Join generic role room and local-scoped room if available
-      s?.emit('join-room', 'bar');
-      if (localId) s?.emit('join-room', `bar:${localId}`);
+    load();
+
+    const loadLocalLogo = async () => {
+      if (user?.localId) {
+        try {
+          const locales = await localService.obtenerLocales();
+          const local = Array.isArray(locales) ? locales.find(l => l.id === user.localId) : null;
+          if (local?.logo) {
+            setLocalLogo(local.logo);
+          }
+        } catch (e) {
+          console.error('Error loading local logo', e);
+        }
+      }
     };
+    loadLocalLogo();
+
+    // Conectar al socket para actualizaciones en tiempo real
+    const socket = getSocket();
+    if (socket) {
+      // Join generic role room and local-scoped room if available
+      socket.emit('join-room', 'bar');
+      if (localId) socket.emit('join-room', `bar:${localId}`);
+    }
     const onNew = async () => {
       await notifySuccess();
       load();
     };
-    s?.on('connect', onConnect);
-    s?.on('nuevo-pedido-bar', onNew);
-    s?.on('nueva-comanda', onNew);
-    s?.on('nuevos-pedidos', onNew);
-    s?.on('pedido-cancelado', onNew);
+    socket?.on('nuevo-pedido-bar', onNew);
+    socket?.on('nueva-comanda', onNew);
+    socket?.on('nuevos-pedidos', onNew);
+    socket?.on('pedido-cancelado', onNew);
     return () => {
-      s?.off('connect', onConnect);
-      s?.off('nuevo-pedido-bar', onNew);
-      s?.off('nueva-comanda', onNew);
-      s?.off('nuevos-pedidos', onNew);
-      s?.off('pedido-cancelado', onNew);
+      socket?.off('nuevo-pedido-bar', onNew);
+      socket?.off('nueva-comanda', onNew);
+      socket?.off('nuevos-pedidos', onNew);
+      socket?.off('pedido-cancelado', onNew);
     };
   }, [localId]);
 
@@ -168,30 +197,64 @@ export default function BarDashboard() {
     }
   };
 
-  const router = useRouter();
+  const pickImageFromLibrary = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.granted) {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images),
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        updateUser({ photo: uri });
+      }
+    }
+  };
+
+  const pickImageFromCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (permission.granted) {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        updateUser({ photo: uri });
+      }
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, paddingBottom: footerHeight + 12, backgroundColor: bg }}>
-      {/* Botón de retroceso */}
-      <View style={{ position: 'absolute', top: 45, right: 20, zIndex: 10 }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            backgroundColor: dark ? '#F3F4F6' : '#1F2937',
-            borderRadius: 22,
-            width: 44,
-            height: 44,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: dark ? '#E5E7EB' : '#374151'
-          }}
-        >
-          <Text style={{ fontSize: 32, color: dark ? '#111827' : 'white', marginTop: -10 }}>⬅</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Top nav (uses TopNav to render local logos reliably and handle logout redirect) */}
+      <TopNav title="Bar" localLogo={localLogo} onOpenSettings={() => setShowModal(true)} />
 
-      <View style={{ padding: 16, paddingTop: 60 }}>
+      {/* Botón de retroceso */}
+      {isAdmin && (
+        <View style={{ position: 'absolute', top: 45, right: 20, zIndex: 10 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{
+              backgroundColor: dark ? '#F3F4F6' : '#1F2937',
+              borderRadius: 22,
+              width: 44,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: dark ? '#E5E7EB' : '#374151'
+            }}
+          >
+            <Text style={{ fontSize: 32, color: dark ? '#111827' : 'white', marginTop: -10 }}>⬅</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={{ padding: 16, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>Bar — Pendientes</Text>
         </View>
@@ -239,7 +302,7 @@ export default function BarDashboard() {
                 borderRadius: 8,
                 backgroundColor: mode === b.key ? (dark ? '#1E3A8A' : '#DBEAFE') : (dark ? '#1F2937' : '#F3F4F6'),
                 borderWidth: 1,
-                borderColor: mode === b.key ? '#60A5FA' : (dark ? '#374151' : '#E5E7EB'),
+                borderColor: mode === b.key ? PRIMARY : (dark ? '#374151' : '#E5E7EB'),
               }}
             >
               <Text style={{ color: mode === b.key ? (dark ? '#DBEAFE' : '#1D4ED8') : (dark ? '#D1D5DB' : '#374151'), fontWeight: '600' }}>{b.label}</Text>
@@ -316,7 +379,7 @@ export default function BarDashboard() {
                   <Text style={{ color: dark ? '#D1D5DB' : '#DBEAFE' }}>{pedidos.length} pendiente(s)</Text>
                 </View>
                 {mode === 'por-producto' ? (
-                  <ScrollView horizontal contentContainerStyle={{ padding: 12 }} showsHorizontalScrollIndicator={false}>
+                  <ScrollView horizontal contentContainerStyle={{ padding: 12, paddingBottom: footerHeight + 32 }} showsHorizontalScrollIndicator={false}>
                     {pedidosOrdenados.map((p) => {
                       const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
                       const esListo = p?.estado === 'listo';
@@ -382,7 +445,7 @@ export default function BarDashboard() {
                     })}
                   </ScrollView>
                 ) : (
-                  <ScrollView horizontal contentContainerStyle={{ padding: 8 }} showsHorizontalScrollIndicator={false}>
+                  <ScrollView horizontal contentContainerStyle={{ padding: 8, paddingBottom: footerHeight + 32 }} showsHorizontalScrollIndicator={false}>
                     {pedidosOrdenados.map((p) => {
                       const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
                       const esListo = p?.estado === 'listo';
@@ -460,7 +523,7 @@ export default function BarDashboard() {
       )}
 
       {tab === 'cola' && mode === 'por-mesa' && (
-        <ScrollView contentContainerStyle={{ padding: 12 }}>
+        <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: footerHeight + 32 }}>
           {Array.from(groupByMesa.entries()).map(([mesa, pedidos]) => (
             <View key={mesa} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
               <View style={{ backgroundColor: dark ? '#0b1220' : '#111827', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -502,7 +565,7 @@ export default function BarDashboard() {
 
       {tab === 'recientes' && (
         <FlatList
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: footerHeight + 32 }}
           data={recents}
           keyExtractor={(p) => String(p.id)}
           renderItem={({ item }) => {
@@ -611,6 +674,57 @@ export default function BarDashboard() {
             >
               <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Cerrar</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de configuración */}
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: dark ? '#1F2937' : 'white', borderRadius: 12, padding: 20, width: '90%', maxWidth: 400 }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: fg, marginBottom: 16, textAlign: 'center' }}>Configuración</Text>
+            
+            <Text style={{ color: fg, marginBottom: 8 }}>Nombre:</Text>
+            <TextInput
+              value={tempNombre}
+              onChangeText={setTempNombre}
+              style={{ borderWidth: 1, borderColor: dark ? '#4B5563' : '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 16, color: fg, backgroundColor: dark ? '#374151' : '#F9FAFB' }}
+              placeholder="Ingresa tu nombre"
+              placeholderTextColor={muted}
+            />
+            
+            <Text style={{ color: fg, marginBottom: 8 }}>Foto de perfil:</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+              <TouchableOpacity onPress={pickImageFromLibrary} style={{ backgroundColor: '#3B82F6', padding: 12, borderRadius: 8, flex: 1, marginRight: 8, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Subir foto</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={pickImageFromCamera} style={{ backgroundColor: '#10B981', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Tomar foto</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 16, gap: 12 }}>
+              <TouchableOpacity onPress={() => setTheme('dark')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: dark ? '#1E3A8A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: dark ? 0 : 1, borderColor: dark ? 'transparent' : (dark ? '#374151' : '#E5E7EB') }}>
+                <Text style={{ fontSize: 18 }}>🌙</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setTheme('light')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: !dark ? '#FDE68A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: !dark ? 0 : 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
+                <Text style={{ fontSize: 18 }}>☀️</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity onPress={() => { updateUser({ nombre: tempNombre }); setShowModal(false); }} style={{ backgroundColor: '#22c55e', padding: 12, borderRadius: 8, flex: 1, marginRight: 8, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Guardar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { logout(); setShowModal(false); router.replace('/login'); }} style={{ backgroundColor: '#EF4444', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Cerrar sesión</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

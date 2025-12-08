@@ -1,5 +1,7 @@
-import { SafeAreaView, Text, View, FlatList, TouchableOpacity, Image, TextInput, Alert, ScrollView, Dimensions } from 'react-native';
+import { Text, View, FlatList, TouchableOpacity, Image, TextInput, Alert, ScrollView, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { localService, Local } from '../../src/services/local';
 import { useThemeStore } from '../../src/store/theme';
@@ -33,6 +35,7 @@ export default function AdminDashboard() {
   const [localNombre, setLocalNombre] = useState('');
   const [localDireccion, setLocalDireccion] = useState('');
   const [localTelefono, setLocalTelefono] = useState('');
+  const [localLogo, setLocalLogo] = useState<string | null>(null);
   const [nuevoLocalId, setNuevoLocalId] = useState<string | null>(null);
   
   // Estados para mesas
@@ -76,15 +79,46 @@ export default function AdminDashboard() {
         Alert.alert('Error', 'El nombre del local es requerido');
         return;
       }
-      const nuevoLocal = await localService.crear({
+      const payload: any = {
         nombre: localNombre,
         direccion: localDireccion,
         telefono: localTelefono
-      });
+      };
+      if (localLogo) payload.logo = localLogo;
+
+      const nuevoLocal = await localService.crear(payload);
       setNuevoLocalId(nuevoLocal.id);
       setOnboardingStep(2);
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.message || e?.message || 'Error creando local');
+    }
+  };
+
+  const pickLogoFromLibrary = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permiso denegado', 'Necesitamos acceso a la galería para seleccionar el logo');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, aspect: [1,1], quality: 0.7, base64: true });
+    if (!res.canceled && res.assets && res.assets[0]) {
+      const asset = res.assets[0];
+      const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
+      if (base64Data) setLocalLogo(base64Data);
+    }
+  };
+
+  const takeLogoWithCamera = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permiso denegado', 'Necesitamos acceso a la cámara para tomar el logo');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, aspect: [1,1], quality: 0.7, base64: true });
+    if (!res.canceled && res.assets && res.assets[0]) {
+      const asset = res.assets[0];
+      const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
+      if (base64Data) setLocalLogo(base64Data);
     }
   };
 
@@ -210,8 +244,8 @@ export default function AdminDashboard() {
             contentContainerStyle={{ paddingTop: 12 }}
             renderItem={({ item }) => (
               <TouchableOpacity onPress={() => router.push(`/admin/local/${item.id}`)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB', marginBottom: 8, backgroundColor: dark ? '#0b1220' : '#FFF' }}>
-                {item.logo ? (
-                  <Image source={{ uri: item.logo }} style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: '#fff' }} />
+                {(item.logo || item.logo_url) ? (
+                  <Image source={{ uri: item.logo || item.logo_url }} style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: '#fff' }} />
                 ) : null}
                 {/* Small QR indicator if the local has a QR set */}
                 {item.qr ? (
@@ -256,7 +290,7 @@ export default function AdminDashboard() {
           </TouchableOpacity>
         </>
       ) : (
-        <ScrollView>
+        <ScrollView contentContainerStyle={{ paddingBottom: footerHeight + 32 }}>
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 22, fontWeight: '700', color: fg }}>Configuración de Local</Text>
             <Text style={{ color: muted, marginTop: 4 }}>Paso {onboardingStep} de 4</Text>
@@ -316,6 +350,25 @@ export default function AdminDashboard() {
                     backgroundColor: dark ? '#0b1220' : 'white'
                   }}
                 />
+              </View>
+              <View>
+                <Text style={{ color: muted, marginBottom: 6 }}>Logo del local (opcional)</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity onPress={takeLogoWithCamera} style={{ flex: 1, backgroundColor: '#3b82f6', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+                    <Text style={{ color: 'white', fontWeight: '700' }}>Tomar Foto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={pickLogoFromLibrary} style={{ flex: 1, backgroundColor: '#10b981', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+                    <Text style={{ color: 'white', fontWeight: '700' }}>Seleccionar</Text>
+                  </TouchableOpacity>
+                </View>
+                {localLogo ? (
+                  <View style={{ marginTop: 8, alignItems: 'center' }}>
+                    <Image source={{ uri: localLogo }} style={{ width: 96, height: 96, borderRadius: 8 }} />
+                    <TouchableOpacity onPress={() => setLocalLogo(null)} style={{ marginTop: 8 }}>
+                      <Text style={{ color: '#ef4444' }}>Eliminar</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
               <TouchableOpacity
                 onPress={handleCrearLocal}

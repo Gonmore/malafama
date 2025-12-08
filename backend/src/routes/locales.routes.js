@@ -12,6 +12,9 @@ router.post('/', localController.crearLocal);
 // Obtener todos los locales del usuario
 router.get('/', localController.obtenerLocales);
 
+// Obtener logo del local del usuario autenticado
+router.get('/logo', localController.obtenerLogoLocal);
+
 // Obtener un local específico
 router.get('/:id', localController.obtenerLocalPorId);
 
