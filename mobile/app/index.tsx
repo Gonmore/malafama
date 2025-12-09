@@ -5,7 +5,12 @@ export default function Index() {
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
 
+  console.log('[DEBUG Index] token exists:', !!token);
+  console.log('[DEBUG Index] user:', user);
+  console.log('[DEBUG Index] user.tipo:', user?.tipo);
+
   if (!token || !user) {
+    console.log('[DEBUG Index] Redirecting to /login');
     return <Redirect href="/login" />;
   }
 
@@ -15,7 +20,11 @@ export default function Index() {
     tipo === 'cocina' ? '/cocina' :
     tipo === 'bar' ? '/bar' :
     tipo === 'proveedor' ? '/proveedor' :
-    '/home'; // default to home for admin or unknown
+    tipo === 'admin' ? '/home' : // solo admin va al seleccionador
+    '/mesero'; // fallback para roles desconocidos
+
+  console.log('[DEBUG Index] Calculated tipo:', tipo);
+  console.log('[DEBUG Index] Redirecting to:', route);
 
   return <Redirect href={route} />;
 }

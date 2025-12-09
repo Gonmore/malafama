@@ -10,6 +10,7 @@ const { Op } = require('sequelize');
 const getReporteDiaMesero = async (req, res) => {
   try {
     const userId = req.user.id;
+    const localId = req.user.localId;
     
     // Calcular inicio y fin del día (6 AM a 6 AM)
     const ahora = new Date();
@@ -31,37 +32,30 @@ const getReporteDiaMesero = async (req, res) => {
     
     const mesaIds = asignaciones.map(a => a.mesaId);
     
-    if (mesaIds.length === 0) {
-      return res.json({
-        mensaje: 'No tienes mesas asignadas',
-        inicioDia,
-        finDia,
-        mesas: [],
-        totales: {
-          totalDia: 0,
-          totalEfectivo: 0,
-          totalQr: 0,
-          totalMixto: 0,
-          comandasCerradas: 0,
-          comandasAbiertas: 0
-        }
-      });
+    // Obtener TODAS las comandas del día del local (para estadísticas globales)
+    const whereGlobal = {
+      createdAt: {
+        [Op.gte]: inicioDia,
+        [Op.lt]: finDia
+      }
+    };
+    
+    if (localId) {
+      whereGlobal.localId = localId;
     }
     
-    // Obtener todas las comandas del día de las mesas asignadas
-    const comandas = await Comanda.findAll({
-      where: {
-        mesaId: { [Op.in]: mesaIds },
-        createdAt: {
-          [Op.gte]: inicioDia,
-          [Op.lt]: finDia
-        }
-      },
+    const todasComandas = await Comanda.findAll({
+      where: whereGlobal,
       include: [
         {
           model: Mesa,
           as: 'mesa',
-          attributes: ['id', 'numero']
+          attributes: ['id', 'numero', 'nombre']
+        },
+        {
+          model: Usuario,
+          as: 'usuarioAtencion',
+          attributes: ['id', 'nombre']
         },
         {
           model: Pedido,
@@ -70,7 +64,7 @@ const getReporteDiaMesero = async (req, res) => {
             {
               model: Producto,
               as: 'producto',
-              attributes: ['id', 'nombre', 'precio']
+              attributes: ['id', 'nombre', 'precio', 'categoria', 'tipo']
             }
           ]
         }
@@ -78,85 +72,200 @@ const getReporteDiaMesero = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
     
-    // Agrupar por mesa
-    const mesasReporte = {};
-    let totalDia = 0;
-    let totalEfectivo = 0;
-    let totalQr = 0;
-    let totalMixto = 0;
-    let comandasCerradas = 0;
-    let comandasAbiertas = 0;
+    // Estadísticas globales del día
+    let totalDiaGlobal = 0;
+    let totalEfectivoGlobal = 0;
+    let totalQrGlobal = 0;
+    let comandasCerradasGlobal = 0;
+    let comandasAbiertasGlobal = 0;
+    let tiemposEntrega = [];
+    let productosMasVendidos = {};
+    let categoriasMasVendidas = {};
+    let meseroConMasVentas = {};
     
-    comandas.forEach(comanda => {
-      const mesaNumero = comanda.mesa.numero;
-      
-      if (!mesasReporte[mesaNumero]) {
-        mesasReporte[mesaNumero] = {
-          numero: mesaNumero,
-          comandas: [],
-          totalMesa: 0
-        };
-      }
-      
-      const comandaData = {
-        id: comanda.id,
-        estado: comanda.estado,
-        total: parseFloat(comanda.total || 0),
-        formaPago: comanda.formaPago,
-        cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
-        cantidadQr: parseFloat(comanda.cantidadQr || 0),
-        comprobante: comanda.comprobante, // URL o base64
-        createdAt: comanda.createdAt,
-        pedidos: comanda.pedidos.map(p => ({
-          id: p.id,
-          cantidad: p.cantidad,
-          precioUnitario: parseFloat(p.precioUnitario),
-          subtotal: parseFloat(p.subtotal),
-          estado: p.estado,
-          producto: p.producto ? {
-            nombre: p.producto.nombre,
-            precio: parseFloat(p.producto.precio)
-          } : null
-        }))
-      };
-      
-      mesasReporte[mesaNumero].comandas.push(comandaData);
-      
+    todasComandas.forEach(comanda => {
       if (comanda.estado === 'cerrada') {
         const total = parseFloat(comanda.total || 0);
-        mesasReporte[mesaNumero].totalMesa += total;
-        totalDia += total;
-        comandasCerradas++;
+        totalDiaGlobal += total;
+        comandasCerradasGlobal++;
         
         // Sumar por forma de pago
         if (comanda.formaPago === 'efectivo') {
-          totalEfectivo += total;
+          totalEfectivoGlobal += total;
         } else if (comanda.formaPago === 'qr') {
-          totalQr += total;
+          totalQrGlobal += total;
         } else if (comanda.formaPago === 'mixto') {
-          totalMixto += total;
-          totalEfectivo += parseFloat(comanda.cantidadEfectivo || 0);
-          totalQr += parseFloat(comanda.cantidadQr || 0);
+          totalEfectivoGlobal += parseFloat(comanda.cantidadEfectivo || 0);
+          totalQrGlobal += parseFloat(comanda.cantidadQr || 0);
+        }
+        
+        // Calcular tiempo de entrega (desde creación hasta cerrada)
+        if (comanda.cerradaAt && comanda.createdAt) {
+          const tiempoMs = new Date(comanda.cerradaAt).getTime() - new Date(comanda.createdAt).getTime();
+          const tiempoMinutos = Math.round(tiempoMs / (1000 * 60));
+          if (tiempoMinutos > 0 && tiempoMinutos < 300) { // máximo 5 horas para evitar outliers
+            tiemposEntrega.push(tiempoMinutos);
+          }
+        }
+        
+        // Contar ventas por mesero
+        if (comanda.usuarioAtencion) {
+          const meseroId = comanda.usuarioAtencion.id;
+          const meseroNombre = comanda.usuarioAtencion.nombre;
+          if (!meseroConMasVentas[meseroId]) {
+            meseroConMasVentas[meseroId] = { nombre: meseroNombre, total: 0, comandas: 0 };
+          }
+          meseroConMasVentas[meseroId].total += total;
+          meseroConMasVentas[meseroId].comandas++;
         }
       } else {
-        comandasAbiertas++;
+        comandasAbiertasGlobal++;
       }
+      
+      // Contar productos vendidos
+      (comanda.pedidos || []).forEach(pedido => {
+        if (pedido.producto) {
+          const prodId = pedido.producto.id;
+          const prodNombre = pedido.producto.nombre;
+          const cantidad = pedido.cantidad || 1;
+          const categoria = pedido.producto.categoria || 'Sin categoría';
+          
+          if (!productosMasVendidos[prodId]) {
+            productosMasVendidos[prodId] = { nombre: prodNombre, cantidad: 0, categoria };
+          }
+          productosMasVendidos[prodId].cantidad += cantidad;
+          
+          if (!categoriasMasVendidas[categoria]) {
+            categoriasMasVendidas[categoria] = { nombre: categoria, cantidad: 0, total: 0 };
+          }
+          categoriasMasVendidas[categoria].cantidad += cantidad;
+          categoriasMasVendidas[categoria].total += parseFloat(pedido.subtotal || 0);
+        }
+      });
     });
+    
+    // Calcular promedio de tiempo de entrega
+    const promedioTiempoEntrega = tiemposEntrega.length > 0 
+      ? Math.round(tiemposEntrega.reduce((a, b) => a + b, 0) / tiemposEntrega.length) 
+      : 0;
+    
+    // Ordenar productos más vendidos
+    const topProductos = Object.values(productosMasVendidos)
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 5);
+    
+    // Ordenar categorías más vendidas
+    const topCategorias = Object.values(categoriasMasVendidas)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+    
+    // Ordenar meseros por ventas
+    const topMeseros = Object.values(meseroConMasVentas)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+    
+    // Estadísticas del mesero actual (solo sus mesas)
+    let totalMesero = 0;
+    let totalEfectivoMesero = 0;
+    let totalQrMesero = 0;
+    let comandasCerradasMesero = 0;
+    let comandasAbiertasMesero = 0;
+    const mesasReporte = {};
+    
+    if (mesaIds.length > 0) {
+      const comandasMesero = todasComandas.filter(c => mesaIds.includes(c.mesaId));
+      
+      comandasMesero.forEach(comanda => {
+        const mesaNumero = comanda.mesa?.numero || 'Sin mesa';
+        const mesaNombre = comanda.mesa?.nombre || `Mesa ${mesaNumero}`;
+        
+        if (!mesasReporte[mesaNumero]) {
+          mesasReporte[mesaNumero] = {
+            numero: mesaNumero,
+            nombre: mesaNombre,
+            comandas: [],
+            totalMesa: 0
+          };
+        }
+        
+        const comandaData = {
+          id: comanda.id,
+          estado: comanda.estado,
+          total: parseFloat(comanda.total || 0),
+          formaPago: comanda.formaPago,
+          cantidadEfectivo: parseFloat(comanda.cantidadEfectivo || 0),
+          cantidadQr: parseFloat(comanda.cantidadQr || 0),
+          comprobante: comanda.comprobante,
+          createdAt: comanda.createdAt,
+          cerradaAt: comanda.cerradaAt,
+          entregado: comanda.entregado,
+          pedidos: comanda.pedidos.map(p => ({
+            id: p.id,
+            cantidad: p.cantidad,
+            precioUnitario: parseFloat(p.precioUnitario),
+            subtotal: parseFloat(p.subtotal),
+            estado: p.estado,
+            producto: p.producto ? {
+              nombre: p.producto.nombre,
+              precio: parseFloat(p.producto.precio)
+            } : null
+          }))
+        };
+        
+        mesasReporte[mesaNumero].comandas.push(comandaData);
+        
+        if (comanda.estado === 'cerrada') {
+          const total = parseFloat(comanda.total || 0);
+          mesasReporte[mesaNumero].totalMesa += total;
+          totalMesero += total;
+          comandasCerradasMesero++;
+          
+          if (comanda.formaPago === 'efectivo') {
+            totalEfectivoMesero += total;
+          } else if (comanda.formaPago === 'qr') {
+            totalQrMesero += total;
+          } else if (comanda.formaPago === 'mixto') {
+            totalEfectivoMesero += parseFloat(comanda.cantidadEfectivo || 0);
+            totalQrMesero += parseFloat(comanda.cantidadQr || 0);
+          }
+        } else {
+          comandasAbiertasMesero++;
+        }
+      });
+    }
     
     // Convertir objeto a array
     const mesasArray = Object.values(mesasReporte);
     
+    // Ticket promedio
+    const ticketPromedioGlobal = comandasCerradasGlobal > 0 ? totalDiaGlobal / comandasCerradasGlobal : 0;
+    const ticketPromedioMesero = comandasCerradasMesero > 0 ? totalMesero / comandasCerradasMesero : 0;
+    
     res.json({
       inicioDia,
       finDia,
-      mesas: mesasArray,
-      totales: {
-        totalDia: totalDia.toFixed(2),
-        totalEfectivo: totalEfectivo.toFixed(2),
-        totalQr: totalQr.toFixed(2),
-        totalMixto: totalMixto.toFixed(2),
-        comandasCerradas,
-        comandasAbiertas
+      // Estadísticas globales del local
+      global: {
+        totalDia: totalDiaGlobal.toFixed(2),
+        totalEfectivo: totalEfectivoGlobal.toFixed(2),
+        totalQr: totalQrGlobal.toFixed(2),
+        comandasCerradas: comandasCerradasGlobal,
+        comandasAbiertas: comandasAbiertasGlobal,
+        promedioTiempoEntrega, // en minutos
+        ticketPromedio: ticketPromedioGlobal.toFixed(2),
+        topProductos,
+        topCategorias,
+        topMeseros
+      },
+      // Estadísticas del mesero actual
+      mesero: {
+        mesas: mesasArray,
+        totalDia: totalMesero.toFixed(2),
+        totalEfectivo: totalEfectivoMesero.toFixed(2),
+        totalQr: totalQrMesero.toFixed(2),
+        comandasCerradas: comandasCerradasMesero,
+        comandasAbiertas: comandasAbiertasMesero,
+        ticketPromedio: ticketPromedioMesero.toFixed(2)
       }
     });
     

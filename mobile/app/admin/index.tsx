@@ -215,7 +215,7 @@ export default function AdminDashboard() {
       {/* Botón de retroceso */}
       <View style={{ position: 'absolute', top: 45, right: 20, zIndex: 10 }}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.push('/home')}
           style={{
             backgroundColor: dark ? '#F3F4F6' : '#1F2937',
             borderRadius: 22,

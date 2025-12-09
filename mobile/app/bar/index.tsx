@@ -5,14 +5,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import TopNav from '../components/TopNav';
 import { pedidoService, Pedido } from '../../src/services/pedido';
+import { productoService, Producto } from '../../src/services/producto';
 import { formatTimeShort, getMinutosTranscurridos } from '../../src/utils/time';
 import { useThemeStore } from '../../src/store/theme';
-import { PRIMARY } from '../../src/constants/colors';
+import { PRIMARY, SECONDARY_BLUE, SECONDARY_BLUE_DARK } from '../../src/constants/colors';
 import { getSocket } from '../../src/services/socket';
 import { notifySuccess } from '../../src/utils/notify';
 import { useAuthStore } from '../../src/store/auth';
 import { localService } from '../../src/services/local';
 import * as ImagePicker from 'expo-image-picker';
+import AccountModal from '../components/AccountModal';
 
 type Mode = 'por-pedido' | 'por-pedido-compacto' | 'por-producto' | 'por-producto-compacto' | 'por-mesa';
 type Tab = 'cola' | 'recientes';
@@ -47,6 +49,10 @@ export default function BarDashboard() {
   const [recents, setRecents] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<Mode>('por-producto-compacto');
+  const [productFilterOpen, setProductFilterOpen] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  // catalog products for filter (all bebidas)
+  const [catalogProducts, setCatalogProducts] = useState<Producto[]>([]);
   const [tab, setTab] = useState<Tab>('cola');
   const [notaModal, setNotaModal] = useState<{ visible: boolean; nota: string }>({ visible: false, nota: '' });
   const [showModal, setShowModal] = useState(false);
@@ -97,6 +103,14 @@ export default function BarDashboard() {
     };
     ensureLocal();
     restore();
+    // restore persisted product filter per user
+    (async () => {
+      try {
+        const key = `bar_prod_filter_${user?.id || 'anon'}`;
+        const raw = await AsyncStorage.getItem(key);
+        if (raw) setSelectedProducts(new Set(JSON.parse(raw)));
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -109,15 +123,13 @@ export default function BarDashboard() {
     const loadLocalLogo = async () => {
       if (user?.localId) {
         try {
-          const locales = await localService.obtenerLocales();
-          const local = Array.isArray(locales) ? locales.find(l => l.id === user.localId) : null;
-          if (local?.logo) {
-            setLocalLogo(local.logo);
-          }
+          const logo = await localService.obtenerLogoLocal();
+          if (logo) setLocalLogo(logo);
         } catch (e) {
           console.error('Error loading local logo', e);
         }
       }
+      return null;
     };
     loadLocalLogo();
 
@@ -144,7 +156,8 @@ export default function BarDashboard() {
     };
   }, [localId]);
 
-  const groupByProducto = useMemo(() => {
+  // All products grouped map (unfiltered) used to display filter options
+  const allByProducto = useMemo(() => {
     const map = new Map<string, Pedido[]>();
     for (const p of items) {
       const key = p?.producto?.nombre || 'Sin nombre';
@@ -154,6 +167,65 @@ export default function BarDashboard() {
     }
     return map;
   }, [items]);
+
+  const groupByProducto = useMemo(() => {
+    const map = new Map(allByProducto);
+    // If there's a product filter active, narrow map to those products
+    if (selectedProducts && selectedProducts.size > 0) {
+      const filtered = new Map<string, Pedido[]>();
+      for (const [name, arr] of map.entries()) {
+        const sample = arr[0];
+        const prodKey = `prod:${sample?.producto?.id ?? sample?.producto?.nombre}`;
+        if (selectedProducts.has(prodKey)) filtered.set(name, arr);
+      }
+      return filtered;
+    }
+    return map;
+  }, [allByProducto, selectedProducts]);
+
+  // toggle product selection helper
+  const toggleProductSelection = (p: Pedido | Producto) => {
+    try {
+      // support passing either a Pedido (with producto) or a bare Producto
+      const product = (p as any)?.producto ? (p as any).producto : (p as any);
+      const key = `prod:${product?.id ?? product?.nombre}`;
+      setSelectedProducts((prev) => {
+        const copy = new Set(prev);
+        if (copy.has(key)) copy.delete(key); else copy.add(key);
+        return copy;
+      });
+    } catch {}
+  };
+
+  const persistProductFilter = async () => {
+    try {
+      const key = `bar_prod_filter_${user?.id || 'anon'}`;
+      await AsyncStorage.setItem(key, JSON.stringify(Array.from(selectedProducts)));
+    } catch (e) {}
+  };
+
+  // Fetch product catalog (drinks) for the filter modal
+  useEffect(() => {
+    let cancelled = false;
+    const loadProducts = async () => {
+      try {
+        const res = await productoService.getAll({ localId: localId ?? undefined });
+        const arr = Array.isArray(res) ? res : (res?.data || res?.productos || []);
+        if (cancelled) return;
+        // Filter for bebidas using same heuristic as mesero: tipo or categoria
+        const isBebida = (prod?: any) => {
+          if (!prod) return false;
+          const tipo = (prod.tipo || prod?.type || prod?.categoria || '')?.toString().toLowerCase();
+          return tipo.includes('beb') || tipo.includes('drink') || tipo.includes('beverage');
+        };
+        setCatalogProducts(arr.filter(isBebida));
+      } catch (e) {
+        // ignore - still allow modal to show 'allByProducto' fallback
+      }
+    };
+    loadProducts();
+    return () => { cancelled = true; };
+  }, [localId]);
 
   const groupByMesa = useMemo(() => {
     const map = new Map<string, Pedido[]>();
@@ -255,11 +327,8 @@ export default function BarDashboard() {
       )}
 
       <View style={{ padding: 16, paddingTop: 16 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>Bar — Pendientes</Text>
-        </View>
         {/* Tabs: Cola | Recientes */}
-        <View style={{ flexDirection: 'row', marginTop: 12 }}>
+        <View style={{ flexDirection: 'row', marginTop: 0 }}>
           {([
             { key: 'cola', label: `Cola (${items.length})` },
             { key: 'recientes', label: `Recientes (${recents.length})` },
@@ -283,9 +352,7 @@ export default function BarDashboard() {
           {([
             { key: 'por-producto-compacto', label: 'Por producto · compacto' },
             { key: 'por-pedido-compacto', label: 'Por pedido · compacto' },
-            { key: 'por-pedido', label: 'Por pedido' },
             { key: 'por-producto', label: 'Por producto' },
-            { key: 'por-mesa', label: 'Por mesa' },
           ] as { key: Mode; label: string }[]).map((b) => (
             <TouchableOpacity
               key={b.key}
@@ -309,6 +376,12 @@ export default function BarDashboard() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        {/* Filter toggle button */}
+        <View style={{ position: 'absolute', right: 16, top: 20, zIndex: 12 }}>
+          <TouchableOpacity onPress={() => setProductFilterOpen(true)} style={{ padding: 8, borderRadius: 8, backgroundColor: dark ? '#111827' : '#F3F4F6', borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
+            <Text style={{ color: dark ? '#D1D5DB' : '#374151', fontWeight: '700' }}>Filtrar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {(tab === 'cola' && (mode === 'por-pedido' || mode === 'por-pedido-compacto')) && (
@@ -330,29 +403,59 @@ export default function BarDashboard() {
                 justifyContent: 'space-between',
               }}
             >
-              <View style={{ flex: 1, paddingRight: mode === 'por-pedido-compacto' ? 8 : 0 }}>
-                <Text style={{ fontWeight: '700', color: fg }}>
-                  {item.cantidad}× {item.producto?.nombre || 'Producto'}
-                </Text>
-                <Text style={{ color: muted, marginTop: 4 }}>Mesa: {item?.comanda?.mesa?.numero ?? item?.comanda?.mesa?.nombre ?? '—'}</Text>
-                {!!item.notas && mode !== 'por-pedido-compacto' && (
-                  <Text style={{ color: muted, marginTop: 4 }}>📝 {item.notas}</Text>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={() => marcarListo(item.id)}
-                style={{
-                  marginTop: mode === 'por-pedido-compacto' ? 0 : 8,
-                  backgroundColor: '#22c55e',
-                  padding: mode === 'por-pedido-compacto' ? 10 : 10,
-                  borderRadius: mode === 'por-pedido-compacto' ? 999 : 8,
-                  minWidth: mode === 'por-pedido-compacto' ? 44 : undefined,
-                }}
-              >
-                <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>
-                  {mode === 'por-pedido-compacto' ? '✓' : 'Marcar listo'}
-                </Text>
-              </TouchableOpacity>
+              {mode === 'por-pedido-compacto' ? (
+                <>
+                  <View style={{ flex: 1, paddingRight: 0 }}>
+                    <Text style={{ fontWeight: '700', color: fg }}>
+                      {item.cantidad}× {item.producto?.nombre || 'Producto'}
+                    </Text>
+                    <Text style={{ color: muted, marginTop: 4 }}>Mesa: {item?.comanda?.mesa?.numero ?? item?.comanda?.mesa?.nombre ?? '—'}</Text>
+                    {!!item.notas && mode !== 'por-pedido-compacto' && (
+                      <Text style={{ color: muted, marginTop: 4 }}>📝 {item.notas}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => marcarListo(item.id)}
+                    style={{
+                      marginTop: mode === 'por-pedido-compacto' ? 0 : 8,
+                      backgroundColor: '#22c55e',
+                      padding: 10,
+                      borderRadius: mode === 'por-pedido-compacto' ? 999 : 8,
+                      minWidth: mode === 'por-pedido-compacto' ? 44 : undefined,
+                    }}
+                  >
+                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>
+                      {mode === 'por-pedido-compacto' ? '✓' : 'Marcar listo'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={{ flex: 1, paddingRight: 0 }}>
+                    <Text style={{ fontWeight: '700', color: fg }}>
+                      {item.cantidad}× {item.producto?.nombre || 'Producto'}
+                    </Text>
+                    <Text style={{ color: muted, marginTop: 4 }}>Mesa: {item?.comanda?.mesa?.numero ?? item?.comanda?.mesa?.nombre ?? '—'}</Text>
+                    {!!item.notas && mode !== 'por-pedido-compacto' && (
+                      <Text style={{ color: muted, marginTop: 4 }}>📝 {item.notas}</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => marcarListo(item.id)}
+                    style={{
+                      marginTop: mode === 'por-pedido-compacto' ? 0 : 8,
+                      backgroundColor: '#22c55e',
+                      padding: 10,
+                      borderRadius: mode === 'por-pedido-compacto' ? 999 : 8,
+                      minWidth: mode === 'por-pedido-compacto' ? 44 : undefined,
+                    }}
+                  >
+                    <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700' }}>
+                      {mode === 'por-pedido-compacto' ? '✓' : 'Marcar listo'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           )}
           ListEmptyComponent={() => (
@@ -364,6 +467,53 @@ export default function BarDashboard() {
       )}
 
       {tab === 'cola' && (mode === 'por-producto' || mode === 'por-producto-compacto') && (
+        // product filter modal
+        <>
+        <Modal visible={productFilterOpen} transparent animationType="fade" onRequestClose={() => setProductFilterOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <View style={{ width: '100%', maxWidth: 520, backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 12, padding: 12 }}>
+              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 8 }}>Filtrar por productos</Text>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {Array.from(catalogProducts && catalogProducts.length
+                  ? // build a map from name -> { prod, count }
+                    new Map(catalogProducts.map((prod) => {
+                      const name = prod.nombre || prod.categoria || prod.tipo || String(prod.id || '');
+                      const count = items.filter(i => (i.producto?.id && prod.id ? String(i.producto.id) === String(prod.id) : (i.producto?.nombre || '') === (prod.nombre || ''))).length;
+                      return [name, { prod, count }];
+                    }))
+                  : allByProducto.entries()).map(([producto, val]) => {
+                    // If using catalog Map, val is { prod, count } otherwise val is pedidos array
+                    if (Array.isArray(val)) {
+                      const pedidos = val as Pedido[];
+                      const sample = pedidos[0];
+                      const key = `prod:${sample?.producto?.id ?? sample?.producto?.nombre}`;
+                      return (
+                        <TouchableOpacity key={key} onPress={() => toggleProductSelection(sample)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: selectedProducts.has(key) ? PRIMARY : (dark ? '#374151' : '#E5E7EB'), backgroundColor: selectedProducts.has(key) ? PRIMARY : 'transparent', marginRight: 12 }} />
+                          <Text style={{ color: fg, flex: 1 }}>{producto} <Text style={{ color: muted }}>({pedidos.length})</Text></Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                    // catalog mode: val is { prod, count }
+                    const entry = val as { prod: Producto; count: number };
+                    const prod = entry?.prod;
+                    const count = entry?.count ?? 0;
+                    const key = `prod:${prod?.id ?? prod?.nombre}`;
+                    return (
+                      <TouchableOpacity key={key} onPress={() => toggleProductSelection(prod)} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: selectedProducts.has(key) ? PRIMARY : (dark ? '#374151' : '#E5E7EB'), backgroundColor: selectedProducts.has(key) ? PRIMARY : 'transparent', marginRight: 12 }} />
+                        <Text style={{ color: fg, flex: 1 }}>{producto} <Text style={{ color: muted }}>({count})</Text></Text>
+                      </TouchableOpacity>
+                    );
+                })}
+              </ScrollView>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+                <TouchableOpacity onPress={() => { setSelectedProducts(new Set()); }} style={{ padding: 10, marginRight: 8 }}><Text style={{ color: muted }}>Limpiar</Text></TouchableOpacity>
+                <TouchableOpacity onPress={async () => { await persistProductFilter(); setProductFilterOpen(false); }} style={{ padding: 10, backgroundColor: PRIMARY, borderRadius: 8 }}><Text style={{ color: 'white' }}>Aplicar</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
         <ScrollView contentContainerStyle={{ padding: 12 }}>
           {Array.from(groupByProducto.entries()).map(([producto, pedidos]) => {
             // Ordenar por antigüedad (más antiguos primero)
@@ -373,13 +523,13 @@ export default function BarDashboard() {
               return timeA - timeB;
             });
             return (
-              <View key={producto} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
-                <View style={{ backgroundColor: dark ? '#111827' : '#3B82F6', paddingHorizontal: 12, paddingVertical: 8 }}>
+              <View key={producto} style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' }}>
+                <View style={{ backgroundColor: dark ? '#111827' : '#3B82F6', paddingHorizontal: 12, paddingVertical: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>{producto}</Text>
-                  <Text style={{ color: dark ? '#D1D5DB' : '#DBEAFE' }}>{pedidos.length} pendiente(s)</Text>
+                  <Text style={{ color: dark ? '#D1D5DB' : '#DBEAFE', fontSize: 13 }}>{pedidos.length} pendiente(s)</Text>
                 </View>
                 {mode === 'por-producto' ? (
-                  <ScrollView horizontal contentContainerStyle={{ padding: 12, paddingBottom: footerHeight + 32 }} showsHorizontalScrollIndicator={false}>
+                  <ScrollView horizontal contentContainerStyle={{ paddingHorizontal: 6, paddingVertical: 0, paddingBottom: 0 }} showsHorizontalScrollIndicator={false}>
                     {pedidosOrdenados.map((p) => {
                       const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
                       const esListo = p?.estado === 'listo';
@@ -391,14 +541,13 @@ export default function BarDashboard() {
                           key={p.id}
                           style={{
                             flexDirection: 'row',
-                            backgroundColor: esListo ? '#E5E7EB' : (dark ? '#1F2937' : '#F9FAFB'),
-                            borderColor: esListo ? '#9CA3AF' : (dark ? '#374151' : '#E5E7EB'),
-                            borderWidth: 1,
+                            backgroundColor: esListo ? '#E5E7EB' : (dark ? SECONDARY_BLUE_DARK : SECONDARY_BLUE),
+                            borderColor: esListo ? '#9CA3AF' : (dark ? '#475569' : '#D1D5DB'),
+                            borderWidth: 1.5,
                             borderRadius: 8,
-                            padding: 8,
-                            marginRight: 8,
+                            padding: 4,
+                            marginRight: 6,
                             opacity: esListo ? 0.6 : 1,
-                            minHeight: 100,
                           }}
                         >
                           {!!p.notas && (
@@ -431,11 +580,11 @@ export default function BarDashboard() {
                             <Text style={{ color: esListo ? '#9CA3AF' : (dark ? '#D1D5DB' : '#374151'), textAlign: 'center', marginTop: 2, fontSize: 11 }}>Mesa {p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '—'}</Text>
                             <Text style={{ color: colorTiempo, textAlign: 'center', marginTop: 2, fontSize: 12, fontWeight: '600' }}>{minutos} min</Text>
                             {!esListo ? (
-                              <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 6, backgroundColor: '#22c55e', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
+                              <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#22c55e', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
                                 <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700', fontSize: 14 }}>✓</Text>
                               </TouchableOpacity>
                             ) : puedeDesmarcar ? (
-                              <TouchableOpacity onPress={() => desmarcarListo(p.id)} style={{ marginTop: 6, backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
+                              <TouchableOpacity onPress={() => desmarcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#F59E0B', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999 }}>
                                 <Text style={{ color: 'white', textAlign: 'center', fontWeight: '700', fontSize: 14 }}>↻</Text>
                               </TouchableOpacity>
                             ) : null}
@@ -445,7 +594,7 @@ export default function BarDashboard() {
                     })}
                   </ScrollView>
                 ) : (
-                  <ScrollView horizontal contentContainerStyle={{ padding: 8, paddingBottom: footerHeight + 32 }} showsHorizontalScrollIndicator={false}>
+                  <ScrollView horizontal contentContainerStyle={{ paddingHorizontal: 4, paddingVertical: 0, paddingBottom: 0 }} showsHorizontalScrollIndicator={false}>
                     {pedidosOrdenados.map((p) => {
                       const minutos = getMinutosTranscurridos(p?.createdAt || p?.created_at);
                       const esListo = p?.estado === 'listo';
@@ -455,57 +604,61 @@ export default function BarDashboard() {
                         <View
                           key={p.id}
                           style={{
-                            flexDirection: 'row',
-                            backgroundColor: esListo ? '#E5E7EB' : (dark ? '#1F2937' : '#F9FAFB'),
+                            backgroundColor: esListo ? '#E5E7EB' : (dark ? SECONDARY_BLUE_DARK : SECONDARY_BLUE),
                             borderColor: esListo ? '#9CA3AF' : (dark ? '#374151' : '#E5E7EB'),
                             borderWidth: 1,
                             borderRadius: 8,
-                            padding: 6,
-                            marginRight: 6,
+                            paddingVertical: 4,
+                            paddingLeft: 0,
+                            paddingRight: 4,
+                            marginRight: 4,
                             opacity: esListo ? 0.6 : 1,
-                            minHeight: 100,
+                            minWidth: 96,
                           }}
                         >
-                          {!!p.notas && (
-                            <TouchableOpacity 
-                              onPress={() => setNotaModal({ visible: true, nota: p.notas || '' })}
-                              style={{ 
-                                backgroundColor: esListo ? '#D1D5DB' : '#FEF3C7', 
-                                paddingHorizontal: 1, 
-                                paddingVertical: 3, 
-                                borderRadius: 3, 
-                                marginRight: 3,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                width: 10,
-                              }}
-                            >
-                              <Text style={{ 
-                                color: esListo ? '#374151' : '#78350F', 
-                                fontSize: 8,
-                                fontWeight: '600',
-                                writingDirection: 'ltr',
-                                transform: [{ rotate: '-90deg' }],
-                                width: 60,
-                                textAlign: 'center',
-                              }} numberOfLines={1}>{p.notas}</Text>
-                            </TouchableOpacity>
-                          )}
-                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontWeight: '700', color: esListo ? '#6B7280' : (dark ? '#F3F4F6' : fg), fontSize: 18 }}>x{p.cantidad}</Text>
-                            <View style={{ height: 1, width: '100%', backgroundColor: esListo ? '#D1D5DB' : (dark ? '#4B5563' : '#E5E7EB'), marginVertical: 4 }} />
-                            <Text style={{ color: esListo ? '#9CA3AF' : (dark ? '#D1D5DB' : muted), fontSize: 9, textAlign: 'center' }}>M{p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '?'}</Text>
-                            <Text style={{ color: colorTiempo, fontSize: 10, fontWeight: '600', marginTop: 2 }}>{minutos}m</Text>
-                            {!esListo ? (
-                              <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#22c55e', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>✓</Text>
-                              </TouchableOpacity>
-                            ) : puedeDesmarcar ? (
-                              <TouchableOpacity onPress={() => desmarcarListo(p.id)} style={{ marginTop: 4, backgroundColor: '#F59E0B', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: 'white', fontWeight: '700', fontSize: 14 }}>↻</Text>
-                              </TouchableOpacity>
-                            ) : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {/* Left: quantity (compact single text) */}
+                            <View style={{ width: 18, alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ fontSize: 14, color: esListo ? '#6B7280' : (dark ? '#F3F4F6' : fg) }}>
+                                <Text style={{ fontWeight: '400' }}>x</Text>
+                                <Text style={{ fontWeight: '700' }}>{p.cantidad}</Text>
+                              </Text>
+                            </View>
+
+                            {/* Separator vertical */}
+                            <View style={{ width: 1, height: 36, backgroundColor: dark ? '#374151' : '#E5E7EB', marginLeft: 3, marginRight: 1 }} />
+
+                            {/* Center: mesa (top) and time (bottom) */}
+                              <View style={{ flex: 1, justifyContent: 'center', paddingRight: 0, marginRight: 0, alignItems: 'flex-end' }}>
+                                <Text style={{ fontWeight: '400', color: fg, fontSize: 11, textAlign: 'right' }}>Mesa {p?.comanda?.mesa?.numero ?? p?.comanda?.mesa?.nombre ?? '—'}</Text>
+                                <Text style={{ color: colorTiempo, fontSize: 8, marginTop: 1, textAlign: 'right' }}>{getMinutosTranscurridos(p?.createdAt || p?.created_at)} min</Text>
+                              </View>
+
+                            {/* Separator vertical */}
+                            <View style={{ width: 1, height: 36, backgroundColor: dark ? '#374151' : '#E5E7EB', marginLeft: 1, marginRight: 1 }} />
+
+                            {/* Right: action button */}
+                              <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
+                                <TouchableOpacity onPress={() => marcarListo(p.id)} style={{ backgroundColor: '#22c55e', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.22, shadowRadius: 1.2, elevation: 3 }}>
+                                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }}>✓</Text>
+                                </TouchableOpacity>
+                              </View>
                           </View>
+
+                          {/* Note full width below */}
+                          {p.notas ? (
+                          <View style={{
+                            marginTop: 2,
+                            paddingVertical: 2,
+                            paddingHorizontal: 6,
+                            borderTopWidth: 1,
+                            borderTopColor: dark ? '#374151' : '#E5E7EB',
+                            backgroundColor: dark ? '#5C3D07' : '#FEF3C7',
+                            borderRadius: 6,
+                          }}>
+                            <Text style={{ color: dark ? '#FFFBEB' : '#78350F', fontSize: 10 }}>{`📝 ${p.notas}`}</Text>
+                          </View>
+                        ) : null}
                         </View>
                       );
                     })}
@@ -520,12 +673,13 @@ export default function BarDashboard() {
             </View>
           )}
         </ScrollView>
+        </>
       )}
 
       {tab === 'cola' && mode === 'por-mesa' && (
         <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: footerHeight + 32 }}>
           {Array.from(groupByMesa.entries()).map(([mesa, pedidos]) => (
-            <View key={mesa} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
+            <View key={mesa} style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' }}>
               <View style={{ backgroundColor: dark ? '#0b1220' : '#111827', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>Mesa {mesa}</Text>
                 <TouchableOpacity onPress={() => completarMesa(mesa)} style={{ backgroundColor: '#22c55e', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
@@ -678,56 +832,8 @@ export default function BarDashboard() {
         </View>
       </Modal>
 
-      {/* Modal de configuración */}
-      <Modal
-        visible={showModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowModal(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: dark ? '#1F2937' : 'white', borderRadius: 12, padding: 20, width: '90%', maxWidth: 400 }}>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: fg, marginBottom: 16, textAlign: 'center' }}>Configuración</Text>
-            
-            <Text style={{ color: fg, marginBottom: 8 }}>Nombre:</Text>
-            <TextInput
-              value={tempNombre}
-              onChangeText={setTempNombre}
-              style={{ borderWidth: 1, borderColor: dark ? '#4B5563' : '#D1D5DB', borderRadius: 8, padding: 12, marginBottom: 16, color: fg, backgroundColor: dark ? '#374151' : '#F9FAFB' }}
-              placeholder="Ingresa tu nombre"
-              placeholderTextColor={muted}
-            />
-            
-            <Text style={{ color: fg, marginBottom: 8 }}>Foto de perfil:</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-              <TouchableOpacity onPress={pickImageFromLibrary} style={{ backgroundColor: '#3B82F6', padding: 12, borderRadius: 8, flex: 1, marginRight: 8, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '700' }}>Subir foto</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={pickImageFromCamera} style={{ backgroundColor: '#10B981', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '700' }}>Tomar foto</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 16, gap: 12 }}>
-              <TouchableOpacity onPress={() => setTheme('dark')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: dark ? '#1E3A8A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: dark ? 0 : 1, borderColor: dark ? 'transparent' : (dark ? '#374151' : '#E5E7EB') }}>
-                <Text style={{ fontSize: 18 }}>🌙</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setTheme('light')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: !dark ? '#FDE68A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: !dark ? 0 : 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
-                <Text style={{ fontSize: 18 }}>☀️</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity onPress={() => { updateUser({ nombre: tempNombre }); setShowModal(false); }} style={{ backgroundColor: '#22c55e', padding: 12, borderRadius: 8, flex: 1, marginRight: 8, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '700' }}>Guardar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { logout(); setShowModal(false); router.replace('/login'); }} style={{ backgroundColor: '#EF4444', padding: 12, borderRadius: 8, flex: 1, marginLeft: 8, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '700' }}>Cerrar sesión</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* account modal (shared) */}
+      <AccountModal visible={showModal} onClose={() => setShowModal(false)} />
 
       {/* Fixed footer — powered by */}
       <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: footerHeight, paddingVertical: 8, borderTopWidth: 1, borderColor: dark ? '#111827' : '#E5E7EB', backgroundColor: dark ? '#0b0f13' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>

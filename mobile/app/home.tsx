@@ -27,10 +27,29 @@ export default function Home() {
     if (!token) router.replace('/login');
   }, [token]);
 
+  // Redirigir a otros roles a sus paneles específicos (solo admin puede ver el selector)
+  useEffect(() => {
+    console.log('[DEBUG Home] user.tipo:', user?.tipo);
+    if (user?.tipo && user.tipo !== 'admin') {
+      const route =
+        user.tipo === 'atencion' ? '/mesero' :
+        user.tipo === 'cocina' ? '/cocina' :
+        user.tipo === 'bar' ? '/bar' :
+        user.tipo === 'proveedor' ? '/proveedor' :
+        '/mesero';
+      console.log('[DEBUG Home] Non-admin user detected, redirecting to:', route);
+      router.replace(route);
+    }
+  }, [user?.tipo]);
+
   const tipo = user?.tipo || 'admin';
 
   const defaultRoute =
-    tipo === 'atencion' ? '/mesero' : tipo === 'cocina' ? '/cocina' : tipo === 'proveedor' ? '/proveedor' : '/admin';
+    tipo === 'atencion' ? '/mesero' : 
+    tipo === 'cocina' ? '/cocina' : 
+    tipo === 'bar' ? '/bar' :
+    tipo === 'proveedor' ? '/proveedor' : 
+    '/admin';
 
   const dark = theme === 'dark';
   const bg = dark ? '#111827' : 'white';

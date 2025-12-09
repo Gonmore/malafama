@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import AccountModal from '../components/AccountModal';
 import { userService } from '../../src/services/user';
 import { useThemeStore } from '../../src/store/theme';
 import TopNav from '../components/TopNav';
@@ -75,9 +76,77 @@ export default function MeseroDashboard() {
   const [modalMesas, setModalMesas] = useState<any[]>([]);
   const [assignSelected, setAssignSelected] = useState<Set<string>>(new Set());
   const [isAdmin] = useState<boolean>(Boolean(user && (user.rol === 'admin' || user.tipo === 'admin')));
-  const [viewMode, setViewMode] = useState<'list'|'group'>('list');
+  // Default to grouped view for mesero dashboard. Persisted per-user key stored in AsyncStorage.
+  const [viewMode, setViewModeState] = useState<'list'|'group'>('group');
+
+  // Helper to persist view choice per user
+  const setViewMode = async (m: 'list'|'group') => {
+    try {
+      setViewModeState(m);
+      const key = `mesero_vista_dashboard_${user?.id || 'anon'}`;
+      await AsyncStorage.setItem(key, m);
+    } catch (err) {
+      console.warn('Failed to persist mesero view mode', err);
+    }
+  };
+
+  // Restore persisted view mode per user on mount / user change
+  useEffect(() => {
+    (async () => {
+      try {
+        const key = `mesero_vista_dashboard_${user?.id || 'anon'}`;
+        const v = await AsyncStorage.getItem(key);
+        if (v === 'list' || v === 'group') setViewModeState(v);
+      } catch (err) {
+        // ignore
+      }
+    })();
+  }, [user?.id]);
   const [verSoloAsignadas, setVerSoloAsignadas] = useState<boolean>(false);
   const [scrollEnabled, setScrollEnabled] = useState<boolean>(true);
+
+  // Estado para el reporte diario
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [loadingReport, setLoadingReport] = useState<boolean>(false);
+
+  // Función para cargar el reporte diario
+  const fetchDailyReport = async () => {
+    setLoadingReport(true);
+    try {
+      const rawApi = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').toString().trim();
+      const base = rawApi.replace(/\/+$/g, '').replace(/\/api\/v1$/i, '');
+      const url = `${base}/api/v1/reportes/mesero/dia`;
+      console.log('[DEBUG REPORTE] URL:', url);
+      console.log('[DEBUG REPORTE] Token exists:', !!token);
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      console.log('[DEBUG REPORTE] Response status:', resp.status);
+      const text = await resp.text();
+      console.log('[DEBUG REPORTE] Response text (first 500 chars):', text.substring(0, 500));
+      if (!resp.ok) throw new Error(`Error fetching report: ${resp.status} - ${text}`);
+      const data = JSON.parse(text);
+      console.log('[DEBUG REPORTE] Data keys:', Object.keys(data));
+      console.log('[DEBUG REPORTE] data.global:', data.global);
+      console.log('[DEBUG REPORTE] data.mesero:', data.mesero);
+      setReportData(data);
+    } catch (err: any) {
+      console.error('[mesero] fetchDailyReport error', err);
+      Alert.alert('Error', `No se pudo cargar el reporte: ${err.message || err}`);
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const openReportModal = () => {
+    setShowReportModal(true);
+    fetchDailyReport();
+  };
 
   // load() - fetch mesas (keeps it simple to restore behavior)
   const load = async () => {
@@ -87,8 +156,15 @@ export default function MeseroDashboard() {
       const data = resp?.data || resp || [];
       const lista = Array.isArray(data) ? data : (data.mesas || data);
       setMesas(lista || []);
-    } catch (e) {
-      console.error('[mesero] load error', e);
+    } catch (e: any) {
+      // When the user logs out, in-flight requests may return 401 and are expected.
+      // Treat them as informational to avoid noisy error logs during logout flow.
+      const status = e?.response?.status || e?.status || null;
+      if (status === 401) {
+        console.info('[mesero] load skipped - unauthorized (likely logging out)');
+      } else {
+        console.error('[mesero] load error', e);
+      }
     } finally {
       lastLoadTsRef.current = Date.now();
       loadInFlightRef.current = false;
@@ -122,6 +198,8 @@ export default function MeseroDashboard() {
   const [gridLayout, setGridLayout] = useState<{ width: number; height: number } | null>(null);
   // Optimistic entregadas to show check immediately on first touch
   const [deliveredOptimistic, setDeliveredOptimistic] = useState<Set<string>>(new Set());
+  // Track mesas acknowledged (first tap) so second tap will open the mesa
+  const [ackedMesas, setAckedMesas] = useState<Set<string>>(new Set());
   // Press feedback state for grouped grid tiles
   const [pressedMesaId, setPressedMesaId] = useState<string | null>(null);
   const pressAnim = useRef(new Animated.Value(1)).current;
@@ -277,6 +355,7 @@ export default function MeseroDashboard() {
           <TouchableOpacity
           onPress={() => {
             if (todosListos && !estaEntregada) {
+              console.log('[ComandaListRow] marcar entregada presionado', { comandaId: comanda.id });
               onMarcarEntregada && onMarcarEntregada();
             } else {
               onOpen && onOpen();
@@ -470,6 +549,7 @@ export default function MeseroDashboard() {
       if (allReady && !estaEntregada) {
         // mark entregada
         try {
+          console.log('[ComandaRow] marcar entregada presionado', { comandaId: comanda.id });
           await onMarcarEntregada?.();
         } catch (err) {
           console.error('Error marcando entregada', err);
@@ -693,6 +773,26 @@ export default function MeseroDashboard() {
   useEffect(() => {
     requestLoad();
 
+    // prune ackedMesas when mesas data changes so we don't keep stale ack flags
+    // Keep only acked mesas that still have a ready comanda
+    try {
+      setAckedMesas(prev => {
+        if (!mesas || mesas.length === 0) return new Set();
+        const mesasWithReady = new Set((mesas || []).filter((m: any) => {
+          const comandas = (m.comandas || []);
+          return comandas.some((c: any) => {
+            if (c.estado === 'cerrada' || c.entregado) return false;
+            const pedidos = c.pedidos || [];
+            return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+          });
+        }).map((m: any) => String(m.id)));
+
+        return new Set([...prev].filter(id => mesasWithReady.has(id)));
+      });
+    } catch (err) {
+      // defensive - ignore
+    }
+
     const loadLocalLogo = async () => {
       if (user?.localId) {
         try {
@@ -787,6 +887,25 @@ export default function MeseroDashboard() {
     }
   }, [showModal, (user as any)?.photo, (user as any)?.fotoUrl, (user as any)?.foto, modalHandAnim]);
 
+  // Ensure ack flags don't get stale: whenever mesas data changes, keep only mesas that still have a ready comanda
+  useEffect(() => {
+    try {
+      setAckedMesas(prev => {
+        if (!mesas || mesas.length === 0) return new Set();
+        const mesasWithReady = new Set((mesas || []).filter((m: any) => {
+          const comandas = (m.comandas || []);
+          return comandas.some((c: any) => {
+            if (c.estado === 'cerrada' || c.entregado) return false;
+            const pedidos = c.pedidos || [];
+            return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+          });
+        }).map((m: any) => String(m.id)));
+
+        return new Set([...prev].filter(id => mesasWithReady.has(id)));
+      });
+    } catch (err) {}
+  }, [mesas]);
+
   const modalHandTransform = (modalHandAnim && typeof (modalHandAnim as any).interpolate === 'function')
     ? [{ translateX: modalHandAnim.interpolate({ inputRange: [0, 1], outputRange: [-60, 60] }) }]
     : undefined;
@@ -801,13 +920,15 @@ export default function MeseroDashboard() {
   // Marcar comanda como entregada (persist via backend)
   const marcarComandaEntregada = async (comandaId: string) => {
     try {
+      console.log('[Mesero] marcarComandaEntregada -> solicitando marcar entregada', { comandaId });
       // Optimistic: show check immediately and trigger animation
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setDeliveredOptimistic(prev => new Set(prev).add(String(comandaId)));
       // Fire a load to reorder as soon as possible
       requestLoad();
       // Persist to backend (non-blocking for UI)
-      await comandaService.marcarEntregada(comandaId);
+      const resp = await comandaService.marcarEntregada(comandaId);
+      console.log('[Mesero] marcarComandaEntregada -> backend response', { comandaId, resp });
     } catch (err) {
       console.error('[Mesero] error marcando comanda entregada ->', err);
       Alert.alert('Error', 'No se pudo marcar la comanda como entregada');
@@ -1136,6 +1257,43 @@ export default function MeseroDashboard() {
     }
 
     // Para mesas con comandas: mantener TouchableOpacity solo en comandas individuales
+    // Verificar si hay alguna comanda lista pero no entregada en esta mesa
+    const hayComandaListaPendiente = mostrarComandas.some((c: any) => {
+      if (c.estado === 'cerrada' || c.entregado) return false;
+      const pedidos = c.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      return allReady;
+    });
+
+    const handleComandaPress = (comanda: any) => {
+      // Verificar si esta comanda específica está lista pero no entregada
+      const pedidos = comanda.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      const yaEntregada = !!comanda.entregado || deliveredOptimistic.has(String(comanda.id));
+      
+      if (allReady && !yaEntregada) {
+        // If the mesa was already acked, open it on this press. Otherwise mark entregada and ack the mesa.
+        if (ackedMesas.has(String(mesa.id))) {
+          setAckedMesas(prev => {
+            const copy = new Set(prev);
+            copy.delete(String(mesa.id));
+            return copy;
+          });
+          onAbrirComanda(mesa);
+          return;
+        }
+
+        // Marcar como entregada (first tap ack)
+        console.log('[GridMesa] marcar entregada desde grid, mesa:', mesa.id, 'comanda:', comanda.id);
+        setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+        marcarComandaEntregada(comanda.id);
+      } else {
+        // Abrir la mesa
+        console.log('[GridMesa] ✅ PRESS DETECTADO en comanda, mesa:', mesa.id, 'comandaId:', comanda.id);
+        onAbrirComanda(mesa);
+      }
+    };
+
     return (
       <View style={[containerStyle, { padding: 4 }]}>
         <View style={{ backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 8, padding: 8, flex: 1, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
@@ -1147,12 +1305,12 @@ export default function MeseroDashboard() {
               idx={idx}
               dark={dark}
               fg={fg}
-              onOpen={() => {
-                console.log('[GridMesa] ✅ PRESS DETECTADO en comanda, mesa:', mesa.id, 'comandaId:', c.id);
-                onAbrirComanda(mesa);
-              }}
+              onOpen={() => handleComandaPress(c)}
               estaEntregada={!!c.entregado || deliveredOptimistic.has(String(c.id))}
-              onMarcarEntregada={() => marcarComandaEntregada(c.id)}
+                onMarcarEntregada={() => {
+                  setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                  marcarComandaEntregada(c.id);
+                }}
             />
           ))}
         </View>
@@ -1270,12 +1428,61 @@ export default function MeseroDashboard() {
 
   const renderMesaConComanda = (mesa: MesaConComanda) => {
     // Mostrar comandas abiertas y además comandas cerradas+entregadas del mismo día
-    const comandasAbiertas = (mesa.comandas || []).filter((c: any) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt)));
+    // Keep a stable order: newest comandas first (createdAt desc) so UI and mesa detail match
+    const comandasAbiertas = ((mesa.comandas || []).slice() || []).filter((c: any) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt))).sort((a: any, b: any) => {
+      const A = new Date(a.createdAt || a.created_at || 0).getTime() || 0;
+      const B = new Date(b.createdAt || b.created_at || 0).getTime() || 0;
+      return B - A;
+    });
     const todasComandasEntregadas = (mesa.comandas || []).length > 0 && (mesa.comandas || []).every((c: any) => c.entregado === true);
+    
+    // Verificar si hay alguna comanda lista pero no entregada
+    const hayComandaListaPendiente = comandasAbiertas.some((c: any) => {
+      if (c.estado === 'cerrada' || c.entregado) return false;
+      const pedidos = c.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      return allReady;
+    });
+
+    const handleMesaPress = () => {
+      try {
+        // debug: list comandas and readiness to verify which will be delivered
+        console.log('[Mesero] handleMesaPress mesa:', mesa.id, 'comandasAbiertas:', (comandasAbiertas || []).map((c: any, i: number) => ({ idx: i + 1, id: c.id, estado: c.estado, entregado: c.entregado, pedidosCount: (c.pedidos || []).length })));
+      } catch (err) {}
+      if (hayComandaListaPendiente) {
+        // If this mesa was acked already, treat this press as opening the mesa
+        if (ackedMesas.has(String(mesa.id))) {
+          // clear ack and open
+          setAckedMesas(prev => {
+            const copy = new Set(prev);
+            copy.delete(String(mesa.id));
+            return copy;
+          });
+          onAbrirComanda(mesa);
+          return;
+        }
+
+        // Marcar la primera comanda lista como entregada and set ack
+        const comandaParaEntregar = comandasAbiertas.find((c: any) => {
+          if (c.estado === 'cerrada' || c.entregado) return false;
+          const pedidos = c.pedidos || [];
+          return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+        });
+        if (comandaParaEntregar) {
+          console.log('[Mesero] handleMesaPress -> escogida comandaParaEntregar', { mesaId: mesa.id, comandaId: comandaParaEntregar.id });
+          // set ack flag so next tap opens the mesa
+          setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+          marcarComandaEntregada(comandaParaEntregar.id);
+        }
+      } else {
+        // No hay comandas pendientes, abrir la mesa
+        onAbrirComanda(mesa);
+      }
+    };
     
     return (
       <TouchableOpacity
-        onPress={() => onAbrirComanda(mesa)}
+        onPress={handleMesaPress}
         key={mesa.id}
         style={{
           marginBottom: 5,
@@ -1340,7 +1547,10 @@ export default function MeseroDashboard() {
                   fg={fg}
                   onOpen={() => onAbrirComanda(mesa)}
                   estaEntregada={yaEntregada}
-                  onMarcarEntregada={() => marcarComandaEntregada(comanda.id)}
+                  onMarcarEntregada={() => {
+                    setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                    marcarComandaEntregada(comanda.id);
+                  }}
                 />
               );
             })}
@@ -1431,10 +1641,10 @@ export default function MeseroDashboard() {
       <TopNav title="Mesero" localLogo={localLogo} onOpenSettings={() => setShowModal(true)} />
 
       <View style={{ padding: 16, paddingTop: 8 }}>
-        {/* Botón para meseros: selector de vista (izq) + asignar mesas (der) */}
+        {/* Botón para meseros: selector de vista (izq) + reporte + asignar mesas (der) */}
         {user?.tipo === 'atencion' && (
-          <View style={{ marginBottom: 12, flexDirection: 'row', gap: 8 }}>
-            <View style={{ width: '50%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+          <View style={{ marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 6 }}>
               {/* tightened emoji buttons: list (icon) + group (2x2 squares) */}
               <TouchableOpacity accessibilityLabel="Modo lista" onPress={() => setViewMode('list')} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: viewMode === 'list' ? PRIMARY : (dark ? '#1F2937' : '#F3F4F6'), borderWidth: viewMode === 'list' ? 0 : 1, borderColor: viewMode === 'list' ? PRIMARY : (dark ? '#374151' : '#E5E7EB') }}>
                 <Text style={{ fontSize: 18, color: viewMode === 'list' ? 'white' : (dark ? 'white' : '#111827') }}>{'☰'}</Text>
@@ -1443,8 +1653,13 @@ export default function MeseroDashboard() {
               <TouchableOpacity accessibilityLabel="Modo agrupar" onPress={() => setViewMode('group')} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: viewMode === 'group' ? PRIMARY : (dark ? '#1F2937' : '#F3F4F6'), borderWidth: viewMode === 'group' ? 0 : 1, borderColor: viewMode === 'group' ? PRIMARY : (dark ? '#374151' : '#E5E7EB') }}>
                 <Text style={{ fontSize: 18, color: viewMode === 'group' ? 'white' : (dark ? 'white' : '#111827') }}>{'▦'}</Text>
               </TouchableOpacity>
+
+              {/* Botón de reporte del día */}
+              <TouchableOpacity accessibilityLabel="Reporte del día" onPress={openReportModal} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: dark ? '#1F2937' : '#F3F4F6', borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
+                <Text style={{ fontSize: 18, color: dark ? 'white' : '#111827' }}>{'📊'}</Text>
+              </TouchableOpacity>
             </View>
-            <View style={{ width: '50%' }}>
+            <View style={{ flex: 1 }}>
               <TouchableOpacity onPress={openAssignModalMobile} style={{ backgroundColor: PRIMARY, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
                 <Text style={{ color: 'white', fontWeight: '700' }}>Asignar mesas</Text>
               </TouchableOpacity>
@@ -1526,7 +1741,11 @@ export default function MeseroDashboard() {
                       const top = row * cellH + gutter;
                       const w = cellW - (gutter * 2);
                       const h = span * cellH - (gutter * 2);
-                      const comandas = (mesa.comandas || []).filter((c: any) => c);
+                      const comandas = ((mesa.comandas || []).slice() || []).filter((c: any) => c).sort((a: any, b: any) => {
+                        const A = new Date(a.createdAt || a.created_at || 0).getTime() || 0;
+                        const B = new Date(b.createdAt || b.created_at || 0).getTime() || 0;
+                        return B - A;
+                      });
                       const isEmpty = comandas.length === 0;
                       
                       // Contar comandas cerradas de hoy
@@ -1561,8 +1780,44 @@ export default function MeseroDashboard() {
                             }
                           ])}
                           onPress={() => {
-                            console.log('[Grid] ✅ PRESS mesa:', mesa.id);
-                            onAbrirComanda(mesa);
+                            try {
+                              // If there is a ready comanda, first press should ack/deliver it.
+                              const comandas = (mesa.comandas || []).filter((c: any) => c);
+                              const hayComandaListaPendiente = comandas.some((c: any) => {
+                                if (c.estado === 'cerrada' || c.entregado) return false;
+                                const pedidos = c.pedidos || [];
+                                return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+                              });
+
+                              if (hayComandaListaPendiente) {
+                                if (ackedMesas.has(String(mesa.id))) {
+                                  // second tap -> open mesa
+                                  setAckedMesas(prev => {
+                                    const copy = new Set(prev);
+                                    copy.delete(String(mesa.id));
+                                    return copy;
+                                  });
+                                  onAbrirComanda(mesa);
+                                  return;
+                                }
+
+                                const comandaParaEntregar = comandas.find((c: any) => {
+                                  if (c.estado === 'cerrada' || c.entregado) return false;
+                                  const pedidos = c.pedidos || [];
+                                  return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+                                });
+                                if (comandaParaEntregar) {
+                                  setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                                  marcarComandaEntregada(comandaParaEntregar.id);
+                                  return;
+                                }
+                              }
+                              // default: open
+                              onAbrirComanda(mesa);
+                            } catch (err) {
+                              console.error('[Grid] handle press error', err);
+                              onAbrirComanda(mesa);
+                            }
                           }}
                         >
                           <View style={{ backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 8, padding: 8, flex: 1, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
@@ -1583,7 +1838,10 @@ export default function MeseroDashboard() {
                                         fg={fg}
                                         onOpen={() => {}}
                                         estaEntregada={!!c.entregado || deliveredOptimistic.has(String(c.id))}
-                                        onMarcarEntregada={() => marcarComandaEntregada(c.id)}
+                                        onMarcarEntregada={() => {
+                                          setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                                          marcarComandaEntregada(c.id);
+                                        }}
                                       />
                                     </View>
                                   ))}
@@ -1646,151 +1904,7 @@ export default function MeseroDashboard() {
         </View>
       </View>
 
-      <Modal visible={showModal} transparent animationType="fade" onRequestClose={() => setShowModal(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: bg, borderRadius: 12, padding: 20, width: '90%', maxWidth: 400 }}>
-            <TouchableOpacity onPress={() => setShowModal(false)} style={{ position: 'absolute', right: 12, top: 12, zIndex: 30 }}>
-              <Text style={{ fontSize: 18, color: '#ef4444', fontWeight: '700' }}>✕</Text>
-            </TouchableOpacity>
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              {user?.photo ? (
-                <Image source={{ uri: user.photo }} style={{ width: 80, height: 80, borderRadius: 40, marginBottom: 10 }} />
-              ) : (
-                <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                  <Text style={{ color: fg, fontSize: 32, fontWeight: '700' }}>{user?.nombre ? user.nombre.charAt(0).toUpperCase() : 'M'}</Text>
-                </View>
-              )}
-              <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>{user?.nombre || 'Mesero'}</Text>
-            </View>
-            <View style={{ gap: 16 }}>
-              <View>
-                <Text style={{ color: muted, marginBottom: 6 }}>Nombre</Text>
-                <TextInput
-                  value={tempNombre}
-                  onChangeText={setTempNombre}
-                  placeholder="Tu nombre"
-                  placeholderTextColor={muted}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: dark ? '#374151' : '#E5E7EB',
-                    borderRadius: 8,
-                    padding: 12,
-                    color: fg,
-                    backgroundColor: dark ? '#0b1220' : 'white'
-                  }}
-                />
-                <TouchableOpacity onPress={() => { updateUser({ nombre: tempNombre }); setShowModal(false); }} style={{ marginTop: 8, backgroundColor: '#10b981', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                  <Text style={{ color: 'white', fontWeight: '700' }}>Guardar Nombre</Text>
-                </TouchableOpacity>
-              </View>
-              <View>
-                <Text style={{ color: muted, marginBottom: 6 }}>Foto de Perfil</Text>
-                <View style={{ flexDirection: 'row', gap: 8, position: 'relative', alignItems: 'center' }}>
-                  {/* animated hand above the two photo buttons (alternates between them) */}
-                  {!((user as any)?.photo || (user as any)?.fotoUrl || (user as any)?.foto) && (
-                    <Animated.View style={{ position: 'absolute', top: 8, left: '50%', transform: modalHandTransform ? modalHandTransform : [], marginLeft: -12, zIndex: 50, elevation: 50 }} pointerEvents="none">
-                      <Text style={{ fontSize: 26 }}>👆🏽</Text>
-                    </Animated.View>
-                  )}
-                  <TouchableOpacity onPress={async () => {
-                    const permission = await ImagePicker.requestCameraPermissionsAsync();
-                    if (permission.granted) {
-                      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, aspect: [1,1], quality: 0.6, base64: true });
-                      if (!result.canceled && result.assets && result.assets[0]) {
-                        const asset = result.assets[0];
-                        const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
-                        try {
-                            if (base64Data && user?.id) {
-                              const resp = await userService.update((user.id as any), { foto: base64Data });
-                              const newUser = (resp?.data || resp || {});
-                            let normalizedPhoto = newUser.fotoUrl || newUser.foto_url || newUser.foto || asset.uri || null;
-                            try {
-                              const rawApi = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').toString().trim();
-                              const host = rawApi.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
-                              if (typeof normalizedPhoto === 'string' && normalizedPhoto.length > 0 && !/^https?:\/\//i.test(normalizedPhoto) && !/^data:/i.test(normalizedPhoto) && !/^file:/i.test(normalizedPhoto) && !/^content:/i.test(normalizedPhoto)) {
-                                const leading = normalizedPhoto.startsWith('/') ? '' : '/';
-                                normalizedPhoto = `${host}${leading}${normalizedPhoto}`;
-                              }
-                            } catch (err) {
-                              // ignore
-                            }
-                            updateUser({ photo: normalizedPhoto });
-                              setShowModal(false);
-                            } else {
-                              updateUser({ photo: asset.uri });
-                              setShowModal(false);
-                            }
-                        } catch (err) {
-                          console.error('Error subiendo foto', err);
-                          updateUser({ photo: asset.uri });
-                        }
-                      }
-                    }
-                  }} style={{ flex: 1, backgroundColor: '#3b82f6', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                    <Text style={{ color: 'white', fontWeight: '700' }}>Tomar Foto</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={async () => {
-                    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    if (permission.granted) {
-                      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ((ImagePicker as any).MediaType?.Images ?? (ImagePicker as any).MediaTypeOptions?.Images), allowsEditing: true, aspect: [1,1], quality: 0.6, base64: true });
-                      if (!result.canceled && result.assets && result.assets[0]) {
-                        const asset = result.assets[0];
-                        const base64Data = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null;
-                        try {
-                          if (base64Data && user?.id) {
-                            const resp = await userService.update((user.id as any), { foto: base64Data });
-                            const newUser = (resp?.data || resp || {});
-                            let normalizedPhoto = newUser.fotoUrl || newUser.foto_url || newUser.foto || asset.uri || null;
-                            try {
-                              const rawApi = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').toString().trim();
-                              const host = rawApi.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
-                              if (typeof normalizedPhoto === 'string' && normalizedPhoto.length > 0 && !/^https?:\/\//i.test(normalizedPhoto) && !/^data:/i.test(normalizedPhoto) && !/^file:/i.test(normalizedPhoto) && !/^content:/i.test(normalizedPhoto)) {
-                                const leading = normalizedPhoto.startsWith('/') ? '' : '/';
-                                normalizedPhoto = `${host}${leading}${normalizedPhoto}`;
-                              }
-                            } catch (err) {
-                              // ignore
-                            }
-                            updateUser({ photo: normalizedPhoto });
-                            setShowModal(false);
-                          } else {
-                            updateUser({ photo: asset.uri });
-                            setShowModal(false);
-                          }
-                        } catch (err) {
-                          console.error('Error subiendo foto', err);
-                          updateUser({ photo: asset.uri });
-                        }
-                      }
-                    }
-                  }} style={{ flex: 1, backgroundColor: '#10b981', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                    <Text style={{ color: 'white', fontWeight: '700' }}>Subir Foto</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View>
-                <Text style={{ color: muted, marginBottom: 6 }}>Tema</Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-                    <TouchableOpacity onPress={() => setTheme('dark')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: dark ? '#1E3A8A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: dark ? 0 : 1, borderColor: dark ? 'transparent' : (dark ? '#374151' : '#E5E7EB') }}>
-                      <Text style={{ fontSize: 18 }}>🌙</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setTheme('light')} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: !dark ? '#FDE68A' : 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: !dark ? 0 : 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
-                      <Text style={{ fontSize: 18 }}>☀️</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => { logout(); setShowModal(false); router.replace('/login'); }} style={{ backgroundColor: '#ef4444', padding: 12, borderRadius: 8, alignItems: 'center' }}>
-                <Text style={{ color: 'white', fontWeight: '700' }}>Cerrar Sesión</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={() => setShowModal(false)} style={{ marginTop: 16, alignItems: 'center' }}>
-              <Text style={{ color: muted }}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <AccountModal visible={showModal} onClose={() => setShowModal(false)} />
       {/* Assign mesas modal (mobile) */}
       <Modal visible={showAssignModalMobile} transparent animationType="slide" onRequestClose={() => setShowAssignModalMobile(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
@@ -1851,6 +1965,130 @@ export default function MeseroDashboard() {
                 <Text style={{ color: 'white', fontWeight: '700' }}>Asignarme</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Reporte del Día */}
+      <Modal visible={showReportModal} transparent animationType="slide" onRequestClose={() => setShowReportModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: bg, borderRadius: 16, padding: 20, width: '95%', maxWidth: 400, maxHeight: '80%' }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 24 }}>📊</Text>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: fg }}>Reporte del Día</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                <Text style={{ fontSize: 20, color: '#ef4444', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {loadingReport ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>⏳</Text>
+                <Text style={{ color: muted }}>Cargando estadísticas...</Text>
+              </View>
+            ) : reportData ? (
+              <ScrollView style={{ flex: 1 }}>
+                {/* Fecha */}
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                  <Text style={{ color: muted, fontSize: 14 }}>{new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
+                </View>
+
+                {/* Estadísticas de Comandas - Globales del local */}
+                <Text style={{ fontSize: 14, fontWeight: '600', color: muted, marginBottom: 8, textAlign: 'center' }}>📍 Estadísticas del Local</Text>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                  {/* Comandas Abiertas */}
+                  <View style={{ flex: 1, backgroundColor: dark ? '#1e3a5f' : '#dbeafe', borderRadius: 12, padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 28, marginBottom: 4 }}>📋</Text>
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: dark ? '#60a5fa' : '#2563eb' }}>{reportData.global?.comandasAbiertas || 0}</Text>
+                    <Text style={{ fontSize: 12, color: dark ? '#93c5fd' : '#1d4ed8', textAlign: 'center' }}>Abiertas</Text>
+                  </View>
+
+                  {/* Comandas Cerradas */}
+                  <View style={{ flex: 1, backgroundColor: dark ? '#064e3b' : '#dcfce7', borderRadius: 12, padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 28, marginBottom: 4 }}>✅</Text>
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: dark ? '#34d399' : '#16a34a' }}>{reportData.global?.comandasCerradas || 0}</Text>
+                    <Text style={{ fontSize: 12, color: dark ? '#6ee7b7' : '#15803d', textAlign: 'center' }}>Cerradas</Text>
+                  </View>
+                </View>
+
+                {/* Total Cobrado - Global */}
+                <View style={{ backgroundColor: dark ? '#1c1917' : '#fef3c7', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 24, marginRight: 8 }}>💰</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: dark ? '#fbbf24' : '#92400e' }}>Total Cobrado</Text>
+                  </View>
+                  <Text style={{ fontSize: 32, fontWeight: '700', color: dark ? '#fcd34d' : '#b45309', textAlign: 'center', marginBottom: 16 }}>
+                    ${(parseFloat(reportData.global?.totalEfectivo || '0') + parseFloat(reportData.global?.totalQr || '0')).toLocaleString('es-AR')}
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>💵</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: dark ? '#a3e635' : '#16a34a' }}>${parseFloat(reportData.global?.totalEfectivo || '0').toLocaleString('es-AR')}</Text>
+                      <Text style={{ fontSize: 11, color: muted }}>Efectivo</Text>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>📱</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: dark ? '#60a5fa' : '#2563eb' }}>${parseFloat(reportData.global?.totalQr || '0').toLocaleString('es-AR')}</Text>
+                      <Text style={{ fontSize: 11, color: muted }}>QR / Digital</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Tiempo de Entrega - Global */}
+                <View style={{ backgroundColor: dark ? '#1f2937' : '#f3f4f6', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 24, marginRight: 8 }}>⏱️</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: fg }}>Tiempo Promedio de Entrega</Text>
+                  </View>
+                  {reportData.global?.promedioTiempoEntrega != null && reportData.global?.promedioTiempoEntrega > 0 ? (
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: PRIMARY, textAlign: 'center' }}>
+                      {reportData.global.promedioTiempoEntrega} min
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 14, color: muted, textAlign: 'center' }}>Sin datos de entrega aún</Text>
+                  )}
+                </View>
+
+                {/* Mis estadísticas (mesero) */}
+                {reportData.mesero && (reportData.mesero.comandasCerradas > 0 || reportData.mesero.comandasAbiertas > 0) && (
+                  <>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: muted, marginBottom: 8, marginTop: 8, textAlign: 'center' }}>👤 Mis Mesas</Text>
+                    <View style={{ backgroundColor: dark ? '#0f172a' : '#f8fafc', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: dark ? '#334155' : '#e2e8f0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 }}>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#60a5fa' : '#2563eb' }}>{reportData.mesero.comandasAbiertas || 0}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Abiertas</Text>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#34d399' : '#16a34a' }}>{reportData.mesero.comandasCerradas || 0}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Cerradas</Text>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#fbbf24' : '#b45309' }}>${parseFloat(reportData.mesero.totalDia || '0').toLocaleString('es-AR')}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Total</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {/* Botón de refrescar */}
+                <TouchableOpacity onPress={fetchDailyReport} style={{ backgroundColor: PRIMARY, paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 8 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>🔄 Actualizar</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>❌</Text>
+                <Text style={{ color: muted, textAlign: 'center' }}>No se pudo cargar el reporte</Text>
+                <TouchableOpacity onPress={fetchDailyReport} style={{ marginTop: 16, backgroundColor: PRIMARY, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}>
+                  <Text style={{ color: 'white', fontWeight: '600' }}>Reintentar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>

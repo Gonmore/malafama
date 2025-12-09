@@ -2,7 +2,7 @@
 
 **Base URL:** `http://localhost:5000/api/v1`
 
-**Última actualización:** 20 de Noviembre 2025
+**Última actualización:** 28 de Noviembre 2025
 
 ---
 
@@ -559,6 +559,33 @@ Ejecutar (run) inmediatamente una programación existente (genera y envía el re
 ### DELETE `/reportes/schedules/:id`
 Eliminar una programación existente.
 
+### GET `/reportes/mesero/dia`
+Obtener el reporte del día para el mesero autenticado.
+
+**Acceso:** Requiere rol `atencion`
+
+**Response:**
+```json
+{
+  "success": true,
+  "comandasAbiertas": 3,
+  "comandasCerradas": 12,
+  "totalEfectivo": 45000,
+  "totalQr": 28500,
+  "promedioTiempoEntregaMinutos": 23.5,
+  "promedioTiempoEntregaFormateado": "23m",
+  "tiempoMinimoEntrega": "8m",
+  "tiempoMaximoEntrega": "1h 12m"
+}
+```
+
+**Notas:**
+- El día laboral se define de 6:00 AM a 6:00 AM del día siguiente
+- Solo incluye comandas del mesero autenticado (basado en token JWT)
+- Los tiempos de entrega se calculan para comandas cerradas y entregadas
+
+---
+
 ### Admin manual generation endpoints
 ### POST `/reportes/admin/generar`
 Generar manualmente reportes para debug o pruebas
@@ -747,6 +774,7 @@ socket.emit('join-room', 'cocina'); // o 'bar', 'atencion', 'admin'
 | `nueva-comanda` | `{ comanda, pedidos }` | Nueva comanda creada | `cocina`, `bar` |
 | `nuevos-pedidos` | `{ comandaId, pedidos }` | Pedidos agregados a comanda | `cocina`, `bar` |
 | `pedido-listo` | `{ pedidoId, comandaId, mesaId }` | Pedido marcado como listo | `atencion` |
+| `pedido-actualizado` | `{ pedidoId, comandaId, estado, estadoAnterior, productoNombre, mesaId, localId }` | Notificación genérica cuando cambia el estado de un pedido (incluye desmarcar listo) | `bar`, `cocina`, `atencion` |
 | `comanda-completa` | `{ comandaId, mesaId }` | Todos los pedidos listos | `atencion` |
 | `pedido-cancelado` | `{ pedidoId, comandaId }` | Pedido cancelado | `cocina`, `bar` |
 | `pong` | `{ timestamp }` | Respuesta a ping | individual |

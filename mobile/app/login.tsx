@@ -23,16 +23,32 @@ export default function LoginScreen() {
       setLoading(true);
       const { data } = await api.post('/auth/login', { email, password });
 
+      console.log('[DEBUG Login] Response data:', data);
+
       // Backend sometimes returns the user object as `usuario` — accept either shape.
       const token = data?.token || data?.data?.token;
       const user = data?.user || data?.usuario || data?.data?.usuario || data?.data?.user || null;
 
+      console.log('[DEBUG Login] Extracted token:', token);
+      console.log('[DEBUG Login] Extracted user:', user);
+      console.log('[DEBUG Login] User tipo:', user?.tipo);
+
       setAuth(token, user);
 
+      // Esperar un momento para que AsyncStorage persista los datos
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Redirect user to role-specific panel immediately after login
       const tipo = user?.tipo || 'admin';
-      const route = tipo === 'atencion' ? '/mesero' : tipo === 'cocina' ? '/cocina' : tipo === 'proveedor' ? '/proveedor' : '/admin';
+      const route = 
+        tipo === 'atencion' ? '/mesero' : 
+        tipo === 'cocina' ? '/cocina' : 
+        tipo === 'bar' ? '/bar' :
+        tipo === 'proveedor' ? '/proveedor' : 
+        tipo === 'admin' ? '/home' :
+        '/mesero';
+      
+      console.log('[DEBUG Login] Redirecting to:', route);
       // routing to role-specific screen
       router.replace(route);
     } catch (err: any) {

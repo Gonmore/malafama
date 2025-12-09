@@ -1,6 +1,6 @@
 # Bitácora del Proyecto MalaFama - Sistema de Gestión de Pedidos para Restaurante
 
-**Última actualización:** 27 de Noviembre 2025
+**Última actualización:** 28 de Noviembre 2025
 
 ## 📋 Descripción del Proyecto
 
@@ -13,6 +13,36 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 ---
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
+
+### Sesión del 28 de Noviembre 2025 - App Móvil Mesero: Reporte Diario con Estadísticas
+
+#### ✅ Cambios principales (mobile)
+- Nuevo botón 📊 "Reporte del Día" en la barra de herramientas del dashboard de mesero
+- Modal de reporte diario con estadísticas completas:
+  - Comandas abiertas del día
+  - Comandas cerradas del día
+  - Total cobrado (desglosado en efectivo y QR/digital)
+  - Promedio de tiempo de entrega por comanda (con mínimo y máximo)
+- UI atractiva con iconos emoji, colores diferenciados y soporte completo para dark mode
+- Botón de actualización para refrescar estadísticas en tiempo real
+
+#### ✅ Backend: Mejoras al endpoint de reporte mesero
+- Endpoint `GET /api/v1/reportes/mesero/dia` mejorado con métricas de tiempo de entrega
+- Cálculo de `promedioTiempoEntregaMinutos` basado en comandas cerradas y entregadas
+- Formato legible `promedioTiempoEntregaFormateado` (ej: "1h 23m")
+- Estadísticas adicionales: `tiempoMinimoEntrega` y `tiempoMaximoEntrega`
+- Definición de día laboral: 6 AM a 6 AM del día siguiente
+
+#### ✅ Archivos modificados
+- `mobile/app/mesero/index.tsx` — Nuevo botón de reporte, modal de estadísticas, integración con endpoint
+- `backend/src/controllers/reporte.controller.js` — Mejoras a `getReporteDiaMesero` con métricas de tiempo
+
+#### ✅ Notas técnicas
+- El reporte considera solo las comandas del mesero autenticado (basado en token JWT)
+- Los tiempos de entrega se calculan como diferencia entre `createdAt` y `cerradaAt` de comandas cerradas y entregadas
+- El modal es responsive y funciona en ambos temas (claro/oscuro)
+
+---
 
 ### Sesión del 27 de Noviembre 2025 - App Móvil: Paridad Bar/Cocina, Vistas Compactas y "Recientes"
 

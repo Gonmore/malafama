@@ -142,7 +142,14 @@ export default function MesaProductos() {
 
       // Mostrar comandas abiertas + las que están cerradas y entregadas del mismo día (solo informativas)
       // Usar updated_at para determinar si es del mismo día
-      const abiertas = lista.filter((c) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).updated_at || (c as any).cerradaAt || (c as any).cerrada_at)));
+      // Use consistent ordering with Mesero: newest comanda first
+      const abiertas = (lista || []).slice().filter((c) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).updated_at || (c as any).cerradaAt || (c as any).cerrada_at))).sort((a: any, b: any) => {
+        const A = new Date(a.createdAt || a.created_at || 0).getTime() || 0;
+        const B = new Date(b.createdAt || b.created_at || 0).getTime() || 0;
+        return B - A;
+      });
+      // Debug: print comandas loaded for this mesa so we can match which id is entregada
+      try { console.log('[MesaProductos] cargarComandas -> mesaId:', id, 'comandas loaded:', (lista || []).map(c => ({ id: c.id, estado: c.estado, entregado: c.entregado }))); } catch (err) {}
       setComandas(abiertas);
       
       // Obtener info de la mesa desde la primera comanda
