@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: malafama-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+
+      # DB (existing container)
+      DB_HOST: ${DB_HOST:-postgres-principal}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-malafama}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # Auth
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
+
+      # API/CORS
+      API_VERSION: ${API_VERSION:-v1}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://comandas.malafamacomedia.com}
+
+      # Optional logging/limits
+      LOG_SQL: ${LOG_SQL:-false}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-5000}
+
+      # Startup behavior
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-60}
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-2}
+
+    ports:
+      - "127.0.0.1:6010:5000"
+    volumes:
+      - malafama_uploads:/app/uploads
+    networks:
+      - proxy
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+    container_name: malafama-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6011:80"
+    networks:
+      - proxy
+
+volumes:
+  malafama_uploads:
+
+networks:
+  # Network where nginx-proxy-manager lives (external)
+  proxy:
+    external: true
+    name: ${NPM_NETWORK:-npm_default}
+
+  # Network where postgres-principal lives (external)
+  db:
+    external: true
+    name: ${POSTGRES_NETWORK:-postgres_default}

@@ -6,6 +6,13 @@ import localService from '../../services/localService';
 import Navbar from '../../components/Navbar';
 import io from 'socket.io-client';
 
+function resolveSocketUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) return window.location.origin;
+  if (apiUrl.startsWith('/')) return window.location.origin;
+  return apiUrl.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/g, '');
+}
+
 export default function BarView() {
   const { user } = useAuthStore();
   const [pedidosPendientes, setPedidosPendientes] = useState([]);
@@ -29,7 +36,7 @@ export default function BarView() {
       cargarPedidos();
       
       // Conectar a Socket.io
-      const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
+      const socket = io(resolveSocketUrl());
       
       socket.on('connect', () => {
         console.log('Socket bar conectado');

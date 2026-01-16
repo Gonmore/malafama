@@ -1,0 +1,22 @@
+FROM node:18-bullseye-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --omit=dev
+
+COPY . .
+
+ENV NODE_ENV=production
+
+# Create uploads dir (bind/named volume may override)
+RUN mkdir -p /app/uploads
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 5000
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -9,6 +9,13 @@ import ReporteDiaMesero from './ReporteDiaMesero';
 import Navbar from '../../components/Navbar';
 import io from 'socket.io-client';
 
+function resolveSocketUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) return window.location.origin;
+  if (apiUrl.startsWith('/')) return window.location.origin;
+  return apiUrl.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/g, '');
+}
+
 export default function MeseroView() {
   const { user } = useAuthStore();
   const [mesas, setMesas] = useState([]);
@@ -68,7 +75,7 @@ export default function MeseroView() {
     try { window.addEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
     
     // Conectar a Socket.io para recibir notificaciones
-    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000');
+    const socket = io(resolveSocketUrl());
     
     socket.on('connect', () => {
       console.log('Socket conectado');
