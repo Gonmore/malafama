@@ -15,6 +15,7 @@ import { useAuthStore } from '../../src/store/auth';
 import { localService } from '../../src/services/local';
 import * as ImagePicker from 'expo-image-picker';
 import AccountModal from '../components/AccountModal';
+import { showErrorAlert } from '../../src/utils/errorHandler';
 
 type Mode = 'por-pedido' | 'por-pedido-compacto' | 'por-producto' | 'por-producto-compacto' | 'por-mesa';
 type Tab = 'cola' | 'recientes';
@@ -244,7 +245,10 @@ export default function BarDashboard() {
       await notifySuccess();
       load();
     } catch (e) {
-      Alert.alert('Pedido', 'No se pudo marcar como listo');
+      showErrorAlert(e, {
+        title: 'Pedido',
+        onRetry: () => marcarListo(id)
+      });
     }
   };
 
@@ -253,7 +257,10 @@ export default function BarDashboard() {
       await pedidoService.desmarcarListo(id);
       load();
     } catch (e) {
-      Alert.alert('Pedido', 'No se pudo desmarcar como listo');
+      showErrorAlert(e, {
+        title: 'Pedido',
+        onRetry: () => desmarcarListo(id)
+      });
     }
   };
 
@@ -265,7 +272,10 @@ export default function BarDashboard() {
       await notifySuccess();
       load();
     } catch (e) {
-      Alert.alert('Bar', 'No se pudieron marcar todos como listos');
+      showErrorAlert(e, {
+        title: 'Bar',
+        onRetry: () => completarMesa(mesaKey)
+      });
     }
   };
 

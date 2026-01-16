@@ -3,11 +3,26 @@ import api from './api';
 export const localService = {
   obtenerLocales: async () => {
     const { data } = await api.get('/locales');
+    console.log('📍 Response de /locales:', JSON.stringify(data, null, 2));
+    
     // backend returns { success: true, data: { locales: [...] } }
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data?.data)) return data.data;
-    if (Array.isArray(data?.data?.locales)) return data.data.locales;
-    if (Array.isArray(data?.locales)) return data.locales;
+    if (Array.isArray(data)) {
+      console.log('✅ Data es array directo');
+      return data;
+    }
+    if (Array.isArray(data?.data)) {
+      console.log('✅ Data.data es array');
+      return data.data;
+    }
+    if (Array.isArray(data?.data?.locales)) {
+      console.log('✅ Data.data.locales es array');
+      return data.data.locales;
+    }
+    if (Array.isArray(data?.locales)) {
+      console.log('✅ Data.locales es array');
+      return data.locales;
+    }
+    console.log('⚠️ No se encontró array, retornando data completo:', data);
     return data;
   },
   obtenerLocalPorId: async (id: string | number) => {
@@ -41,6 +56,7 @@ export type Local = {
   id: number;
   nombre?: string;
   logo?: string | null;
+  logo_url?: string | null;
   qr?: string | null;
   direccion?: string | null;
   descripcion?: string | null;

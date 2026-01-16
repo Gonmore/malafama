@@ -15,6 +15,7 @@ import { useAuthStore } from '../../src/store/auth';
 import { getSocket, createSocket } from '../../src/services/socket';
 import { localService } from '../../src/services/local';
 import { PRIMARY } from '../../src/constants/colors';
+import { showErrorAlert } from '../../src/utils/errorHandler';
 
 type MesaConComanda = Mesa & {
   comandas?: any[];
@@ -137,7 +138,10 @@ export default function MeseroDashboard() {
       setReportData(data);
     } catch (err: any) {
       console.error('[mesero] fetchDailyReport error', err);
-      Alert.alert('Error', `No se pudo cargar el reporte: ${err.message || err}`);
+      showErrorAlert(err, {
+        title: 'Reporte',
+        onRetry: fetchDailyReport
+      });
     } finally {
       setLoadingReport(false);
     }
@@ -272,7 +276,10 @@ export default function MeseroDashboard() {
       setShowAssignModalMobile(true);
     } catch (err) {
       console.error('Error cargando asignaciones', err);
-      Alert.alert('Error', 'No se pudieron cargar las mesas asignadas');
+      showErrorAlert(err, {
+        title: 'Mesas',
+        onRetry: openAssignModalMobile
+      });
     }
   };
 
@@ -294,7 +301,10 @@ export default function MeseroDashboard() {
       Alert.alert('Mesas', 'Mesas asignadas correctamente');
     } catch (err: any) {
       console.error('Error asignando mesas', err);
-      Alert.alert('Error', err?.response?.data?.message || 'No se pudieron asignar las mesas');
+      showErrorAlert(err, {
+        title: 'Asignación de mesas',
+        onRetry: saveAssignMobile
+      });
     }
   };
   // --- List-mode comanda row (original compact style) ---
@@ -808,21 +818,25 @@ export default function MeseroDashboard() {
     loadLocalLogo();
 
     // Conectar al socket para actualizaciones en tiempo real
-    let socket = getSocket();
-    try {
-      const token = useAuthStore.getState().token;
-      socket = (!socket || !socket.connected) ? (token ? createSocket(token) : createSocket()) : socket;
-    } catch {}
-    if (socket) {
-      // Registrar usuario para direccionamiento de eventos
+    (async () => {
       try {
-        if (user?.id && user?.tipo) {
-          socket.emit('register', { userId: String(user.id), userType: String(user.tipo) });
+        const token = useAuthStore.getState().token;
+        let socket = getSocket();
+        
+        if (!socket || !socket.connected) {
+          socket = await createSocket(token || undefined);
         }
-      } catch {}
-      const rooms = [
-        user?.localId ? `atencion:${user.localId}` : 'atencion',
-        user?.localId ? `bar:${user.localId}` : 'bar',
+        
+        if (socket) {
+          // Registrar usuario para direccionamiento de eventos
+          try {
+            if (user?.id && user?.tipo) {
+              socket.emit('register', { userId: String(user.id), userType: String(user.tipo) });
+            }
+          } catch {}
+          const rooms = [
+            user?.localId ? `atencion:${user.localId}` : 'atencion',
+            user?.localId ? `bar:${user.localId}` : 'bar',
         user?.localId ? `cocina:${user.localId}` : 'cocina',
       ];
       if (socket.connected) {
@@ -871,20 +885,25 @@ export default function MeseroDashboard() {
       socket.on('comanda-entregada', () => {
         requestLoad();
       });
+        }
+      } catch (error) {
+        console.error('❌ Error en socket setup:', error);
+      }
+    })();
 
-      return () => {
-        socket.off('pedido-listo');
-        socket.off('pedido-actualizado');
-        socket.off('pedido-cambiado-estado');
-        socket.off('pedido');
-        try { if ((socket as any).offAny) { (socket as any).offAny(); } } catch {}
-        socket.off('comanda-actualizada');
-        socket.off('comanda-completa');
-        socket.off('comanda-entregada');
-        // leave joined rooms
-        try { rooms.forEach((r) => socket.emit('leave-room', r)); } catch {}
-      };
-    }
+    return () => {
+      const sock = getSocket();
+      if (sock) {
+        sock.off('pedido-listo');
+        sock.off('pedido-actualizado');
+        sock.off('pedido-cambiado-estado');
+        sock.off('pedido');
+        try { if ((sock as any).offAny) { (sock as any).offAny(); } } catch {}
+        sock.off('comanda-actualizada');
+        sock.off('comanda-completa');
+        sock.off('comanda-entregada');
+      }
+    };
   }, [showModal, (user as any)?.photo, (user as any)?.fotoUrl, (user as any)?.foto, modalHandAnim]);
 
   // Ensure ack flags don't get stale: whenever mesas data changes, keep only mesas that still have a ready comanda

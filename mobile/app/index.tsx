@@ -20,7 +20,7 @@ export default function Index() {
     tipo === 'cocina' ? '/cocina' :
     tipo === 'bar' ? '/bar' :
     tipo === 'proveedor' ? '/proveedor' :
-    tipo === 'admin' ? '/home' : // solo admin va al seleccionador
+    tipo === 'admin' ? '/admin/select-local' : // admin selecciona local primero
     '/mesero'; // fallback para roles desconocidos
 
   console.log('[DEBUG Index] Calculated tipo:', tipo);

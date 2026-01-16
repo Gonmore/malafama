@@ -5,7 +5,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    container_name: malafama-backend
+    container_name: backend-malafama
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -41,8 +41,7 @@ services:
     volumes:
       - malafama_uploads:/app/uploads
     networks:
-      - proxy
-      - db
+      - red-interna
 
   frontend:
     build:
@@ -50,12 +49,12 @@ services:
       dockerfile: Dockerfile.prod
       args:
         VITE_API_URL: ${VITE_API_URL:-/api/v1}
-    container_name: malafama-frontend
+    container_name: frontend-malafama
     restart: unless-stopped
     ports:
       - "127.0.0.1:6011:80"
     networks:
-      - proxy
+      - red-interna
 
 volumes:
   malafama_uploads:

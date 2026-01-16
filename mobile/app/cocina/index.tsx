@@ -15,6 +15,7 @@ import { useAuthStore } from '../../src/store/auth';
 import { localService } from '../../src/services/local';
 import * as ImagePicker from 'expo-image-picker';
 import AccountModal from '../components/AccountModal';
+import { showErrorAlert } from '../../src/utils/errorHandler';
 
 type Mode = 'por-pedido' | 'por-pedido-compacto' | 'por-producto' | 'por-producto-compacto';
 type Tab = 'cola' | 'recientes';
@@ -207,7 +208,10 @@ export default function CocinaDashboard() {
       await pedidoService.marcarListo(id);
       load();
     } catch (e) {
-      Alert.alert('Pedido', 'No se pudo marcar como listo');
+      showErrorAlert(e, {
+        title: 'Pedido',
+        onRetry: () => marcarListo(id)
+      });
     }
   };
 
@@ -216,7 +220,10 @@ export default function CocinaDashboard() {
       await pedidoService.desmarcarListo(id);
       load();
     } catch (e) {
-      Alert.alert('Pedido', 'No se pudo desmarcar como listo');
+      showErrorAlert(e, {
+        title: 'Pedido',
+        onRetry: () => desmarcarListo(id)
+      });
     }
   };
 

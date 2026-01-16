@@ -17,8 +17,14 @@ export default function Home() {
 
   useEffect(() => {
     if (token) {
-      const s = createSocket(token);
-      // intentionally quiet on connect — socket lifecycle handled elsewhere
+      (async () => {
+        try {
+          const s = await createSocket(token);
+          // intentionally quiet on connect — socket lifecycle handled elsewhere
+        } catch (error) {
+          console.error('Error creating socket:', error);
+        }
+      })();
     }
     return () => disconnectSocket();
   }, [token]);

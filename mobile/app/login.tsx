@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../src/services/api';
 import { useAuthStore } from '../src/store/auth';
 import { useThemeStore } from '../src/store/theme';
+import { showErrorAlert } from '../src/utils/errorHandler';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('admin@malafama.com');
@@ -18,7 +19,7 @@ export default function LoginScreen() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const router = useRouter();
 
-  const onLogin = async () => {
+  const handleLogin = async () => {
     try {
       setLoading(true);
       const { data } = await api.post('/auth/login', { email, password });
@@ -52,8 +53,10 @@ export default function LoginScreen() {
       // routing to role-specific screen
       router.replace(route);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Error de autenticación';
-      Alert.alert('Login', msg);
+      showErrorAlert(err, {
+        title: 'Login',
+        onRetry: handleLogin
+      });
     } finally {
       setLoading(false);
     }
@@ -79,6 +82,7 @@ export default function LoginScreen() {
 
         <Text style={{ color: dark ? '#D1D5DB' : '#374151', marginTop: 8 }}>Password</Text>
         <TextInput
+          autoCapitalize="none"
           placeholder="********"
           secureTextEntry
           value={password}
@@ -89,7 +93,7 @@ export default function LoginScreen() {
 
       <TouchableOpacity
         disabled={loading}
-        onPress={onLogin}
+        onPress={handleLogin}
         style={{ marginTop: 24, backgroundColor: '#ef4444', padding: 14, borderRadius: 10, alignItems: 'center' }}
       >
         <Text style={{ color: 'white', fontWeight: '700' }}>{loading ? 'Ingresando…' : 'Ingresar'}</Text>

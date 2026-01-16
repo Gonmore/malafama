@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../src/store/auth';
 import { useThemeStore } from '../../src/store/theme';
 import { PRIMARY } from '../../src/constants/colors';
+import { showErrorAlert } from '../../src/utils/errorHandler';
 
 type Props = {
   title?: string;
@@ -151,7 +152,9 @@ export default function TopNav({ title = '', localLogo = null, showBack = null, 
       setAuth(token as string, { ...(user || {}), ...newUserData, photo: normalizedPhoto });
       Alert.alert('Avatar', 'Avatar actualizado');
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'No se pudo actualizar avatar');
+      showErrorAlert(e, {
+        title: 'Avatar'
+      });
     } finally {
       setUploading(false);
     }

@@ -2,11 +2,44 @@ const { Local, Mesa, Producto, Usuario } = require('../models');
 
 const { saveBase64ToUploads } = require('../services/storage.service');
 
+// Extraer dominio de un email
+const extraerDominioEmail = (email, nombreLocal = null) => {
+  // Si hay un email válido con @, extraer el dominio
+  if (email && typeof email === 'string' && email.includes('@')) {
+    const partes = email.split('@');
+    if (partes.length === 2 && partes[1] && partes[1].length > 0) {
+      return partes[1]; // Ej: "malafama.com"
+    }
+  }
+  
+  // Si no hay dominio válido, usar el nombre del local
+  if (nombreLocal) {
+    return `${nombreLocal.toLowerCase().replace(/\s+/g, '')}.local`;
+  }
+  
+  return 'local.com'; // Fallback final
+};
+
+// Generar email único para un rol
+const generarEmailUnico = async (rol, dominio) => {
+  let email = `${rol}@${dominio}`;
+  let contador = 1;
+  
+  // Verificar si el email ya existe
+  while (await Usuario.findOne({ where: { email } })) {
+    email = `${rol}${contador}@${dominio}`;
+    contador++;
+  }
+  
+  return email;
+};
+
 // Crear un nuevo local (solo admin)
 const crearLocal = async (req, res) => {
   try {
     const { nombre, descripcion, direccion, telefono, email, logo, qr } = req.body;
     const usuarioId = req.user.id;
+    const adminEmail = req.user.email;
 
     // Validar que el usuario sea admin
     if (req.user.tipo !== 'admin') {
@@ -48,13 +81,15 @@ const crearLocal = async (req, res) => {
 
     // Crear usuarios automáticos para el local
     const passwordDefault = 'password123'; // Password por defecto
+    const dominio = extraerDominioEmail(adminEmail, nombre); // Extraer dominio del admin, fallback a nombre del local
 
     const usuariosCreados = [];
 
     // 1. Crear usuario Mesero (Atención)
+    const emailMesero = await generarEmailUnico('mesero', dominio);
     const mesero = await Usuario.create({
       nombre: `Mesero - ${nombre}`,
-      email: `mesero@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailMesero,
       password: passwordDefault,
       tipo: 'atencion',
       localId: local.id,
@@ -65,9 +100,10 @@ const crearLocal = async (req, res) => {
     usuariosCreados.push({ tipo: 'mesero', ...mesero.toJSON() });
 
     // 2. Crear usuario Cocina
+    const emailCocina = await generarEmailUnico('cocina', dominio);
     const cocina = await Usuario.create({
       nombre: `Cocina - ${nombre}`,
-      email: `cocina@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailCocina,
       password: passwordDefault,
       tipo: 'cocina',
       rolCocina: 'cocina',
@@ -79,9 +115,10 @@ const crearLocal = async (req, res) => {
     usuariosCreados.push({ tipo: 'cocina', ...cocina.toJSON() });
 
     // 3. Crear usuario Bar
+    const emailBar = await generarEmailUnico('bar', dominio);
     const bar = await Usuario.create({
       nombre: `Bar - ${nombre}`,
-      email: `bar@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailBar,
       password: passwordDefault,
       tipo: 'bar',
       rolCocina: 'bar',
