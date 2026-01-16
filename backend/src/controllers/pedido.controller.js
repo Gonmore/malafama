@@ -47,38 +47,49 @@ const updateEstadoPedido = async (req, res) => {
     const estadoAnterior = pedido.estado;
     await pedido.update({ estado });
 
-    // Notificar cambios importantes
-    if (estado === 'listo' && io) {
+    // Notificar cambios importantes (emitir update para cualquier cambio de estado)
+    if (io) {
       // Determinar a qué room notificar según el tipo de producto
       const tipoProducto = pedido.producto.tipo;
       const room = tipoProducto === 'bebida' ? 'bar' : 'cocina';
-      
-      // Notificar a atención que el pedido está listo
+
+      // Construir payload con información útil para clientes
+      const payload = {
+        pedidoId: pedido.id,
+        comandaId: pedido.comandaId,
+        estado,
+        estadoAnterior,
+        productoNombre: pedido.producto.nombre,
+        mesaId: pedido.comanda.mesa.id,
+        mesa: pedido.comanda.mesa.numero,
+        localId: pedido.comanda.localId || null
+      };
+
+      // Emitir actualización genérica a los rooms relevantes
+      io.to(room).emit('pedido-actualizado', payload);
+      io.to('atencion').emit('pedido-actualizado', payload);
       const atencionRoom = `atencion:${pedido.comanda.localId}`;
-      io.to('atencion').emit('pedido-listo', {
-        pedidoId: pedido.id,
-        productoNombre: pedido.producto.nombre,
-        mesaId: pedido.comanda.mesa.id,
-        mesa: pedido.comanda.mesa.numero,
-        comandaId: pedido.comanda.id,
-        mensaje: `${pedido.producto.nombre} listo - Mesa ${pedido.comanda.mesa.numero}`
-      });
-      // Emit also to local-scoped room for meseros of this local
-      io.to(atencionRoom).emit('pedido-listo', {
-        pedidoId: pedido.id,
-        productoNombre: pedido.producto.nombre,
-        mesaId: pedido.comanda.mesa.id,
-        mesa: pedido.comanda.mesa.numero,
-        comandaId: pedido.comanda.id,
-        mensaje: `${pedido.producto.nombre} listo - Mesa ${pedido.comanda.mesa.numero}`
-      });
-      
-      // También notificar al room específico (cocina o bar)
-      io.to(room).emit('pedido-actualizado', {
-        pedidoId: pedido.id,
-        estado: 'listo',
-        productoNombre: pedido.producto.nombre
-      });
+      io.to(atencionRoom).emit('pedido-actualizado', payload);
+
+      // Mantener el evento específico para pedidos listos (atención y local)
+      if (estado === 'listo') {
+        io.to('atencion').emit('pedido-listo', {
+          pedidoId: pedido.id,
+          productoNombre: pedido.producto.nombre,
+          mesaId: pedido.comanda.mesa.id,
+          mesa: pedido.comanda.mesa.numero,
+          comandaId: pedido.comanda.id,
+          mensaje: `${pedido.producto.nombre} listo - Mesa ${pedido.comanda.mesa.numero}`
+        });
+        io.to(atencionRoom).emit('pedido-listo', {
+          pedidoId: pedido.id,
+          productoNombre: pedido.producto.nombre,
+          mesaId: pedido.comanda.mesa.id,
+          mesa: pedido.comanda.mesa.numero,
+          comandaId: pedido.comanda.id,
+          mensaje: `${pedido.producto.nombre} listo - Mesa ${pedido.comanda.mesa.numero}`
+        });
+      }
     }
 
     // Verificar si todos los pedidos de la comanda están listos
@@ -156,9 +167,28 @@ const marcarPedidoListo = async (req, res) => {
       listoAt: new Date()
     });
 
-    // Notificar a atención
+    // Notificar a atención / emitir actualización genérica
     if (io) {
       const atencionRoom = `atencion:${pedido.comanda.mesa.localId || pedido.comanda.localId || req.user?.localId}`;
+
+      const payload = {
+        pedidoId: pedido.id,
+        comandaId: pedido.comandaId,
+        estado: pedido.estado,
+        productoNombre: pedido.producto.nombre,
+        mesaId: pedido.comanda.mesa.id,
+        mesa: pedido.comanda.mesa.numero,
+        localId: pedido.comanda.mesa.localId || pedido.comanda.localId || null
+      };
+
+      // Emit a generic estado update so all clients can react (Mesero listens to this)
+      const tipoProducto = pedido.producto.tipo;
+      const room = tipoProducto === 'bebida' ? 'bar' : 'cocina';
+      io.to(room).emit('pedido-actualizado', payload);
+      io.to('atencion').emit('pedido-actualizado', payload);
+      io.to(atencionRoom).emit('pedido-actualizado', payload);
+
+      // Keep the specific 'pedido-listo' signal as well
       io.to('atencion').emit('pedido-listo', {
         pedidoId: pedido.id,
         productoNombre: pedido.producto.nombre,

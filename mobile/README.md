@@ -171,6 +171,14 @@ npx expo start
 - Pestaña "Recientes" disponible en Bar y Cocina con actualización en tiempo real.
 - Haptics y sonido corto compatibles con Expo.
 
+📊 **Dashboard Mesero**
+- Gestión de mesas asignadas con vista lista y agrupada
+- Botón de reporte diario (📊) con estadísticas:
+  - Comandas abiertas/cerradas del día
+  - Total cobrado (efectivo/QR)
+  - Promedio de tiempo de entrega
+- Soporte completo para dark mode
+
 🔧 **Config y Entorno**
 - Variables `EXPO_PUBLIC_API_URL` y `EXPO_PUBLIC_WS_URL` para alternar entre backend local y nube.
 - Salas por local para reducir ruido de eventos en multi-sede.

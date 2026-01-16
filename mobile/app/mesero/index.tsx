@@ -1,30 +1,179 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, SafeAreaView, Text, TouchableOpacity, View, ScrollView, Animated, Image, Dimensions } from 'react-native';
+import { Alert, Text, TouchableOpacity, Pressable, View, ScrollView, Animated, Image, Dimensions, Modal, TextInput, Switch, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import AccountModal from '../components/AccountModal';
+import { userService } from '../../src/services/user';
 import { useThemeStore } from '../../src/store/theme';
+import TopNav from '../components/TopNav';
 import { useRouter } from 'expo-router';
 import { mesaService, Mesa } from '../../src/services/mesa';
 import { comandaService } from '../../src/services/comanda';
 import { useAuthStore } from '../../src/store/auth';
-import { getSocket } from '../../src/services/socket';
+import { getSocket, createSocket } from '../../src/services/socket';
+import { localService } from '../../src/services/local';
+import { PRIMARY } from '../../src/constants/colors';
+import { showErrorAlert } from '../../src/utils/errorHandler';
 
 type MesaConComanda = Mesa & {
   comandas?: any[];
   disponible?: boolean;
+  usuariosAsignados?: Array<{ id: string; nombre?: string; foto?: string }>;
 };
 
 export default function MeseroDashboard() {
-  const [mesas, setMesas] = useState<MesaConComanda[]>([]);
-  const [verSoloAsignadas, setVerSoloAsignadas] = useState(true);
-  const [tiempoActual, setTiempoActual] = useState(new Date());
-  // (no local entregada set anymore — persisted on server via comanda.entregado)
-  const user = useAuthStore((s) => s.user);
+  // Enable LayoutAnimation on Android
+  useEffect(() => {
+    try {
+      if (Platform.OS === 'android' && (UIManager as any)?.setLayoutAnimationEnabledExperimental) {
+        (UIManager as any).setLayoutAnimationEnabledExperimental(true);
+      }
+    } catch {}
+  }, []);
+
+  // Core app state and helpers (restored to fix missing identifiers)
   const router = useRouter();
-  const theme = useThemeStore((s) => s.theme);
-  const dark = theme === 'dark';
-  const bg = dark ? '#111827' : 'white';
-  const fg = dark ? 'white' : '#111827';
+  const authStoreAny: any = useAuthStore as any;
+  const authStateAny: any = (useAuthStore as any).getState ? (useAuthStore as any).getState() : {};
+  const user: any = authStateAny.user || authStateAny.usuario || null;
+  const token: string | undefined = authStateAny.token;
+  const logout = () => {
+    try {
+      const s: any = (useAuthStore as any);
+      if (s.getState && s.getState().logout) s.getState().logout();
+    } catch (e) {}
+  };
+
+  const updateUser = async (patch: any) => {
+    try {
+      if (!user?.id) return null;
+      const resp = await userService.update(user.id, patch);
+      return resp;
+    } catch (err) {
+      console.error('updateUser error', err);
+      return null;
+    }
+  };
+
+  const themeStateAny: any = (useThemeStore as any).getState ? (useThemeStore as any).getState() : {};
+  const dark = themeStateAny.theme === 'dark' || themeStateAny.dark === true;
+  const setTheme = (t: string) => {
+    try { const s: any = (useThemeStore as any); if (s.getState && s.getState().set) s.getState().set(t); } catch (e) {}
+  };
+  const bg = dark ? '#07101a' : '#FFFFFF';
+  const fg = dark ? '#F9FAFB' : '#111827';
   const muted = dark ? '#9CA3AF' : '#6B7280';
-  const isAdmin = user?.tipo === 'admin';
+
+  const [mesas, setMesas] = useState<any[]>([]);
+  const [tiempoActual, setTiempoActual] = useState<Date>(new Date());
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [tempNombre, setTempNombre] = useState<string>('');
+  const [localLogo, setLocalLogo] = useState<any>(null);
+  const [modalHandAnim, setModalHandAnim] = useState<any>(null);
+
+  const [showAssignModalMobile, setShowAssignModalMobile] = useState<boolean>(false);
+  const [modalMesas, setModalMesas] = useState<any[]>([]);
+  const [assignSelected, setAssignSelected] = useState<Set<string>>(new Set());
+  const [isAdmin] = useState<boolean>(Boolean(user && (user.rol === 'admin' || user.tipo === 'admin')));
+  // Default to grouped view for mesero dashboard. Persisted per-user key stored in AsyncStorage.
+  const [viewMode, setViewModeState] = useState<'list'|'group'>('group');
+
+  // Helper to persist view choice per user
+  const setViewMode = async (m: 'list'|'group') => {
+    try {
+      setViewModeState(m);
+      const key = `mesero_vista_dashboard_${user?.id || 'anon'}`;
+      await AsyncStorage.setItem(key, m);
+    } catch (err) {
+      console.warn('Failed to persist mesero view mode', err);
+    }
+  };
+
+  // Restore persisted view mode per user on mount / user change
+  useEffect(() => {
+    (async () => {
+      try {
+        const key = `mesero_vista_dashboard_${user?.id || 'anon'}`;
+        const v = await AsyncStorage.getItem(key);
+        if (v === 'list' || v === 'group') setViewModeState(v);
+      } catch (err) {
+        // ignore
+      }
+    })();
+  }, [user?.id]);
+  const [verSoloAsignadas, setVerSoloAsignadas] = useState<boolean>(false);
+  const [scrollEnabled, setScrollEnabled] = useState<boolean>(true);
+
+  // Estado para el reporte diario
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [loadingReport, setLoadingReport] = useState<boolean>(false);
+
+  // Función para cargar el reporte diario
+  const fetchDailyReport = async () => {
+    setLoadingReport(true);
+    try {
+      const rawApi = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').toString().trim();
+      const base = rawApi.replace(/\/+$/g, '').replace(/\/api\/v1$/i, '');
+      const url = `${base}/api/v1/reportes/mesero/dia`;
+      console.log('[DEBUG REPORTE] URL:', url);
+      console.log('[DEBUG REPORTE] Token exists:', !!token);
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      console.log('[DEBUG REPORTE] Response status:', resp.status);
+      const text = await resp.text();
+      console.log('[DEBUG REPORTE] Response text (first 500 chars):', text.substring(0, 500));
+      if (!resp.ok) throw new Error(`Error fetching report: ${resp.status} - ${text}`);
+      const data = JSON.parse(text);
+      console.log('[DEBUG REPORTE] Data keys:', Object.keys(data));
+      console.log('[DEBUG REPORTE] data.global:', data.global);
+      console.log('[DEBUG REPORTE] data.mesero:', data.mesero);
+      setReportData(data);
+    } catch (err: any) {
+      console.error('[mesero] fetchDailyReport error', err);
+      showErrorAlert(err, {
+        title: 'Reporte',
+        onRetry: fetchDailyReport
+      });
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const openReportModal = () => {
+    setShowReportModal(true);
+    fetchDailyReport();
+  };
+
+  // load() - fetch mesas (keeps it simple to restore behavior)
+  const load = async () => {
+    try {
+      loadInFlightRef.current = true;
+      const resp = await mesaService.getAssigned();
+      const data = resp?.data || resp || [];
+      const lista = Array.isArray(data) ? data : (data.mesas || data);
+      setMesas(lista || []);
+    } catch (e: any) {
+      // When the user logs out, in-flight requests may return 401 and are expected.
+      // Treat them as informational to avoid noisy error logs during logout flow.
+      const status = e?.response?.status || e?.status || null;
+      if (status === 401) {
+        console.info('[mesero] load skipped - unauthorized (likely logging out)');
+      } else {
+        console.error('[mesero] load error', e);
+      }
+    } finally {
+      lastLoadTsRef.current = Date.now();
+      loadInFlightRef.current = false;
+    }
+  };
 
   let lightFooterLogo: any = null;
   let darkFooterLogo: any = null;
@@ -34,9 +183,66 @@ export default function MeseroDashboard() {
   } catch (err) {
     // fallback to text
   }
+  // comanda background assets (simple templates)
+  let comandaSimpleLight: any = null;
+  let comandaSimpleDark: any = null;
+  try {
+    comandaSimpleLight = require('../../assets/comandaGrasa.jpg');
+  } catch (err) {
+    // ignore if not present
+  }
+  try {
+    comandaSimpleDark = require('../../assets/comandaGrasaDark.jpg');
+  } catch (err) {
+    // ignore if not present
+  }
 
   const window = Dimensions.get('window');
   const footerHeight = Math.max(56, Math.round(window.height * 0.072));
+  const [gridLayout, setGridLayout] = useState<{ width: number; height: number } | null>(null);
+  // Optimistic entregadas to show check immediately on first touch
+  const [deliveredOptimistic, setDeliveredOptimistic] = useState<Set<string>>(new Set());
+  // Track mesas acknowledged (first tap) so second tap will open the mesa
+  const [ackedMesas, setAckedMesas] = useState<Set<string>>(new Set());
+  // Press feedback state for grouped grid tiles
+  const [pressedMesaId, setPressedMesaId] = useState<string | null>(null);
+  const pressAnim = useRef(new Animated.Value(1)).current;
+
+  const handleResponderGrant = (mesaId: any) => {
+    try {
+      setPressedMesaId(String(mesaId));
+      pressAnim.setValue(0.98);
+      Animated.timing(pressAnim, { toValue: 0.96, duration: 90, useNativeDriver: true }).start();
+    } catch (e) {}
+  };
+
+  const handleResponderRelease = (mesa: any) => {
+    try {
+      Animated.timing(pressAnim, { toValue: 1, duration: 140, useNativeDriver: true }).start(() => setPressedMesaId(null));
+      onAbrirComanda(mesa);
+    } catch (e) {}
+  };
+
+  const handleResponderTerminate = () => {
+    try {
+      Animated.timing(pressAnim, { toValue: 1, duration: 140, useNativeDriver: true }).start(() => setPressedMesaId(null));
+    } catch (e) {}
+  };
+  // Debounce for load() calls to prevent hammering the API
+  const loadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadInFlightRef = useRef(false);
+  const lastLoadTsRef = useRef(0);
+  const requestLoad = () => {
+    try {
+      const now = Date.now();
+      // hard throttle: ignore requests if a load is in-flight or last load < 800ms ago
+      if (loadInFlightRef.current || (now - lastLoadTsRef.current) < 800) return;
+      if (loadDebounceRef.current) clearTimeout(loadDebounceRef.current);
+      loadDebounceRef.current = setTimeout(() => {
+        load();
+      }, 250);
+    } catch {}
+  };
 
   // Actualizar tiempo cada segundo para mostrar tiempos dinámicos
   useEffect(() => {
@@ -46,56 +252,82 @@ export default function MeseroDashboard() {
     return () => clearInterval(intervalo);
   }, []);
 
-  const load = async () => {
+  useEffect(() => {
+    setTempNombre(user?.nombre || '');
+  }, [user?.nombre]);
+
+  // Refresh when screen gains focus (single shot). Remove continuous polling.
+  useFocusEffect(
+    useMemo(() => {
+      requestLoad();
+      return () => {};
+    }, [])
+  );
+
+  // Componente que representa una comanda completa (maneja animación del borde cuando TODOS los pedidos están listos)
+  const openAssignModalMobile = async () => {
     try {
-      let data: any = [];
-      
-      // Si es admin y eligió ver todas, cargar todas las mesas
-      if (isAdmin && !verSoloAsignadas) {
-        data = await mesaService.getAll();
-      } else {
-        // Cargar solo mesas asignadas
-        try {
-          data = await mesaService.getAssigned();
-        } catch (err) {
-          console.warn('[mobile][mesero] getAssigned failed ->', err);
-          // Si falla y es admin, mostrar todas
-          if (isAdmin) {
-            data = await mesaService.getAll();
-          }
-        }
-      }
-      
-      setMesas(Array.isArray(data) ? data : data?.data || data?.mesas || []);
-    } catch (e: any) {
-      console.error('[mobile][mesero] error loading mesas ->', e);
-      const msg = e?.response?.data?.message || e?.message || 'No se pudieron cargar las mesas';
-      Alert.alert('Mesas', msg);
+      // load all mesas for selection UI and the currently assigned IDs
+      const [allRes, assignedRes] = await Promise.all([mesaService.getAll(), mesaService.getAssigned()]);
+      const all = Array.isArray(allRes) ? allRes : (allRes?.data || allRes?.mesas || []);
+      setModalMesas(all || []);
+      const assignedIds = Array.isArray(assignedRes) ? assignedRes.map((m: any) => m.id) : ((assignedRes?.data || []).map((m: any) => m.id || m));
+      setAssignSelected(new Set(assignedIds || []));
+      setShowAssignModalMobile(true);
+    } catch (err) {
+      console.error('Error cargando asignaciones', err);
+      showErrorAlert(err, {
+        title: 'Mesas',
+        onRetry: openAssignModalMobile
+      });
     }
   };
 
-  // Componente que representa una comanda completa (maneja animación del borde cuando TODOS los pedidos están listos)
-  const ComandaRow = ({ comanda, idx, dark, fg, onOpen, estaEntregada = false, onMarcarEntregada }: any) => {
+  const toggleAssign = (id: string) => {
+    setAssignSelected(prev => {
+      const copy = new Set(prev);
+      if (copy.has(id)) copy.delete(id);
+      else copy.add(id);
+      return copy;
+    });
+  };
+
+  const saveAssignMobile = async () => {
+    try {
+      const mesaIds = Array.from(assignSelected);
+      await mesaService.assignMesas(mesaIds);
+      setShowAssignModalMobile(false);
+      requestLoad();
+      Alert.alert('Mesas', 'Mesas asignadas correctamente');
+    } catch (err: any) {
+      console.error('Error asignando mesas', err);
+      showErrorAlert(err, {
+        title: 'Asignación de mesas',
+        onRetry: saveAssignMobile
+      });
+    }
+  };
+  // --- List-mode comanda row (original compact style) ---
+  const ComandaListRow = ({ comanda, idx, dark, fg, onOpen, estaEntregada = false, onMarcarEntregada }: any) => {
     const todosListos = comanda.pedidos && comanda.pedidos.length > 0 && comanda.pedidos.every((p: any) => p.estado === 'listo');
+    const minutes = comanda ? Math.max(0, Math.floor((Date.now() - new Date(comanda.createdAt || comanda.created_at).getTime()) / 60000)) : 0;
+    const timeColor = getAgeColor(minutes);
     const borderAnim = useRef(new Animated.Value(1)).current;
     const bounceAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-      // solo animar borde + manita cuando TODOS los pedidos están listos y aún NO está marcada como entregada
       if (todosListos && !estaEntregada) {
         const blink = Animated.loop(
           Animated.sequence([
-            // borde más relajado: parpadeo un poco más lento
             Animated.timing(borderAnim, { toValue: 0.3, duration: 2800, useNativeDriver: true }),
-              Animated.timing(borderAnim, { toValue: 1, duration: 2800, useNativeDriver: true }),
+            Animated.timing(borderAnim, { toValue: 1, duration: 2800, useNativeDriver: true }),
           ])
         );
 
         const bounce = Animated.loop(
           Animated.sequence([
-            // manita bounce más suave
-              Animated.timing(bounceAnim, { toValue: -6, duration: 1800, useNativeDriver: true }),
-                Animated.timing(bounceAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+            Animated.timing(bounceAnim, { toValue: -6, duration: 1800, useNativeDriver: true }),
+            Animated.timing(bounceAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
           ])
         );
 
@@ -112,25 +344,28 @@ export default function MeseroDashboard() {
     }, [todosListos, borderAnim, bounceAnim]);
 
     return (
-      <Animated.View
+          <Animated.View
         key={comanda.id}
         style={{
-          marginBottom: idx < 999 ? 8 : 0,
+          marginBottom: idx < 999 ? 5 : 0,
           flexDirection: 'row',
           backgroundColor: dark ? '#111827' : 'white',
           borderRadius: 6,
           overflow: 'hidden',
-          // si ya fue entregada, mantener borde verde fijo y opacidad 1
-          borderWidth: (todosListos || estaEntregada) ? 2 : 0,
-          borderColor: '#22c55e',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.06,
+          shadowRadius: 6,
+          elevation: 2,
+          borderWidth: 0,
+          borderColor: 'transparent',
           opacity: estaEntregada ? 1 : (todosListos ? borderAnim : 1),
         }}
       >
-        {/* Botón de comanda */}
-        <TouchableOpacity
+          <TouchableOpacity
           onPress={() => {
-            // si la comanda está lista y aún no fue marcada entregada, marcarla como entregada
             if (todosListos && !estaEntregada) {
+              console.log('[ComandaListRow] marcar entregada presionado', { comandaId: comanda.id });
               onMarcarEntregada && onMarcarEntregada();
             } else {
               onOpen && onOpen();
@@ -147,132 +382,572 @@ export default function MeseroDashboard() {
             position: 'relative',
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: '700', color: fg }}>
-            C{idx + 1}
-          </Text>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: '#ef4444' }}>
-            {formatTiempo(comanda.createdAt || comanda.created_at)}
-          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: fg }}>C{idx + 1}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: timeColor, includeFontPadding: false, transform: [{ translateY: -2 }, { translateX: 2 }] }}>{formatTiempo(comanda.createdAt || comanda.created_at)}</Text>
 
-            {/* manita indicadora cuando la comanda está lista y NO está entregada */}
-            {todosListos && !estaEntregada && (
-              <Animated.View style={{ position: 'absolute', bottom: -6, right: -6, transform: [{ translateY: bounceAnim }] }}>
-                <Text style={{ fontSize: 22 }}>👆🏽</Text>
-              </Animated.View>
-            )}
+          {todosListos && !estaEntregada && (
+            <Animated.View style={{ position: 'absolute', bottom: -6, right: -6, ...(bounceAnim ? { transform: [{ translateY: bounceAnim }] } : {}) }}>
+              <Text style={{ fontSize: 22 }}>👆🏽</Text>
+            </Animated.View>
+          )}
         </TouchableOpacity>
 
-        {/* Pedidos */}
         <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 6 }}>
           {(comanda.pedidos || []).map((pedido: any) => (
             <View key={pedido.id} style={{ marginRight: 8 }}>
               <PedidoChip pedido={pedido} dark={dark} fg={fg} comandaReady={todosListos || estaEntregada} />
             </View>
           ))}
-          {/* Checkmark cuando la comanda fue marcada como entregada */}
+
           {estaEntregada && (
-            <View 
-              style={{
-                position: 'absolute',
-                bottom: 6,
-                right: 6,
-                width: 26,
-                height: 26,
-                backgroundColor: '#16a34a',
-                borderRadius: 13,
-                borderWidth: 2,
-                borderColor: 'white',
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.2,
-                shadowRadius: 2,
-              }}
-            >
+            <View style={{ position: 'absolute', bottom: 6, right: 6, width: 26, height: 26, backgroundColor: '#16a34a', borderRadius: 13, borderWidth: 2, borderColor: 'white', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: 'white', fontSize: 14, fontWeight: '700' }}>✓</Text>
             </View>
           )}
-          {/* Si la comanda además está cerrada (pagada) mostramos un pequeño badge $ */}
+
           {estaEntregada && (comanda?.estado === 'cerrada' || comanda?.estado === 'CERRADA') && (
             <View style={{ position: 'absolute', bottom: 6, right: 38, width: 20, height: 20, backgroundColor: '#f59e0b', borderRadius: 10, borderWidth: 1, borderColor: 'white', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>$</Text>
             </View>
           )}
         </View>
+        {(todosListos || estaEntregada) && (
+            <Animated.View
+              pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              left: -3,
+              right: -3,
+              top: -3,
+              bottom: -3,
+              borderRadius: 8,
+              borderWidth: 4,
+              borderColor: '#22c55e',
+              opacity: estaEntregada ? 1 : (todosListos ? borderAnim : 1),
+            }}
+          />
+        )}
       </Animated.View>
     );
   };
 
+  // --- Notebook-style comanda block used in grouped/grid view ---
+  // Ref map to store measured heights per comanda block and a small key to trigger re-render when measured
+  const gridHeightsRef = useRef<Record<string, number>>({});
+  const [gridKey, setGridKey] = useState(0);
+
+  const ComandaRow = ({ comanda, idx, dark, fg, onOpen, estaEntregada = false, onMarcarEntregada, styleVariant = 'classic' }: any) => {
+    const pedidos = comanda.pedidos || [];
+    const bebidas = pedidos.filter((p: any) => isBebidaProducto(p.producto));
+    const comidas = pedidos.filter((p: any) => !isBebidaProducto(p.producto));
+    const bebidasReady = bebidas.filter((p: any) => p.estado === 'listo').length;
+    const comidasReady = comidas.filter((p: any) => p.estado === 'listo').length;
+
+    const minutes = comanda ? Math.max(0, Math.floor((Date.now() - new Date(comanda.createdAt || comanda.created_at).getTime()) / 60000)) : 0;
+    const timeColor = getAgeColor(minutes);
+
+    const bebidasAllReady = bebidas.length > 0 && bebidasReady === bebidas.length;
+    const comidasAllReady = comidas.length > 0 && comidasReady === comidas.length;
+    // Consider "all ready" when each present category is fully ready.
+    const allReady = (bebidas.length === 0 || bebidasAllReady) && (comidas.length === 0 || comidasAllReady);
+
+    const borderAnim = useRef(new Animated.Value(0)).current; // used for border opacity
+    const bounceAnim = useRef(new Animated.Value(0)).current; // for hand subtle bounce
+    const [bebidasBlink] = useState(() => new Animated.Value(1));
+    const [comidasBlink] = useState(() => new Animated.Value(1));
+
+    const [showHint, setShowHint] = useState(false);
+
+    // start per-category blink when all ready
+    useEffect(() => {
+      if (bebidasAllReady || (bebidas.length > 0 && comidas.length === 0 && allReady)) {
+        const loop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(bebidasBlink, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+            Animated.timing(bebidasBlink, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        );
+        loop.start();
+        return () => loop.stop();
+      } else {
+        bebidasBlink.setValue(1);
+      }
+    }, [bebidasAllReady, bebidasBlink]);
+
+    useEffect(() => {
+      if (comidasAllReady || (comidas.length > 0 && bebidas.length === 0 && allReady)) {
+        const loop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(comidasBlink, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+            Animated.timing(comidasBlink, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        );
+        loop.start();
+        return () => loop.stop();
+      } else {
+        comidasBlink.setValue(1);
+      }
+    }, [comidasAllReady, comidasBlink]);
+
+    // border and hand hint when BOTH categories ready
+    useEffect(() => {
+      let borderLoop: any = null;
+      let bounceLoop: any = null;
+      const checkAndMaybeShowHint = async () => {
+        try {
+          if (!allReady || estaEntregada) {
+            setShowHint(false);
+            return;
+          }
+          // only show hint once per day per mesero
+          const uid = String(user?.id || 'anon');
+          const today = new Date().toISOString().slice(0, 10);
+          const key = `entregado_shown_${uid}_${today}`;
+          const value = await AsyncStorage.getItem(key);
+          if (!value) {
+            setShowHint(true);
+            // do not mark it yet; only mark when user taps entregado
+          } else {
+            setShowHint(false);
+          }
+        } catch (err) {
+          console.error('Error checking hint flag', err);
+        }
+      };
+
+      if (allReady && !estaEntregada) {
+        borderLoop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(borderAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+            Animated.timing(borderAnim, { toValue: 0.2, duration: 800, useNativeDriver: true }),
+          ])
+        );
+        bounceLoop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(bounceAnim, { toValue: -6, duration: 900, useNativeDriver: true }),
+            Animated.timing(bounceAnim, { toValue: 0, duration: 900, useNativeDriver: true }),
+          ])
+        );
+        borderLoop.start();
+        bounceLoop.start();
+        checkAndMaybeShowHint();
+      } else {
+        borderAnim.setValue(0);
+        bounceAnim.setValue(0);
+        setShowHint(false);
+      }
+
+      return () => {
+        borderLoop && borderLoop.stop && borderLoop.stop();
+        bounceLoop && bounceLoop.stop && bounceLoop.stop();
+      };
+    }, [allReady, estaEntregada, borderAnim, bounceAnim]);
+
+    const markHintShownForToday = async () => {
+      try {
+        const uid = String(user?.id || 'anon');
+        const today = new Date().toISOString().slice(0, 10);
+        const key = `entregado_shown_${uid}_${today}`;
+        await AsyncStorage.setItem(key, '1');
+        setShowHint(false);
+      } catch (err) {
+        console.error('Error setting hint flag', err);
+      }
+    };
+
+    const handlePress = async () => {
+      if (allReady && !estaEntregada) {
+        // mark entregada
+        try {
+          console.log('[ComandaRow] marcar entregada presionado', { comandaId: comanda.id });
+          await onMarcarEntregada?.();
+        } catch (err) {
+          console.error('Error marcando entregada', err);
+        }
+        // mark hint so it won't show again today
+        await markHintShownForToday();
+      } else {
+        onOpen && onOpen();
+      }
+    };
+
+    const renderPalitos = (count: number, ready: number) => {
+      const groups = Math.ceil(Math.max(0, count) / 5);
+      const items: any[] = [];
+      for (let g = 0; g < groups; g++) {
+        const start = g * 5;
+        const groupCount = Math.min(5, Math.max(0, count - start));
+        items.push(
+          <View key={`g${g}`} style={{ flexDirection: 'row', alignItems: 'flex-end', marginRight: 8 }}>
+            {Array.from({ length: groupCount }).map((_, i) => {
+              const absoluteIndex = start + i;
+              const filled = absoluteIndex < ready;
+              return (
+                <View key={i} style={{ width: 4, height: 18, marginRight: 2, backgroundColor: filled ? '#16a34a' : (dark ? '#374151' : '#D1D5DB'), borderRadius: 2 }} />
+              );
+            })}
+            {/* if group is full 5, add a slash mark to represent the tally group */}
+            {groupCount === 5 && <Text style={{ marginLeft: 4, color: muted }}>/</Text>}
+          </View>
+        );
+      }
+      if (items.length === 0) return <Text style={{ color: muted }}>0</Text>;
+      return <View style={{ flexDirection: 'row', alignItems: 'center' }}>{items}</View>;
+    };
+
+    // Decorations per variant
+    const renderVariantDecor = () => {
+      if (styleVariant === 'fold') {
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, width: 36, height: 36, zIndex: 6 }}>
+            <View style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, backgroundColor: '#FFF3B0', transform: [{ rotate: '45deg' }], borderRadius: 3, elevation: 2 }} />
+          </View>
+        );
+      }
+      if (styleVariant === 'spiral') {
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 6, left: '50%', transform: [{ translateX: -40 }], flexDirection: 'row', zIndex: 6 }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <View key={i} style={{ width: 6, height: 10, borderRadius: 3, backgroundColor: '#bdbdbd', marginHorizontal: 4 }} />
+            ))}
+          </View>
+        );
+      }
+      if (styleVariant === 'torn') {
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 10, flexDirection: 'row', justifyContent: 'space-between', zIndex: 6 }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <View key={i} style={{ width: 8, height: 10, backgroundColor: i % 2 === 0 ? '#FFF9C4' : '#fff', transform: [{ translateY: 0 }] }} />
+            ))}
+          </View>
+        );
+      }
+      if (styleVariant === 'sticker') {
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 8, left: 8, zIndex: 6 }}>
+            <View style={{ backgroundColor: '#FFECB3', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#F4C542' }}>
+              <Text style={{ fontSize: 10, color: '#6b4f00', fontWeight: '700' }}>PRIO</Text>
+            </View>
+          </View>
+        );
+      }
+      if (styleVariant === 'comic' || styleVariant === 'sketch') {
+        return (
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 6 }}>
+            {/* rough hand-drawn outline (multiple slightly-offset strokes) */}
+            <View style={{ position: 'absolute', left: 6, right: 6, top: 6, bottom: 6, borderRadius: 6, borderWidth: 1, borderColor: '#b08900', transform: [{ rotate: '-1deg' }], opacity: 0.9 }} />
+            <View style={{ position: 'absolute', left: 4, right: 8, top: 8, bottom: 4, borderRadius: 6, borderWidth: 1, borderColor: '#d4b35a', transform: [{ rotate: '1deg' }], opacity: 0.6 }} />
+            {/* small doodle in top-right */}
+            <View style={{ position: 'absolute', top: 10, right: 10, width: 22, height: 18, zIndex: 8 }}>
+              <View style={{ position: 'absolute', left: 2, top: 2, width: 18, height: 2, backgroundColor: '#b08900', transform: [{ rotate: '18deg' }], borderRadius: 2 }} />
+              <View style={{ position: 'absolute', left: 0, top: 8, width: 18, height: 2, backgroundColor: '#b08900', transform: [{ rotate: '-12deg' }], borderRadius: 2 }} />
+            </View>
+          </View>
+        );
+      }
+      return null;
+    };
+
+    
+
+    return (
+      <View style={{ marginBottom: idx < 999 ? 5 : 0, position: 'relative' }}>
+        {/* Notepad-style container - outer frame */}
+        <View style={{ position: 'relative', borderRadius: 4, overflow: 'hidden' }}>
+          {/* background image that must cover the whole frame */}
+          {(dark ? comandaSimpleDark : comandaSimpleLight) && (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+              <Image source={dark ? comandaSimpleDark : comandaSimpleLight} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, width: '100%', height: '100%' }} resizeMode="cover" />
+            </View>
+          )}
+          {/* inner content box (transparent background so image shows through) */}
+          <View style={{
+            backgroundColor: 'transparent',
+            padding: 12,
+            paddingTop: 0,
+            paddingBottom: 0,
+            borderWidth: 1,
+            borderColor: dark ? '#374151' : '#E5E7EB'
+          }}>
+
+            {/* border overlay for blink (absolute so content doesn't pulse) */}
+            <Animated.View
+                pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: -3,
+                right: -3,
+                top: -3,
+                bottom: -3,
+                borderRadius: 10,
+                borderWidth: 4,
+                borderColor: '#16a34a',
+                opacity: borderAnim,
+                zIndex: 4,
+              }}
+            />
+
+            {/* Grid overlay removed: keep an empty, non-interactive layer for future visual helpers if needed */}
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 3 }} />
+
+            <TouchableOpacity onPress={handlePress} style={{ paddingBottom: 0, zIndex: 10, minHeight: 120 }}>
+              {/* Definitive layout: medir la altura real y dividir en 5 filas; cada fila tiene una altura fija
+                  y su contenido se alinea abajo (justifyContent: 'flex-end') para asegurar que Bebidas y Comidas
+                  queden siempre ligeramente hacia abajo, independientemente del dispositivo. */}
+              <View
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height || 0);
+                  if (h && gridHeightsRef.current[comanda.id] !== h) {
+                    gridHeightsRef.current = { ...(gridHeightsRef.current || {}), [comanda.id]: h };
+                    // bump state to force rerender only when measurement changes
+                    setGridKey((k) => k + 1);
+                  }
+                }}
+                style={{ flexDirection: 'column', width: '100%', minHeight: 120 }}
+              >
+                {(() => {
+                  const measured = gridHeightsRef.current && gridHeightsRef.current[comanda.id];
+                  const total = measured && measured > 0 ? measured : 120;
+                  const rowH = Math.max(1, Math.round(total / 5));
+                  // Move Bebidas and Comidas rows up by 3% of the total comanda height
+                  const offsetCat = Math.round(total * 0.03);
+                  return (
+                    <View key={`rows-wrapper-${comanda.id}-${gridKey}`}>
+                      {Array.from({ length: 5 }).map((_, rowIndex) => {
+                        const isCategoryRow = rowIndex === 3 || rowIndex === 4;
+                        const rowTransform = isCategoryRow ? [{ translateY: -9 }] : undefined;
+                        return (
+                          <View key={`row-${rowIndex}`} style={{ height: rowH, flexDirection: 'row' }}>
+                            {/* LEFT column: align content at bottom of the row */}
+                            <View style={{ flex: 65, justifyContent: 'flex-end', paddingLeft: '4%', alignItems: 'flex-start', transform: rowTransform }}>
+                              {rowIndex === 0 && (
+                                estaEntregada ? (
+                                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center' }}>
+                                      <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>✓</Text>
+                                    </View>
+                                  </View>
+                                ) : (
+                                  <Text style={{ fontSize: 10, color: timeColor, textAlign: 'left', includeFontPadding: false, lineHeight: 14, transform: [{ translateY: -2 }, { translateX: 2 }] }}>{formatTiempo(comanda.createdAt || comanda.created_at)}</Text>
+                                )
+                              )}
+                              {rowIndex === 3 && bebidas.length > 0 && (
+                                <Animated.Text style={{ fontSize: 15, color: bebidasAllReady ? '#16a34a' : fg, opacity: bebidasBlink, textAlign: 'left', flexShrink: 1, flexWrap: 'nowrap', includeFontPadding: false, fontFamily: 'HelloValentina', lineHeight: 18 }}>{`Bebidas`}</Animated.Text>
+                              )}
+                              {rowIndex === 4 && comidas.length > 0 && (
+                                <Animated.Text style={{ fontSize: 15, color: comidasAllReady ? '#16a34a' : fg, opacity: comidasBlink, textAlign: 'left', flexShrink: 1, flexWrap: 'nowrap', includeFontPadding: false, fontFamily: 'HelloValentina', lineHeight: 18 }}>{`Comidas`}</Animated.Text>
+                              )}
+                            </View>
+
+                            {/* RIGHT column: align content at bottom of the row */}
+                            <View style={{ flex: 35, justifyContent: 'flex-end', paddingHorizontal: 0, alignItems: 'flex-end', transform: rowTransform }}>
+                              {rowIndex === 0 && (
+                                <Text style={{ fontSize: 11, color: fg, textAlign: 'right', includeFontPadding: false, lineHeight: 14, fontWeight: '700' }}>{`${idx + 1}`}</Text>
+                              )}
+                              {rowIndex === 3 && bebidas.length > 0 && (
+                                <Animated.View style={{ opacity: bebidasBlink, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', transform: [{ translateX: 2 }] }}>{renderPalitosText(bebidas.length, bebidasReady, 10)}</Animated.View>
+                              )}
+                              {rowIndex === 4 && comidas.length > 0 && (
+                                <Animated.View style={{ opacity: comidasBlink, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', transform: [{ translateX: 2 }] }}>{renderPalitosText(comidas.length, comidasReady, 10)}</Animated.View>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
+              </View>
+            </TouchableOpacity>
+            {/* Hint hand prompting touch when ready and not delivered */}
+            {showHint && (
+              <Animated.View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  right: 8,
+                  zIndex: 6,
+                  transform: [{ translateY: bounceAnim }],
+                }}
+              >
+                <Text style={{ fontSize: 26 }}>👆🏽</Text>
+              </Animated.View>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   useEffect(() => {
-    load();
+    requestLoad();
+
+    // prune ackedMesas when mesas data changes so we don't keep stale ack flags
+    // Keep only acked mesas that still have a ready comanda
+    try {
+      setAckedMesas(prev => {
+        if (!mesas || mesas.length === 0) return new Set();
+        const mesasWithReady = new Set((mesas || []).filter((m: any) => {
+          const comandas = (m.comandas || []);
+          return comandas.some((c: any) => {
+            if (c.estado === 'cerrada' || c.entregado) return false;
+            const pedidos = c.pedidos || [];
+            return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+          });
+        }).map((m: any) => String(m.id)));
+
+        return new Set([...prev].filter(id => mesasWithReady.has(id)));
+      });
+    } catch (err) {
+      // defensive - ignore
+    }
+
+    const loadLocalLogo = async () => {
+      if (user?.localId) {
+        try {
+          const logo = await localService.obtenerLogoLocal();
+          if (logo) setLocalLogo(logo);
+        } catch (e) {
+          console.error('Error loading local logo', e);
+        }
+      }
+      return null;
+    };
+
+    loadLocalLogo();
 
     // Conectar al socket para actualizaciones en tiempo real
-    const socket = getSocket();
-    if (socket) {
-      const room = user?.localId ? `atencion:${user.localId}` : 'atencion';
-      socket.emit('join-room', room);
+    (async () => {
+      try {
+        const token = useAuthStore.getState().token;
+        let socket = getSocket();
+        
+        if (!socket || !socket.connected) {
+          socket = await createSocket(token || undefined);
+        }
+        
+        if (socket) {
+          // Registrar usuario para direccionamiento de eventos
+          try {
+            if (user?.id && user?.tipo) {
+              socket.emit('register', { userId: String(user.id), userType: String(user.tipo) });
+            }
+          } catch {}
+          const rooms = [
+            user?.localId ? `atencion:${user.localId}` : 'atencion',
+            user?.localId ? `bar:${user.localId}` : 'bar',
+        user?.localId ? `cocina:${user.localId}` : 'cocina',
+      ];
+      if (socket.connected) {
+        rooms.forEach((r) => socket.emit('join-room', r));
+      } else {
+        socket.once('connect', () => {
+          rooms.forEach((r) => socket.emit('join-room', r));
+        });
+      }
 
       socket.on('pedido-listo', () => {
-        load();
+        requestLoad();
       });
 
+      // Broaden listeners: catch various pedido updates
+      socket.on('pedido-actualizado', () => {
+        requestLoad();
+      });
+      socket.on('pedido-cambiado-estado', () => {
+        requestLoad();
+      });
+      socket.on('pedido', () => {
+        requestLoad();
+      });
+      // Fallback: any event whose name contains 'pedido'
+      try {
+        if ((socket as any).onAny) {
+          (socket as any).onAny((event: string, ...args: any[]) => {
+            // Debug: log events to identify exact names coming from backend
+            console.log('[mesero][socket] event', event);
+            if (/pedido/i.test(event) || /comanda/i.test(event)) {
+              requestLoad();
+            }
+          });
+        }
+      } catch {}
+
       socket.on('comanda-actualizada', () => {
-        load();
+        requestLoad();
       });
 
       socket.on('comanda-completa', () => {
-        load();
+        requestLoad();
       });
 
       socket.on('comanda-entregada', () => {
-        load();
+        requestLoad();
       });
+        }
+      } catch (error) {
+        console.error('❌ Error en socket setup:', error);
+      }
+    })();
 
-      return () => {
-        socket.off('pedido-listo');
-        socket.off('comanda-actualizada');
-        socket.off('comanda-completa');
-        socket.off('comanda-entregada');
-      };
-    }
-  }, [user?.localId, verSoloAsignadas]);
+    return () => {
+      const sock = getSocket();
+      if (sock) {
+        sock.off('pedido-listo');
+        sock.off('pedido-actualizado');
+        sock.off('pedido-cambiado-estado');
+        sock.off('pedido');
+        try { if ((sock as any).offAny) { (sock as any).offAny(); } } catch {}
+        sock.off('comanda-actualizada');
+        sock.off('comanda-completa');
+        sock.off('comanda-entregada');
+      }
+    };
+  }, [showModal, (user as any)?.photo, (user as any)?.fotoUrl, (user as any)?.foto, modalHandAnim]);
+
+  // Ensure ack flags don't get stale: whenever mesas data changes, keep only mesas that still have a ready comanda
+  useEffect(() => {
+    try {
+      setAckedMesas(prev => {
+        if (!mesas || mesas.length === 0) return new Set();
+        const mesasWithReady = new Set((mesas || []).filter((m: any) => {
+          const comandas = (m.comandas || []);
+          return comandas.some((c: any) => {
+            if (c.estado === 'cerrada' || c.entregado) return false;
+            const pedidos = c.pedidos || [];
+            return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+          });
+        }).map((m: any) => String(m.id)));
+
+        return new Set([...prev].filter(id => mesasWithReady.has(id)));
+      });
+    } catch (err) {}
+  }, [mesas]);
+
+  const modalHandTransform = (modalHandAnim && typeof (modalHandAnim as any).interpolate === 'function')
+    ? [{ translateX: modalHandAnim.interpolate({ inputRange: [0, 1], outputRange: [-60, 60] }) }]
+    : undefined;
 
   // Separar mesas con comandas abiertas y mesas libres
   const { mesasConComandas, mesasLibres } = useMemo(() => {
-    const conComandas: MesaConComanda[] = [];
-    const libres: MesaConComanda[] = [];
-    
-    mesas.forEach(mesa => {
-      const tieneComandas = mesa.comandas && mesa.comandas.length > 0;
-      if (tieneComandas) {
-        conComandas.push(mesa);
-      } else {
-        libres.push(mesa);
-      }
-    });
-    
-    return { mesasConComandas: conComandas, mesasLibres: libres };
-  }, [mesas]);
-
-  const onAbrirComanda = (mesa: MesaConComanda) => {
-    console.log('[MeseroDashboard] Navegando a mesa:', mesa.id, 'numero:', mesa.numero);
-    router.push(`/mesero/mesa/${mesa.id}`);
-  };
-
-  const formatTiempo = (createdAt: string) => {
-    const now = new Date();
-    const created = new Date(createdAt);
-    const diff = Math.floor((now.getTime() - created.getTime()) / 1000 / 60); // minutos
-    return `${diff}m`;
-  };
+    const con = (mesas || []).filter((m) => (m.comandas || []).some((c: any) => c && (c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true))));
+    const libres = (mesas || []).filter((m) => !(m.comandas && m.comandas.length > 0));
+    return { mesasConComandas: con, mesasLibres: libres } as { mesasConComandas: MesaConComanda[]; mesasLibres: MesaConComanda[] };
+  }, [mesas, tiempoActual]);
 
   // Marcar comanda como entregada (persist via backend)
   const marcarComandaEntregada = async (comandaId: string) => {
     try {
-      await comandaService.marcarEntregada(comandaId);
-      // recargar mesas para obtener estado persistido
-      await load();
+      console.log('[Mesero] marcarComandaEntregada -> solicitando marcar entregada', { comandaId });
+      // Optimistic: show check immediately and trigger animation
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setDeliveredOptimistic(prev => new Set(prev).add(String(comandaId)));
+      // Fire a load to reorder as soon as possible
+      requestLoad();
+      // Persist to backend (non-blocking for UI)
+      const resp = await comandaService.marcarEntregada(comandaId);
+      console.log('[Mesero] marcarComandaEntregada -> backend response', { comandaId, resp });
     } catch (err) {
       console.error('[Mesero] error marcando comanda entregada ->', err);
       Alert.alert('Error', 'No se pudo marcar la comanda como entregada');
@@ -354,37 +1029,506 @@ export default function MeseroDashboard() {
     );
   };
 
-  const renderMesaConComanda = (mesa: MesaConComanda) => {
-    const isSameDay = (a?: string | Date | null) => {
-      if (!a) return false;
-      try {
-        const d = new Date(a);
-        const now = new Date();
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-      } catch (err) {
-        return false;
+  // --- Helpers y componentes auxiliares ---
+  const formatTiempo = (d?: string | Date | number | null) => {
+    try {
+      const ms = d ? (typeof d === 'number' ? d : new Date(d).getTime()) : Date.now();
+      const minutes = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+      return `${minutes}m`;
+    } catch (e) {
+      return '-';
+    }
+  };
+
+  // Graphical progressive-square palitos (4 sides + diagonal) scaled by fontSize.
+    const renderPalitos = (count: number, ready: number, fontSize: number = 12) => {
+      const groups = Math.ceil(Math.max(0, count) / 5);
+      const items: any[] = [];
+      const glyph = Math.max(12, Math.round(fontSize * 1.6));
+      // reduced stroke multiplier and allow 1px minimum for a slimmer look
+      const stroke = Math.max(1, Math.round(fontSize * 0.14));
+      const diagWidth = Math.max(Math.round(glyph * 1.1), glyph + 6);
+      for (let g = 0; g < groups; g++) {
+        const start = g * 5;
+        const groupCount = Math.min(5, Math.max(0, count - start));
+        const strokeColor = (i: number) => ((start + i) < ready) ? '#16a34a' : (dark ? '#FFFFFF' : '#000');
+
+        items.push(
+          <View key={`g${g}`} style={{ width: glyph, height: glyph, marginRight: Math.round(fontSize * 0.5), position: 'relative' }}>
+            {groupCount >= 1 && <View style={{ position: 'absolute', left: Math.max(1, Math.round(stroke / 2)), top: Math.round(glyph * 0.12), bottom: Math.round(glyph * 0.12), width: stroke, backgroundColor: strokeColor(0), borderRadius: stroke / 2 }} />}
+            {groupCount >= 2 && <View style={{ position: 'absolute', left: Math.round(glyph * 0.12), right: Math.round(glyph * 0.12), top: Math.max(1, Math.round(stroke / 2)), height: stroke, backgroundColor: strokeColor(1), borderRadius: stroke / 2 }} />}
+            {groupCount >= 3 && <View style={{ position: 'absolute', right: Math.max(1, Math.round(stroke / 2)), top: Math.round(glyph * 0.12), bottom: Math.round(glyph * 0.12), width: stroke, backgroundColor: strokeColor(2), borderRadius: stroke / 2 }} />}
+            {groupCount >= 4 && <View style={{ position: 'absolute', left: Math.round(glyph * 0.12), right: Math.round(glyph * 0.12), bottom: Math.max(1, Math.round(stroke / 2)), height: stroke, backgroundColor: strokeColor(3), borderRadius: stroke / 2 }} />}
+            {groupCount >= 5 && (
+              <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+                <View style={{ width: diagWidth, height: stroke, backgroundColor: strokeColor(4), transform: [{ rotate: '-45deg' }], borderRadius: stroke / 2 }} />
+              </View>
+            )}
+          </View>
+        );
+      }
+      if (items.length === 0) return <Text style={{ color: dark ? 'white' : '#111827', fontSize }}>{0}</Text>;
+      return <View style={{ flexDirection: 'row', alignItems: 'center' }}>{items}</View>;
+    };
+
+  // Backwards-compatible textual API: delegate to graphical renderer (scaled)
+  const renderPalitosText = (count: number, ready: number, fontSize: number = 12) => {
+    return renderPalitos(count, ready, fontSize);
+  };
+
+  const isBebidaProducto = (producto?: any) => {
+    if (!producto) return false;
+    // Prefer explicit tipo field when present
+    const tipo = (producto.tipo || producto?.type || '').toString().toLowerCase();
+    if (tipo === 'bebida' || tipo === 'drink') return true;
+    if (tipo === 'comida' || tipo === 'food') return false;
+    const text = ((producto.nombre || producto.categoria || producto.tipo) || '').toString().toLowerCase();
+    return /bebid|drink|bar|cerveza|vino|coctel|cocktail|trago|refresco|cafe|tea/i.test(text);
+  };
+
+  const getAgeColor = (minutes: number) => {
+    // <=5 min: green, >5 && <=8: yellow, >8: red
+    if (minutes <= 5) return '#16a34a';
+    if (minutes <= 8) return '#f59e0b';
+    return '#ef4444';
+  };
+
+  const normalizePhotoUri = (candidate: any) => {
+    try {
+      if (!candidate) return null;
+      let normalized = candidate;
+      if (typeof normalized === 'object' && normalized.uri) normalized = normalized.uri;
+      if (typeof normalized !== 'string') return null;
+      if (/^https?:\/\//i.test(normalized) || /^data:/i.test(normalized) || /^file:/i.test(normalized) || /^content:/i.test(normalized)) return normalized;
+      const rawApi = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').toString().trim();
+      const host = rawApi.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/, '');
+      const leading = normalized.startsWith('/') ? '' : '/';
+      return `${host}${leading}${normalized}`;
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const navLockRef = useRef(false);
+  const onAbrirComanda = (mesa: any) => {
+    if (navLockRef.current) return;
+    navLockRef.current = true;
+    try {
+      router.push(`/mesero/mesa/${mesa.id}`);
+    } catch (e) {
+      console.error('Error navegando a la comanda', e);
+    }
+    setTimeout(() => { navLockRef.current = false; }, 600);
+  };
+  // Track last tap per mesa to avoid double opens
+  const lastMesaTapRef = useRef<Record<string, number>>({});
+
+  // Emoji background that sizes to the parent box
+  const EmojiBackground = ({ symbol, opacity = 0.36 }: { symbol: string; opacity?: number }) => {
+    const [dim, setDim] = useState({ w: 0, h: 0 });
+    const lastDim = useRef({ w: 0, h: 0 });
+
+    const fontSize = Math.floor(Math.min(dim.w || 72, dim.h || 72) * 0.7);
+
+    const onLayout = (e: any) => {
+      const w = Math.round(e.nativeEvent.layout.width || 0);
+      const h = Math.round(e.nativeEvent.layout.height || 0);
+      // only update when size changed meaningfully to avoid jitter caused by transient layout updates
+      if (Math.abs(w - lastDim.current.w) > 2 || Math.abs(h - lastDim.current.h) > 2) {
+        lastDim.current = { w, h };
+        setDim({ w, h });
       }
     };
 
-    // Mostrar comandas abiertas y además comandas cerradas+entregadas del mismo día
-    const comandasAbiertas = (mesa.comandas || []).filter((c: any) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt || (c as any).cerrada_at)));
-    const todasComandasEntregadas = (mesa.comandas || []).length > 0 && (mesa.comandas || []).every((c: any) => c.entregado === true);
-    
     return (
       <View
+        pointerEvents="none"
+        onLayout={onLayout}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 0 }}
+      >
+        <Text style={{ fontSize: fontSize || 48, opacity: opacity, includeFontPadding: false }}>{symbol}</Text>
+      </View>
+    );
+  };
+
+  const ComandaSummary = ({ comanda, index }: { comanda: any; index: number }) => {
+    const [bebidasBlink] = useState(() => new Animated.Value(1));
+    const [comidasBlink] = useState(() => new Animated.Value(1));
+
+    const pedidos = comanda?.pedidos || [];
+    const bebidas = pedidos.filter((p: any) => isBebidaProducto(p.producto));
+    const comidas = pedidos.filter((p: any) => !isBebidaProducto(p.producto));
+    const bebidasReady = bebidas.filter((p: any) => p.estado === 'listo').length;
+    const comidasReady = comidas.filter((p: any) => p.estado === 'listo').length;
+
+    const bebidasAllReady = bebidas.length > 0 && bebidasReady === bebidas.length;
+    const comidasAllReady = comidas.length > 0 && comidasReady === comidas.length;
+
+    useEffect(() => {
+      if (bebidasAllReady) {
+        const loop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(bebidasBlink, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+            Animated.timing(bebidasBlink, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        );
+        loop.start();
+        return () => loop.stop();
+      } else {
+        bebidasBlink.setValue(1);
+      }
+    }, [bebidasAllReady, bebidasBlink]);
+
+    useEffect(() => {
+      if (comidasAllReady) {
+        const loop = Animated.loop(
+          Animated.sequence([
+            Animated.timing(comidasBlink, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+            Animated.timing(comidasBlink, { toValue: 1, duration: 600, useNativeDriver: true }),
+          ])
+        );
+        loop.start();
+        return () => loop.stop();
+      } else {
+        comidasBlink.setValue(1);
+      }
+    }, [comidasAllReady, comidasBlink]);
+
+    const minutes = comanda ? Math.max(0, Math.floor((Date.now() - new Date(comanda.createdAt || comanda.created_at).getTime()) / 60000)) : 0;
+    const timeColor = getAgeColor(minutes);
+
+    return (
+      <View style={{ marginBottom: 5 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+          <View style={{ backgroundColor: timeColor, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+            <Text style={{ color: 'white', fontWeight: '700', fontSize: 11 }}>{`C${index + 1}`}</Text>
+          </View>
+          <Text style={{ marginLeft: 8, fontSize: 12, color: muted }}>{minutes}m</Text>
+        </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1, padding: 6, borderRadius: 6, borderWidth: 1, borderColor: comidasAllReady ? '#16a34a' : (dark ? '#263244' : '#E5E7EB'), position: 'relative', overflow: 'hidden' }}>
+              <View style={{ zIndex: 2 }}>
+                {renderPalitosText(comidas.length, comidasReady, 12)}
+              </View>
+              <EmojiBackground symbol={'🍽️'} opacity={0.38} />
+              {/* animated indicator dot for comidas (doesn't affect emoji/background) */}
+              <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 8, right: 8, width: 12, height: 12, borderRadius: 6, backgroundColor: comidasAllReady ? '#16a34a' : (dark ? '#374151' : '#D1D5DB'), opacity: comidasBlink, zIndex: 3 }} />
+            </View>
+
+            <View style={{ flex: 1, padding: 6, borderRadius: 6, borderWidth: 1, borderColor: bebidasAllReady ? '#16a34a' : (dark ? '#263244' : '#E5E7EB'), position: 'relative', overflow: 'hidden' }}>
+              <View style={{ zIndex: 2 }}>
+                {renderPalitosText(bebidas.length, bebidasReady, 12)}
+              </View>
+              <EmojiBackground symbol={'🍹'} opacity={0.38} />
+              {/* animated indicator dot for bebidas (doesn't affect emoji/background) */}
+              <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 8, right: 8, width: 12, height: 12, borderRadius: 6, backgroundColor: bebidasAllReady ? '#16a34a' : (dark ? '#374151' : '#D1D5DB'), opacity: bebidasBlink, zIndex: 3 }} />
+            </View>
+          </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 0 }}>
+          <Text style={{ fontSize: 14, color: comanda.entregado ? '#16a34a' : muted }}>{comanda.entregado ? '✓' : ''}</Text>
+          <Text style={{ fontSize: 14, color: comanda.estado === 'cerrada' ? '#16a34a' : muted }}>{comanda.estado === 'cerrada' ? '$' : ''}</Text>
+        </View>
+      </View>
+    );
+  };
+
+    
+
+  const GridMesa = ({ mesa, containerStyle }: { mesa: MesaConComanda; containerStyle?: any }) => {
+    const comandas = (mesa.comandas || []).filter((c: any) => c);
+    const mostrarComandas = comandas.slice(0, 2);
+
+    // Para mesas vacías: solo View con botón interno (sin TouchableOpacity wrapper)
+    if (mostrarComandas.length === 0) {
+      return (
+        <View style={[containerStyle, { padding: 4 }]}>
+          <View style={{ backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 8, padding: 8, flex: 1, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: fg, marginBottom: 6 }}>{mesa.nombre || `Mesa ${mesa.numero}`}</Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Pressable 
+                onPress={() => {
+                  console.log('[GridMesa] ✅ PRESS DETECTADO en botón +, mesa:', mesa.id);
+                  onAbrirComanda(mesa);
+                }}
+                onPressIn={() => console.log('[DEBUG] PressIn en botón +, mesa:', mesa.id)}
+                onPressOut={() => console.log('[DEBUG] PressOut en botón +, mesa:', mesa.id)}
+                style={({ pressed }) => ([
+                  { 
+                    width: 80, 
+                    height: 80, 
+                    borderRadius: 12, 
+                    backgroundColor: PRIMARY, 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.7 : 1
+                  }
+                ])}
+                accessibilityLabel={`Nueva comanda ${mesa.nombre || mesa.numero}`}
+              >
+                <Text style={{ color: 'white', fontSize: 40, fontWeight: '700' }}>+</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Para mesas con comandas: mantener TouchableOpacity solo en comandas individuales
+    // Verificar si hay alguna comanda lista pero no entregada en esta mesa
+    const hayComandaListaPendiente = mostrarComandas.some((c: any) => {
+      if (c.estado === 'cerrada' || c.entregado) return false;
+      const pedidos = c.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      return allReady;
+    });
+
+    const handleComandaPress = (comanda: any) => {
+      // Verificar si esta comanda específica está lista pero no entregada
+      const pedidos = comanda.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      const yaEntregada = !!comanda.entregado || deliveredOptimistic.has(String(comanda.id));
+      
+      if (allReady && !yaEntregada) {
+        // If the mesa was already acked, open it on this press. Otherwise mark entregada and ack the mesa.
+        if (ackedMesas.has(String(mesa.id))) {
+          setAckedMesas(prev => {
+            const copy = new Set(prev);
+            copy.delete(String(mesa.id));
+            return copy;
+          });
+          onAbrirComanda(mesa);
+          return;
+        }
+
+        // Marcar como entregada (first tap ack)
+        console.log('[GridMesa] marcar entregada desde grid, mesa:', mesa.id, 'comanda:', comanda.id);
+        setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+        marcarComandaEntregada(comanda.id);
+      } else {
+        // Abrir la mesa
+        console.log('[GridMesa] ✅ PRESS DETECTADO en comanda, mesa:', mesa.id, 'comandaId:', comanda.id);
+        onAbrirComanda(mesa);
+      }
+    };
+
+    return (
+      <View style={[containerStyle, { padding: 4 }]}>
+        <View style={{ backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 8, padding: 8, flex: 1, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: fg, marginBottom: 6 }}>{mesa.nombre || `Mesa ${mesa.numero}`}</Text>
+          {mostrarComandas.map((c: any, idx: number) => (
+            <ComandaRow
+              key={c.id || idx}
+              comanda={c}
+              idx={idx}
+              dark={dark}
+              fg={fg}
+              onOpen={() => handleComandaPress(c)}
+              estaEntregada={!!c.entregado || deliveredOptimistic.has(String(c.id))}
+                onMarcarEntregada={() => {
+                  setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                  marcarComandaEntregada(c.id);
+                }}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  // --- Fin helpers ---
+
+  // Función auxiliar para verificar si una fecha es del mismo día
+  const isSameDay = (a?: string | Date | null) => {
+    if (!a) return false;
+    try {
+      const d = new Date(a);
+      const now = new Date();
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    } catch (err) {
+      return false;
+    }
+  };
+
+  // Grid packing: each comanda occupies one slot. rowsNeeded = comandas.length (or 1 if none).
+  // We pack row-major into `cols` columns and `rows` rows. Sort mesas per business rules.
+  const packGrid = (mesasList: MesaConComanda[], cols = 3, rows = 4) => {
+    const placements: any[] = [];
+    const overflow: MesaConComanda[] = [];
+    if (!Array.isArray(mesasList) || mesasList.length === 0) return { placements, overflow };
+
+    // Order mesas: pending oldest first, then delivered (not paid), then paid, then empty
+    const getMesaOrder = (m: any) => {
+      const cs = (m.comandas || []).filter((c: any) => c);
+      if (cs.length === 0) return { group: 3, time: Number.POSITIVE_INFINITY };
+      // categorize
+      const pending = cs.filter((c: any) => c.estado === 'abierta' && !c.entregado);
+      const delivered = cs.filter((c: any) => (c.estado === 'abierta' || c.estado === 'cerrada') && c.entregado);
+      const paid = cs.filter((c: any) => (c.estado === 'cerrada'));
+      if (pending.length > 0) {
+        const times = pending.map((c: any) => new Date(c.createdAt || c.created_at).getTime()).filter(Boolean);
+        return { group: 0, time: times.length ? Math.min(...times) : Number.POSITIVE_INFINITY };
+      }
+      if (delivered.length > 0) {
+        const times = delivered.map((c: any) => new Date(c.createdAt || c.created_at).getTime()).filter(Boolean);
+        return { group: 1, time: times.length ? Math.min(...times) : Number.POSITIVE_INFINITY };
+      }
+      if (paid.length > 0) {
+        const times = paid.map((c: any) => new Date(c.createdAt || c.created_at).getTime()).filter(Boolean);
+        return { group: 2, time: times.length ? Math.min(...times) : Number.POSITIVE_INFINITY };
+      }
+      return { group: 3, time: Number.POSITIVE_INFINITY };
+    };
+
+    const list = mesasList.slice().sort((a: any, b: any) => {
+      const A = getMesaOrder(a);
+      const B = getMesaOrder(b);
+      if (A.group !== B.group) return A.group - B.group;
+      return A.time - B.time;
+    });
+
+    const occupied = Array.from({ length: cols }, () => Array(rows).fill(false));
+
+    for (const mesa of list) {
+      const comandasCount = Math.max(1, (mesa.comandas || []).length);
+      let rowsNeeded = Math.min(rows, comandasCount);
+      let placed = false;
+      // Scan row-major: for each row from top to bottom, try columns left-to-right
+      for (let r = 0; r <= rows - rowsNeeded && !placed; r++) {
+        for (let c = 0; c < cols && !placed; c++) {
+          let ok = true;
+          for (let k = 0; k < rowsNeeded; k++) {
+            if (occupied[c][r + k]) { ok = false; break; }
+          }
+          if (ok) {
+            for (let k = 0; k < rowsNeeded; k++) occupied[c][r + k] = true;
+            placements.push({ mesa, col: c, row: r, rows: rowsNeeded });
+            placed = true;
+          }
+        }
+      }
+      if (!placed) overflow.push(mesa);
+    }
+
+    return { placements, overflow };
+  };
+
+  const gridData = useMemo(() => {
+    const cols = 3;
+    const totalSlots = Math.max(3, (mesas || []).length * 2);
+    const rows = Math.max(1, Math.ceil(totalSlots / cols));
+
+    const initialGridHeight = Math.max(4 * 120, Math.round(window.height * 0.6));
+    const measured: Record<string, number> = (gridHeightsRef.current || {});
+
+    // compute required cell height so that for any mesa: rowsNeeded * cellH >= header + sum(comandaHeights)
+    const headerH = 35; // approximate header height for the mesa (title + margins)
+    const defaultComandaH = 120;
+    const singleComandaH = 120; // height for mesas with just one comanda
+    let maxRequiredPerSlot = 175; // minimum height for empty mesas (header + 1 comanda + padding)
+
+    for (const mesa of (mesas || [])) {
+      const comandas = (mesa.comandas || []).slice(0, 10);
+      
+      const heights = comandas.map((c: any) => measured[c?.id] || (comandas.length === 1 ? singleComandaH : 120));
+      const sumComandas = heights.reduce((s: number, x: number) => s + x, 0);
+      const rowsNeeded = Math.max(1, comandas.length);
+      const requiredPerSlot = Math.ceil((headerH + sumComandas) / rowsNeeded);
+      if (requiredPerSlot > maxRequiredPerSlot) maxRequiredPerSlot = requiredPerSlot;
+    }
+
+    const cellH = Math.max(100, Math.ceil(maxRequiredPerSlot));
+    const containerHeight = rows * cellH;
+
+    const { placements, overflow } = packGrid(mesas || [], cols, rows);
+    return { placements, overflow, cols, rows, cellH, containerHeight };
+  }, [mesas, gridKey, gridLayout]);
+
+  const renderMesaConComanda = (mesa: MesaConComanda) => {
+    // Mostrar comandas abiertas y además comandas cerradas+entregadas del mismo día
+    // Keep a stable order: newest comandas first (createdAt desc) so UI and mesa detail match
+    const comandasAbiertas = ((mesa.comandas || []).slice() || []).filter((c: any) => c.estado === 'abierta' || (c.estado === 'cerrada' && c.entregado === true && isSameDay((c as any).cerradaAt))).sort((a: any, b: any) => {
+      const A = new Date(a.createdAt || a.created_at || 0).getTime() || 0;
+      const B = new Date(b.createdAt || b.created_at || 0).getTime() || 0;
+      return B - A;
+    });
+    const todasComandasEntregadas = (mesa.comandas || []).length > 0 && (mesa.comandas || []).every((c: any) => c.entregado === true);
+    
+    // Verificar si hay alguna comanda lista pero no entregada
+    const hayComandaListaPendiente = comandasAbiertas.some((c: any) => {
+      if (c.estado === 'cerrada' || c.entregado) return false;
+      const pedidos = c.pedidos || [];
+      const allReady = pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+      return allReady;
+    });
+
+    const handleMesaPress = () => {
+      try {
+        // debug: list comandas and readiness to verify which will be delivered
+        console.log('[Mesero] handleMesaPress mesa:', mesa.id, 'comandasAbiertas:', (comandasAbiertas || []).map((c: any, i: number) => ({ idx: i + 1, id: c.id, estado: c.estado, entregado: c.entregado, pedidosCount: (c.pedidos || []).length })));
+      } catch (err) {}
+      if (hayComandaListaPendiente) {
+        // If this mesa was acked already, treat this press as opening the mesa
+        if (ackedMesas.has(String(mesa.id))) {
+          // clear ack and open
+          setAckedMesas(prev => {
+            const copy = new Set(prev);
+            copy.delete(String(mesa.id));
+            return copy;
+          });
+          onAbrirComanda(mesa);
+          return;
+        }
+
+        // Marcar la primera comanda lista como entregada and set ack
+        const comandaParaEntregar = comandasAbiertas.find((c: any) => {
+          if (c.estado === 'cerrada' || c.entregado) return false;
+          const pedidos = c.pedidos || [];
+          return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+        });
+        if (comandaParaEntregar) {
+          console.log('[Mesero] handleMesaPress -> escogida comandaParaEntregar', { mesaId: mesa.id, comandaId: comandaParaEntregar.id });
+          // set ack flag so next tap opens the mesa
+          setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+          marcarComandaEntregada(comandaParaEntregar.id);
+        }
+      } else {
+        // No hay comandas pendientes, abrir la mesa
+        onAbrirComanda(mesa);
+      }
+    };
+    
+    return (
+      <TouchableOpacity
+        onPress={handleMesaPress}
         key={mesa.id}
         style={{
-          marginBottom: 12,
+          marginBottom: 5,
           borderRadius: 8,
           overflow: 'hidden',
           borderWidth: 2,
           borderColor: todasComandasEntregadas ? '#16a34a' : (dark ? '#374151' : '#E5E7EB'),
         }}
       >
+        {/* Avatares de meseros asignados en la esquina superior derecha (mobile) */}
+            {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
+          <View style={{ position: 'absolute', top: 6, right: 8, zIndex: 50, flexDirection: 'row' }}>
+            {mesa.usuariosAsignados.slice(0,3).map((u: any, idx: number) => {
+              const isMe = String(u.id) === String(user?.id);
+              return u.foto ? (
+                <Image key={u.id} source={{ uri: u.foto }} style={{ width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: isMe ? PRIMARY : 'white', marginLeft: idx === 0 ? 0 : -8 }} />
+              ) : (
+                <View key={u.id} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', marginLeft: idx === 0 ? 0 : -8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700' }}>{(u.nombre || 'U').charAt(0).toUpperCase()}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
         {/* Botón de mesa vertical a la izquierda */}
         <View style={{ flexDirection: 'row', minHeight: 100 }}>
-          <TouchableOpacity
-            onPress={() => onAbrirComanda(mesa)}
+          <View
             style={{
               width: 60,
               backgroundColor: todasComandasEntregadas ? '#16a34a' : (dark ? '#1F2937' : '#F3F4F6'),
@@ -406,14 +1550,15 @@ export default function MeseroDashboard() {
             >
               {mesa.nombre || `Mesa ${mesa.numero}`}
             </Text>
-          </TouchableOpacity>
+          </View>
 
           {/* Comandas */}
           <View style={{ flex: 1, backgroundColor: dark ? '#1F2937' : '#F9FAFB', padding: 8 }}>
-            {comandasAbiertas.map((comanda: any, idx: number) => {
-              const yaEntregada = !!comanda.entregado;
+            {/* Comandas abiertas - normales */}
+            {comandasAbiertas.filter((c: any) => c.estado !== 'cerrada').map((comanda: any, idx: number) => {
+              const yaEntregada = !!comanda.entregado || deliveredOptimistic.has(String(comanda.id));
               return (
-                <ComandaRow
+                <ComandaListRow
                   key={comanda.id}
                   comanda={comanda}
                   idx={idx}
@@ -421,13 +1566,68 @@ export default function MeseroDashboard() {
                   fg={fg}
                   onOpen={() => onAbrirComanda(mesa)}
                   estaEntregada={yaEntregada}
-                  onMarcarEntregada={() => marcarComandaEntregada(comanda.id)}
+                  onMarcarEntregada={() => {
+                    setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                    marcarComandaEntregada(comanda.id);
+                  }}
                 />
               );
             })}
+            
+            {/* Comandas cerradas - compactas en una línea */}
+            {(() => {
+              const cerradosHoy = comandasAbiertas.filter((c: any) => c.estado === 'cerrada');
+              return (
+                <>
+                  {cerradosHoy.length > 0 && (
+                    <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {cerradosHoy.map((comanda: any) => (
+                        <TouchableOpacity 
+                          key={comanda.id}
+                          onPress={() => onAbrirComanda(mesa)}
+                          style={{ 
+                            paddingHorizontal: 10, 
+                            paddingVertical: 6, 
+                            backgroundColor: dark ? '#064e3b' : '#dcfce7',
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: '#16a34a',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: dark ? '#FFFFFF' : '#111827' }}>Comanda {comanda.id?.toString().slice(0, 4)}</Text>
+                          <Text style={{ fontSize: 12 }}>✓</Text>
+                          {comanda.estado === 'cerrada' && (
+                            <Text style={{ fontSize: 12 }}>$</Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  
+                  {/* Contador de comandas cerradas hoy */}
+                  {cerradosHoy.length > 0 && (
+                    <View style={{ marginTop: 6, paddingHorizontal: 8, paddingVertical: 4, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, color: muted }}>
+                        📋 {cerradosHoy.length} {cerradosHoy.length === 1 ? 'comanda cerrada' : 'comandas cerradas'} hoy
+                      </Text>
+                    </View>
+                  )}
+                </>
+              );
+            })()}
+            
+            {/* Texto para agregar nueva comanda */}
+            {(comandasAbiertas.length === 0 || comandasAbiertas.filter((c: any) => c.estado !== 'cerrada').length === 0) && (
+              <TouchableOpacity onPress={() => onAbrirComanda(mesa)} style={{ paddingVertical: 12, alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: muted }}>Toca para agregar comanda</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -436,7 +1636,7 @@ export default function MeseroDashboard() {
       key={mesa.id}
       onPress={() => onAbrirComanda(mesa)}
       style={{
-        marginBottom: 8,
+        marginBottom: 5,
         padding: 12,
         borderRadius: 8,
         backgroundColor: dark ? '#1F2937' : 'white',
@@ -456,41 +1656,48 @@ export default function MeseroDashboard() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: bg }}>
-      {/* Botón de retroceso */}
-      <View style={{ position: 'absolute', top: 60, right: 20, zIndex: 10 }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            backgroundColor: dark ? '#F3F4F6' : '#1F2937',
-            borderRadius: 22,
-            width: 44,
-            height: 44,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: dark ? '#E5E7EB' : '#374151'
-          }}
-        >
-          <Text style={{ fontSize: 32, color: dark ? '#111827' : 'white', marginTop: -10 }}>⬅</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Top nav (uses cached rendering for base64 logos and centralised logout behaviour) */}
+      <TopNav title="Mesero" localLogo={localLogo} onOpenSettings={() => setShowModal(true)} />
 
-      <View style={{ padding: 16, paddingTop: 60 }}>
-        <Text style={{ fontSize: 20, fontWeight: '700', color: fg }}>Mesero — Mesas</Text>
-        
+      <View style={{ padding: 16, paddingTop: 8 }}>
+        {/* Botón para meseros: selector de vista (izq) + reporte + asignar mesas (der) */}
+        {user?.tipo === 'atencion' && (
+          <View style={{ marginBottom: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 6 }}>
+              {/* tightened emoji buttons: list (icon) + group (2x2 squares) */}
+              <TouchableOpacity accessibilityLabel="Modo lista" onPress={() => setViewMode('list')} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: viewMode === 'list' ? PRIMARY : (dark ? '#1F2937' : '#F3F4F6'), borderWidth: viewMode === 'list' ? 0 : 1, borderColor: viewMode === 'list' ? PRIMARY : (dark ? '#374151' : '#E5E7EB') }}>
+                <Text style={{ fontSize: 18, color: viewMode === 'list' ? 'white' : (dark ? 'white' : '#111827') }}>{'☰'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity accessibilityLabel="Modo agrupar" onPress={() => setViewMode('group')} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: viewMode === 'group' ? PRIMARY : (dark ? '#1F2937' : '#F3F4F6'), borderWidth: viewMode === 'group' ? 0 : 1, borderColor: viewMode === 'group' ? PRIMARY : (dark ? '#374151' : '#E5E7EB') }}>
+                <Text style={{ fontSize: 18, color: viewMode === 'group' ? 'white' : (dark ? 'white' : '#111827') }}>{'▦'}</Text>
+              </TouchableOpacity>
+
+              {/* Botón de reporte del día */}
+              <TouchableOpacity accessibilityLabel="Reporte del día" onPress={openReportModal} style={{ alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: dark ? '#1F2937' : '#F3F4F6', borderWidth: 1, borderColor: dark ? '#374151' : '#E5E7EB' }}>
+                <Text style={{ fontSize: 18, color: dark ? 'white' : '#111827' }}>{'📊'}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity onPress={openAssignModalMobile} style={{ backgroundColor: PRIMARY, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Asignar mesas</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         {/* Botón para admin: alternar entre todas las mesas y solo asignadas */}
         {isAdmin && (
           <View style={{ marginTop: 12, flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity
+                <TouchableOpacity
               onPress={() => setVerSoloAsignadas(true)}
               style={{
                 flex: 1,
                 paddingVertical: 8,
                 paddingHorizontal: 12,
                 borderRadius: 6,
-                backgroundColor: verSoloAsignadas ? '#0ea5e9' : (dark ? '#374151' : '#E5E7EB'),
-                borderWidth: 1,
-                borderColor: verSoloAsignadas ? '#0284c7' : (dark ? '#4B5563' : '#D1D5DB'),
+                    backgroundColor: verSoloAsignadas ? PRIMARY : (dark ? '#374151' : '#E5E7EB'),
+                    borderWidth: 1,
+                    borderColor: verSoloAsignadas ? PRIMARY : (dark ? '#4B5563' : '#D1D5DB'),
               }}
             >
               <Text style={{ 
@@ -503,16 +1710,16 @@ export default function MeseroDashboard() {
               </Text>
             </TouchableOpacity>
             
-            <TouchableOpacity
+                <TouchableOpacity
               onPress={() => setVerSoloAsignadas(false)}
               style={{
                 flex: 1,
                 paddingVertical: 8,
                 paddingHorizontal: 12,
                 borderRadius: 6,
-                backgroundColor: !verSoloAsignadas ? '#0ea5e9' : (dark ? '#374151' : '#E5E7EB'),
-                borderWidth: 1,
-                borderColor: !verSoloAsignadas ? '#0284c7' : (dark ? '#4B5563' : '#D1D5DB'),
+                    backgroundColor: !verSoloAsignadas ? PRIMARY : (dark ? '#374151' : '#E5E7EB'),
+                    borderWidth: 1,
+                    borderColor: !verSoloAsignadas ? PRIMARY : (dark ? '#4B5563' : '#D1D5DB'),
               }}
             >
               <Text style={{ 
@@ -528,24 +1735,180 @@ export default function MeseroDashboard() {
         )}
       </View>
 
-      <ScrollView style={{ flex: 1, paddingHorizontal: 12, paddingTop: 16 }}>
-        {/* Mesas con comandas */}
-        {mesasConComandas.map(renderMesaConComanda)}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 6, paddingTop: 16, paddingBottom: footerHeight + 32 }}>
+        {viewMode === 'group' ? (
+            // grid view: 3 cols x 4 rows packer - measure container and place mesas using absolute positioning
+            (() => {
+              const { placements = [], overflow = [], cols = 3, rows = 4, cellH = 120, containerHeight = Math.max(4 * 120, Math.round(window.height * 0.6)) } = gridData || {};
+              const containerWidth = gridLayout?.width ?? Math.round(window.width - 24);
+              const cellW = Math.max(1, Math.floor(containerWidth / (cols || 3)));
 
-        {/* Mesas libres */}
-        {mesasLibres.length > 0 && (
-          <View style={{ marginTop: 16 }}>
-            {mesasLibres.map(renderMesaLibre)}
-          </View>
+                const gutter = 3;
+                return (
+                <View style={{ width: '100%', paddingHorizontal: 2 }}>
+                  <View
+                    onLayout={(e) => {
+                      const w = Math.round(e.nativeEvent.layout.width || 0);
+                      const h = Math.round(e.nativeEvent.layout.height || 0);
+                      if (!gridLayout || gridLayout.width !== w || gridLayout.height !== h) setGridLayout({ width: w, height: h });
+                    }}
+                    style={{ width: '100%', height: containerHeight, position: 'relative' }}
+                  >
+                    {placements.map((p: any) => {
+                      const { mesa, col, row, rows: span } = p;
+                      const left = col * cellW + gutter;
+                      const top = row * cellH + gutter;
+                      const w = cellW - (gutter * 2);
+                      const h = span * cellH - (gutter * 2);
+                      const comandas = ((mesa.comandas || []).slice() || []).filter((c: any) => c).sort((a: any, b: any) => {
+                        const A = new Date(a.createdAt || a.created_at || 0).getTime() || 0;
+                        const B = new Date(b.createdAt || b.created_at || 0).getTime() || 0;
+                        return B - A;
+                      });
+                      const isEmpty = comandas.length === 0;
+                      
+                      // Contar comandas cerradas de hoy
+                      const cerradosHoy = comandas.filter((c: any) => 
+                        c.estado === 'cerrada' && 
+                        c.entregado === true && 
+                        isSameDay((c as any).cerradaAt)
+                      ).length;
+                      
+                      // Calculate actual content height for better fit
+                      const headerHeight = 35; // fixed header height
+                      const comandaHeight = comandas.length === 1 ? 110 : (comandas.length > 1 ? 120 * comandas.length : 0);
+                      const counterHeight = cerradosHoy > 0 ? 20 : 0; // height of counter if present
+                      const paddingVertical = 8 * 2; // top + bottom padding
+                      const paddingHorizontal = 2 * 2; // left + right padding from Pressable
+                      const contentHeight = headerHeight + comandaHeight + counterHeight + paddingVertical + paddingHorizontal;
+                      const actualHeight = Math.max(contentHeight, isEmpty ? 175 : 100); // minimum heights
+                      
+                      return (
+                        <Pressable
+                          key={mesa.id}
+                          style={({ pressed }) => ([
+                            { 
+                              position: 'absolute', 
+                              left, 
+                              top, 
+                              width: w, 
+                              height: actualHeight, 
+                              padding: 2,
+                              opacity: pressed ? 0.7 : 1,
+                              transform: [{ scale: pressed ? 0.98 : 1 }]
+                            }
+                          ])}
+                          onPress={() => {
+                            try {
+                              // If there is a ready comanda, first press should ack/deliver it.
+                              const comandas = (mesa.comandas || []).filter((c: any) => c);
+                              const hayComandaListaPendiente = comandas.some((c: any) => {
+                                if (c.estado === 'cerrada' || c.entregado) return false;
+                                const pedidos = c.pedidos || [];
+                                return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+                              });
+
+                              if (hayComandaListaPendiente) {
+                                if (ackedMesas.has(String(mesa.id))) {
+                                  // second tap -> open mesa
+                                  setAckedMesas(prev => {
+                                    const copy = new Set(prev);
+                                    copy.delete(String(mesa.id));
+                                    return copy;
+                                  });
+                                  onAbrirComanda(mesa);
+                                  return;
+                                }
+
+                                const comandaParaEntregar = comandas.find((c: any) => {
+                                  if (c.estado === 'cerrada' || c.entregado) return false;
+                                  const pedidos = c.pedidos || [];
+                                  return pedidos.length > 0 && pedidos.every((p: any) => p.estado === 'listo');
+                                });
+                                if (comandaParaEntregar) {
+                                  setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                                  marcarComandaEntregada(comandaParaEntregar.id);
+                                  return;
+                                }
+                              }
+                              // default: open
+                              onAbrirComanda(mesa);
+                            } catch (err) {
+                              console.error('[Grid] handle press error', err);
+                              onAbrirComanda(mesa);
+                            }
+                          }}
+                        >
+                          <View style={{ backgroundColor: dark ? '#0b1220' : '#FFFFFF', borderRadius: 8, padding: 8, flex: 1, borderWidth: 1, borderColor: dark ? '#1F2937' : '#E5E7EB' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: fg, marginBottom: 6 }}>{mesa.nombre || `Mesa ${mesa.numero}`}</Text>
+                            {isEmpty ? (
+                              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: muted, fontSize: 14, textAlign: 'center' }}>Toca para agregar{`\n`}comanda +</Text>
+                              </View>
+                            ) : (
+                              <View pointerEvents="none" style={{ flex: 1 }}>
+                                <View style={{ flex: 1 }}>
+                                  {comandas.slice(0, 2).map((c: any, idx: number) => (
+                                    <View key={c.id || idx} style={{ marginBottom: 5, opacity: (!!c.entregado || deliveredOptimistic.has(String(c.id))) ? 1 : 1 }}>
+                                      <ComandaRow
+                                        comanda={c}
+                                        idx={idx}
+                                        dark={dark}
+                                        fg={fg}
+                                        onOpen={() => {}}
+                                        estaEntregada={!!c.entregado || deliveredOptimistic.has(String(c.id))}
+                                        onMarcarEntregada={() => {
+                                          setAckedMesas(prev => new Set(prev).add(String(mesa.id)));
+                                          marcarComandaEntregada(c.id);
+                                        }}
+                                      />
+                                    </View>
+                                  ))}
+                                </View>
+                                
+                                {/* Contador de comandas cerradas */}
+                                {cerradosHoy > 0 && (
+                                  <View style={{ marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 9, color: muted }}>
+                                      📋 {cerradosHoy} {cerradosHoy === 1 ? 'cerrada' : 'cerradas'} hoy
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {overflow && overflow.length > 0 && (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={{ color: muted }}>{`+${overflow.length} mesas adicionales`}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()
+        ) : (
+          <>
+            {/* Mesas con comandas */}
+            {mesasConComandas.map(renderMesaConComanda)}
+
+            {/* Mesas libres */}
+            {mesasLibres.length > 0 && (
+              <View style={{ marginTop: 16 }}>
+                {mesasLibres.map(renderMesaLibre)}
+              </View>
+            )}
+
+            {mesas.length === 0 && (
+              <View style={{ padding: 24 }}>
+                <Text style={{ textAlign: 'center', color: muted }}>No hay mesas asignadas</Text>
+              </View>
+            )}
+          </>
         )}
-
-        {mesas.length === 0 && (
-          <View style={{ padding: 24 }}>
-            <Text style={{ textAlign: 'center', color: muted }}>No hay mesas asignadas</Text>
-          </View>
-        )}
-
-        <View style={{ height: 32 }} />
       </ScrollView>
 
       {/* Fixed footer — powered by */}
@@ -559,6 +1922,195 @@ export default function MeseroDashboard() {
           )}
         </View>
       </View>
+
+      <AccountModal visible={showModal} onClose={() => setShowModal(false)} />
+      {/* Assign mesas modal (mobile) */}
+      <Modal visible={showAssignModalMobile} transparent animationType="slide" onRequestClose={() => setShowAssignModalMobile(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: bg, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '82%', padding: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: fg }}>Asignar Mesas</Text>
+              <TouchableOpacity onPress={() => setShowAssignModalMobile(false)}>
+                <Text style={{ fontSize: 18, color: '#ef4444', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {modalMesas && modalMesas.length > 0 ? modalMesas.map((mesa) => {
+                const selected = assignSelected.has(mesa.id);
+                const assignedToMe = (mesa.usuariosAsignados || []).some((u: any) => String(u.id) === String(user?.id));
+                const firstUser = (mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0) ? mesa.usuariosAsignados[0] : null;
+                return (
+                  <TouchableOpacity key={mesa.id} onPress={() => toggleAssign(mesa.id)} style={{ width: '48%', marginBottom: 8 }}>
+                    <View style={{ borderRadius: 8, padding: 8, backgroundColor: dark ? '#0f1724' : '#fff', borderWidth: 2, borderColor: selected ? PRIMARY : (dark ? '#1F2937' : '#E5E7EB'), alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: fg, marginBottom: 8 }}>{mesa.nombre || `Mesa ${mesa.numero}`}</Text>
+                      {firstUser ? (
+                        // support multiple possible photo fields and normalize relative paths
+                        (() => {
+                          const candidate = (firstUser as any).photo || (firstUser as any).fotoUrl || (firstUser as any).foto || (firstUser as any).foto_url || null;
+                          const uri = normalizePhotoUri(candidate);
+                          if (uri) {
+                            return <Image source={{ uri }} style={{ width: 56, height: 56, borderRadius: 28, marginBottom: 8, borderWidth: 2, borderColor: assignedToMe ? PRIMARY : 'white' }} />;
+                          }
+                          return (
+                            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                              <Text style={{ fontSize: 14, fontWeight: '700' }}>{(firstUser.nombre || 'U').charAt(0).toUpperCase()}</Text>
+                            </View>
+                          );
+                        })()
+                      ) : (
+                        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '700' }}>{'N.A.'}</Text>
+                        </View>
+                      )}
+                      <TouchableOpacity onPress={() => toggleAssign(mesa.id)} style={{ marginTop: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, backgroundColor: selected ? PRIMARY : (dark ? '#111827' : '#F3F4F6') }}>
+                        <Text style={{ color: selected ? 'white' : fg, fontWeight: '700' }}>{selected ? '✓ Seleccionada' : 'Seleccionar'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }) : (
+                <View style={{ padding: 12 }}>
+                  <Text style={{ color: muted }}>No hay mesas disponibles</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+              <TouchableOpacity onPress={() => setShowAssignModalMobile(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: dark ? '#374151' : '#E5E7EB', alignItems: 'center' }}>
+                <Text style={{ color: fg, fontWeight: '700' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveAssignMobile} style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: PRIMARY, alignItems: 'center' }}>
+                <Text style={{ color: 'white', fontWeight: '700' }}>Asignarme</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Reporte del Día */}
+      <Modal visible={showReportModal} transparent animationType="slide" onRequestClose={() => setShowReportModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: bg, borderRadius: 16, padding: 20, width: '95%', maxWidth: 400, maxHeight: '80%' }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 24 }}>📊</Text>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: fg }}>Reporte del Día</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowReportModal(false)}>
+                <Text style={{ fontSize: 20, color: '#ef4444', fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {loadingReport ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>⏳</Text>
+                <Text style={{ color: muted }}>Cargando estadísticas...</Text>
+              </View>
+            ) : reportData ? (
+              <ScrollView style={{ flex: 1 }}>
+                {/* Fecha */}
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                  <Text style={{ color: muted, fontSize: 14 }}>{new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
+                </View>
+
+                {/* Estadísticas de Comandas - Globales del local */}
+                <Text style={{ fontSize: 14, fontWeight: '600', color: muted, marginBottom: 8, textAlign: 'center' }}>📍 Estadísticas del Local</Text>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                  {/* Comandas Abiertas */}
+                  <View style={{ flex: 1, backgroundColor: dark ? '#1e3a5f' : '#dbeafe', borderRadius: 12, padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 28, marginBottom: 4 }}>📋</Text>
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: dark ? '#60a5fa' : '#2563eb' }}>{reportData.global?.comandasAbiertas || 0}</Text>
+                    <Text style={{ fontSize: 12, color: dark ? '#93c5fd' : '#1d4ed8', textAlign: 'center' }}>Abiertas</Text>
+                  </View>
+
+                  {/* Comandas Cerradas */}
+                  <View style={{ flex: 1, backgroundColor: dark ? '#064e3b' : '#dcfce7', borderRadius: 12, padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 28, marginBottom: 4 }}>✅</Text>
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: dark ? '#34d399' : '#16a34a' }}>{reportData.global?.comandasCerradas || 0}</Text>
+                    <Text style={{ fontSize: 12, color: dark ? '#6ee7b7' : '#15803d', textAlign: 'center' }}>Cerradas</Text>
+                  </View>
+                </View>
+
+                {/* Total Cobrado - Global */}
+                <View style={{ backgroundColor: dark ? '#1c1917' : '#fef3c7', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 24, marginRight: 8 }}>💰</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: dark ? '#fbbf24' : '#92400e' }}>Total Cobrado</Text>
+                  </View>
+                  <Text style={{ fontSize: 32, fontWeight: '700', color: dark ? '#fcd34d' : '#b45309', textAlign: 'center', marginBottom: 16 }}>
+                    ${(parseFloat(reportData.global?.totalEfectivo || '0') + parseFloat(reportData.global?.totalQr || '0')).toLocaleString('es-AR')}
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>💵</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: dark ? '#a3e635' : '#16a34a' }}>${parseFloat(reportData.global?.totalEfectivo || '0').toLocaleString('es-AR')}</Text>
+                      <Text style={{ fontSize: 11, color: muted }}>Efectivo</Text>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ fontSize: 20, marginBottom: 4 }}>📱</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '600', color: dark ? '#60a5fa' : '#2563eb' }}>${parseFloat(reportData.global?.totalQr || '0').toLocaleString('es-AR')}</Text>
+                      <Text style={{ fontSize: 11, color: muted }}>QR / Digital</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Tiempo de Entrega - Global */}
+                <View style={{ backgroundColor: dark ? '#1f2937' : '#f3f4f6', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 24, marginRight: 8 }}>⏱️</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: fg }}>Tiempo Promedio de Entrega</Text>
+                  </View>
+                  {reportData.global?.promedioTiempoEntrega != null && reportData.global?.promedioTiempoEntrega > 0 ? (
+                    <Text style={{ fontSize: 28, fontWeight: '700', color: PRIMARY, textAlign: 'center' }}>
+                      {reportData.global.promedioTiempoEntrega} min
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 14, color: muted, textAlign: 'center' }}>Sin datos de entrega aún</Text>
+                  )}
+                </View>
+
+                {/* Mis estadísticas (mesero) */}
+                {reportData.mesero && (reportData.mesero.comandasCerradas > 0 || reportData.mesero.comandasAbiertas > 0) && (
+                  <>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: muted, marginBottom: 8, marginTop: 8, textAlign: 'center' }}>👤 Mis Mesas</Text>
+                    <View style={{ backgroundColor: dark ? '#0f172a' : '#f8fafc', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: dark ? '#334155' : '#e2e8f0' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 }}>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#60a5fa' : '#2563eb' }}>{reportData.mesero.comandasAbiertas || 0}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Abiertas</Text>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#34d399' : '#16a34a' }}>{reportData.mesero.comandasCerradas || 0}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Cerradas</Text>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: dark ? '#fbbf24' : '#b45309' }}>${parseFloat(reportData.mesero.totalDia || '0').toLocaleString('es-AR')}</Text>
+                          <Text style={{ fontSize: 11, color: muted }}>Total</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {/* Botón de refrescar */}
+                <TouchableOpacity onPress={fetchDailyReport} style={{ backgroundColor: PRIMARY, paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 8 }}>
+                  <Text style={{ color: 'white', fontWeight: '700' }}>🔄 Actualizar</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>❌</Text>
+                <Text style={{ color: muted, textAlign: 'center' }}>No se pudo cargar el reporte</Text>
+                <TouchableOpacity onPress={fetchDailyReport} style={{ marginTop: 16, backgroundColor: PRIMARY, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 }}>
+                  <Text style={{ color: 'white', fontWeight: '600' }}>Reintentar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

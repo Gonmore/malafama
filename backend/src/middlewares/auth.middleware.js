@@ -24,7 +24,7 @@ const authenticate = async (req, res, next) => {
       include: [{
         model: Local,
         as: 'local',
-        attributes: ['id', 'nombre', 'logo', 'direccion', 'telefono', 'moneda']
+        attributes: ['id', 'nombre', 'logo', 'qr', 'direccion', 'telefono', 'moneda']
       }]
     });
 

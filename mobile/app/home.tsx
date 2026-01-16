@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useRouter } from 'expo-router';
-import { SafeAreaView, Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
+import { Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../src/store/auth';
 import { createSocket, disconnectSocket } from '../src/services/socket';
 import { useThemeStore } from '../src/store/theme';
@@ -16,8 +17,14 @@ export default function Home() {
 
   useEffect(() => {
     if (token) {
-      const s = createSocket(token);
-      // intentionally quiet on connect — socket lifecycle handled elsewhere
+      (async () => {
+        try {
+          const s = await createSocket(token);
+          // intentionally quiet on connect — socket lifecycle handled elsewhere
+        } catch (error) {
+          console.error('Error creating socket:', error);
+        }
+      })();
     }
     return () => disconnectSocket();
   }, [token]);
@@ -26,10 +33,29 @@ export default function Home() {
     if (!token) router.replace('/login');
   }, [token]);
 
+  // Redirigir a otros roles a sus paneles específicos (solo admin puede ver el selector)
+  useEffect(() => {
+    console.log('[DEBUG Home] user.tipo:', user?.tipo);
+    if (user?.tipo && user.tipo !== 'admin') {
+      const route =
+        user.tipo === 'atencion' ? '/mesero' :
+        user.tipo === 'cocina' ? '/cocina' :
+        user.tipo === 'bar' ? '/bar' :
+        user.tipo === 'proveedor' ? '/proveedor' :
+        '/mesero';
+      console.log('[DEBUG Home] Non-admin user detected, redirecting to:', route);
+      router.replace(route);
+    }
+  }, [user?.tipo]);
+
   const tipo = user?.tipo || 'admin';
 
   const defaultRoute =
-    tipo === 'atencion' ? '/mesero' : tipo === 'cocina' ? '/cocina' : tipo === 'proveedor' ? '/proveedor' : '/admin';
+    tipo === 'atencion' ? '/mesero' : 
+    tipo === 'cocina' ? '/cocina' : 
+    tipo === 'bar' ? '/bar' :
+    tipo === 'proveedor' ? '/proveedor' : 
+    '/admin';
 
   const dark = theme === 'dark';
   const bg = dark ? '#111827' : 'white';

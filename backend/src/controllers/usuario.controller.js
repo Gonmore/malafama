@@ -76,9 +76,11 @@ const getUsuarioById = async (req, res) => {
 };
 
 // Crear usuario (solo admin)
+const { saveBase64ToUploads } = require('../services/storage.service');
+
 const createUsuario = async (req, res) => {
   try {
-    const { nombre, email, password, tipo, telefono, direccion } = req.body;
+    const { nombre, email, password, tipo, telefono, direccion, foto } = req.body;
 
     // Verificar que el email no esté en uso
     const usuarioExistente = await Usuario.findOne({ where: { email } });
@@ -105,7 +107,7 @@ const createUsuario = async (req, res) => {
       localId = req.user.localId;
     }
 
-    const usuario = await Usuario.create({
+    const usuarioData = {
       nombre,
       email,
       password: password || 'password123', // Password por defecto si no se proporciona
@@ -113,7 +115,26 @@ const createUsuario = async (req, res) => {
       telefono,
       direccion,
       localId
-    });
+    };
+
+    // If foto is a base64/data URI, save to uploads and set foto_url
+    if (foto && typeof foto === 'string') {
+      try {
+        if (/^data:/i.test(foto) || /^[A-Za-z0-9+/=\s]+$/.test(foto)) {
+          const publicPath = await saveBase64ToUploads(foto, 'user');
+          usuarioData.fotoUrl = publicPath;
+          usuarioData.foto = null;
+        } else {
+          // Assume a URL or URI string
+          usuarioData.foto = foto;
+        }
+      } catch (err) {
+        console.warn('Failed saving user foto to uploads', err.message || err);
+        usuarioData.foto = foto;
+      }
+    }
+
+    const usuario = await Usuario.create(usuarioData);
 
     // Excluir password de la respuesta
     const usuarioResponse = usuario.toJSON();
@@ -138,7 +159,7 @@ const createUsuario = async (req, res) => {
 const updateUsuario = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, email, telefono, direccion, tipo, activo } = req.body;
+    const { nombre, email, telefono, direccion, tipo, activo, foto } = req.body;
 
     const usuario = await Usuario.findByPk(id);
 
@@ -168,14 +189,31 @@ const updateUsuario = async (req, res) => {
       });
     }
 
-    await usuario.update({
+    const updates = {
       nombre: nombre || usuario.nombre,
       email: email || usuario.email,
       telefono: telefono !== undefined ? telefono : usuario.telefono,
       direccion: direccion !== undefined ? direccion : usuario.direccion,
       tipo: tipo || usuario.tipo,
       activo: activo !== undefined ? activo : usuario.activo
-    });
+    };
+
+    if (foto !== undefined) {
+      try {
+        if (foto && typeof foto === 'string' && (/^data:/i.test(foto) || /^[A-Za-z0-9+/=\s]+$/.test(foto))) {
+          const publicPath = await saveBase64ToUploads(foto, 'user');
+          updates.fotoUrl = publicPath;
+          updates.foto = null;
+        } else {
+          updates.foto = foto;
+        }
+      } catch (err) {
+        console.warn('Failed saving updated user foto to uploads', err.message || err);
+        updates.foto = foto;
+      }
+    }
+
+    await usuario.update(updates);
 
     const usuarioResponse = usuario.toJSON();
     delete usuarioResponse.password;

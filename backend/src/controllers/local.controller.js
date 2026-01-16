@@ -1,10 +1,45 @@
 const { Local, Mesa, Producto, Usuario } = require('../models');
 
+const { saveBase64ToUploads } = require('../services/storage.service');
+
+// Extraer dominio de un email
+const extraerDominioEmail = (email, nombreLocal = null) => {
+  // Si hay un email válido con @, extraer el dominio
+  if (email && typeof email === 'string' && email.includes('@')) {
+    const partes = email.split('@');
+    if (partes.length === 2 && partes[1] && partes[1].length > 0) {
+      return partes[1]; // Ej: "malafama.com"
+    }
+  }
+  
+  // Si no hay dominio válido, usar el nombre del local
+  if (nombreLocal) {
+    return `${nombreLocal.toLowerCase().replace(/\s+/g, '')}.local`;
+  }
+  
+  return 'local.com'; // Fallback final
+};
+
+// Generar email único para un rol
+const generarEmailUnico = async (rol, dominio) => {
+  let email = `${rol}@${dominio}`;
+  let contador = 1;
+  
+  // Verificar si el email ya existe
+  while (await Usuario.findOne({ where: { email } })) {
+    email = `${rol}${contador}@${dominio}`;
+    contador++;
+  }
+  
+  return email;
+};
+
 // Crear un nuevo local (solo admin)
 const crearLocal = async (req, res) => {
   try {
     const { nombre, descripcion, direccion, telefono, email, logo, qr } = req.body;
     const usuarioId = req.user.id;
+    const adminEmail = req.user.email;
 
     // Validar que el usuario sea admin
     if (req.user.tipo !== 'admin') {
@@ -14,28 +49,47 @@ const crearLocal = async (req, res) => {
       });
     }
 
-    // Crear local
-    const local = await Local.create({
+    // If logo is base64/data URI, save to uploads and set logo_url
+    const localData = {
       nombre,
       descripcion,
       direccion,
       telefono,
       email,
-      logo,
       qr,
       usuarioPropietarioId: usuarioId,
-      plan: 'gratuito' // Por defecto
-    });
+      plan: 'gratuito'
+    };
+
+    if (logo && typeof logo === 'string') {
+      try {
+        if (/^data:/i.test(logo) || /^[A-Za-z0-9+/=\s]+$/.test(logo)) {
+          const publicPath = await saveBase64ToUploads(logo, 'local');
+          localData.logoUrl = publicPath;
+          localData.logo = null;
+        } else {
+          localData.logo = logo;
+        }
+      } catch (err) {
+        console.warn('Failed saving local logo to uploads', err.message || err);
+        localData.logo = logo;
+      }
+    }
+
+    // Crear local
+    const local = await Local.create(localData);
 
     // Crear usuarios automáticos para el local
     const passwordDefault = 'password123'; // Password por defecto
+    const dominio = extraerDominioEmail(adminEmail, nombre); // Extraer dominio del admin, fallback a nombre del local
 
     const usuariosCreados = [];
 
     // 1. Crear usuario Mesero (Atención)
+    const emailMesero = await generarEmailUnico('mesero', dominio);
     const mesero = await Usuario.create({
       nombre: `Mesero - ${nombre}`,
-      email: `mesero@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailMesero,
       password: passwordDefault,
       tipo: 'atencion',
       localId: local.id,
@@ -46,9 +100,10 @@ const crearLocal = async (req, res) => {
     usuariosCreados.push({ tipo: 'mesero', ...mesero.toJSON() });
 
     // 2. Crear usuario Cocina
+    const emailCocina = await generarEmailUnico('cocina', dominio);
     const cocina = await Usuario.create({
       nombre: `Cocina - ${nombre}`,
-      email: `cocina@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailCocina,
       password: passwordDefault,
       tipo: 'cocina',
       rolCocina: 'cocina',
@@ -60,9 +115,10 @@ const crearLocal = async (req, res) => {
     usuariosCreados.push({ tipo: 'cocina', ...cocina.toJSON() });
 
     // 3. Crear usuario Bar
+    const emailBar = await generarEmailUnico('bar', dominio);
     const bar = await Usuario.create({
       nombre: `Bar - ${nombre}`,
-      email: `bar@${nombre.toLowerCase().replace(/\s+/g, '')}.local`,
+      email: emailBar,
       password: passwordDefault,
       tipo: 'bar',
       rolCocina: 'bar',
@@ -170,6 +226,31 @@ const obtenerLocalPorId = async (req, res) => {
   }
 };
 
+// Obtener logo del local al que pertenece el usuario autenticado
+const obtenerLogoLocal = async (req, res) => {
+  try {
+    const localId = req.user.localId;
+
+    if (!localId) {
+      return res.status(400).json({ success: false, message: 'El usuario no está asociado a un local' });
+    }
+
+    const local = await Local.findByPk(localId, { attributes: ['id', 'logo', 'logo_url'] });
+
+    if (!local) {
+      return res.status(404).json({ success: false, message: 'Local no encontrado' });
+    }
+
+    // Prefer logo_url if available (public URL), otherwise return inline logo field
+    const logoValue = local.logo_url || local.logo || null;
+
+    res.json({ success: true, data: { id: local.id, logo: logoValue } });
+  } catch (error) {
+    console.error('Error al obtener logo del local:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener logo del local', error: error.message });
+  }
+};
+
 // Actualizar local
 const actualizarLocal = async (req, res) => {
   try {
@@ -191,16 +272,33 @@ const actualizarLocal = async (req, res) => {
       });
     }
 
-    await local.update({
+    // Handle logo if provided (base64 or URL)
+    const updates = {
       nombre,
       descripcion,
       direccion,
       telefono,
       email,
-      logo,
       qr,
       moneda
-    });
+    };
+
+    if (logo !== undefined) {
+      try {
+        if (logo && typeof logo === 'string' && (/^data:/i.test(logo) || /^[A-Za-z0-9+/=\s]+$/.test(logo))) {
+          const publicPath = await saveBase64ToUploads(logo, 'local');
+          updates.logoUrl = publicPath;
+          updates.logo = null;
+        } else {
+          updates.logo = logo;
+        }
+      } catch (err) {
+        console.warn('Failed saving updated local logo to uploads', err.message || err);
+        updates.logo = logo;
+      }
+    }
+
+    await local.update(updates);
 
     res.json({
       success: true,
@@ -257,6 +355,7 @@ module.exports = {
   crearLocal,
   obtenerLocales,
   obtenerLocalPorId,
+  obtenerLogoLocal,
   actualizarLocal,
   eliminarLocal
 };

@@ -1,5 +1,18 @@
 import { io } from 'socket.io-client';
 
+function resolveSocketUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) return undefined;
+
+  // If API URL is relative (e.g. "/api/v1"), Socket.io should use same origin.
+  if (typeof apiUrl === 'string' && apiUrl.startsWith('/')) {
+    return window.location.origin;
+  }
+
+  // If API URL is absolute, drop the API path to get the server origin.
+  return apiUrl.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/g, '');
+}
+
 class SocketService {
   constructor() {
     this.socket = null;
@@ -11,7 +24,7 @@ class SocketService {
       return this.socket;
     }
 
-    const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:5000';
+    const SOCKET_URL = resolveSocketUrl() || window.location.origin;
 
     this.socket = io(SOCKET_URL, {
       auth: { token },

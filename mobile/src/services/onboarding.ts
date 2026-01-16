@@ -9,7 +9,7 @@ export const onboardingService = {
 
   // Completar paso de mesas
   completarMesas: async (cantidad: number, localId: string, ubicacion?: string, capacidad?: number) => {
-    const { data } = await api.post('/onboarding/mesas', {
+    const { data } = await api.post('/onboarding/paso1/mesas', {
       cantidad,
       localId,
       ubicacion: ubicacion || 'General',
@@ -20,13 +20,13 @@ export const onboardingService = {
 
   // Preview de scraping
   previewScraping: async (url: string) => {
-    const { data } = await api.post('/onboarding/scraping/preview', { url });
+    const { data } = await api.post('/onboarding/paso2/preview', { url });
     return data;
   },
 
   // Importar productos desde scraping
   importarProductos: async (productos: any[], localId: string) => {
-    const { data } = await api.post('/onboarding/productos/importar', {
+    const { data } = await api.post('/onboarding/paso3/importar', {
       productos,
       localId
     });

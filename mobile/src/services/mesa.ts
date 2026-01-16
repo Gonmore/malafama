@@ -41,6 +41,12 @@ export const mesaService = {
     const { data } = await api.delete(`/mesas/${id}`);
     return data;
   }
+  ,
+  // Asignar mesas a usuario (mobile client)
+  assignMesas: async (mesaIds: Array<string | number>, usuarioId?: string) => {
+    const { data } = await api.post('/mesas/asignar', { mesaIds, usuarioId });
+    return data;
+  }
 };
 
 export type Mesa = {

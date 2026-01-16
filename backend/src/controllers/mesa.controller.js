@@ -13,16 +13,24 @@ const getAllMesas = async (req, res) => {
 
     const mesas = await Mesa.findAll({
       where,
-      include: [{
-        model: Comanda,
-        as: 'comandas',
-        where: { estado: 'abierta' },
-        required: false,
-        include: [{
-          association: 'pedidos',
-          include: ['producto']
-        }]
-      }],
+      include: [
+        {
+          model: Comanda,
+          as: 'comandas',
+          where: { estado: 'abierta' },
+          required: false,
+          include: [{
+            association: 'pedidos',
+            include: ['producto']
+          }]
+        },
+        // incluir usuarios asignados para devolver avatares al frontend
+        {
+          model: Usuario,
+          as: 'usuariosAsignados',
+          attributes: ['id', 'nombre', 'fotoUrl', 'foto_url', 'foto']
+        }
+      ],
       order: [['numero', 'ASC']]
     });
 
@@ -30,11 +38,19 @@ const getAllMesas = async (req, res) => {
     const mesasConDisponibilidad = mesas.map(mesa => {
       const mesaJson = mesa.toJSON();
       const tieneComandaAbierta = mesaJson.comandas && mesaJson.comandas.length > 0;
-      
+
+      // normalizar usuarios asignados: devolver id, nombre y foto (url o base64)
+      const usuariosAsignados = (mesaJson.usuariosAsignados || []).map(u => ({
+        id: u.id,
+        nombre: u.nombre,
+        foto: u.fotoUrl || u.foto_url || u.foto || null
+      }));
+
       return {
         ...mesaJson,
         disponible: !tieneComandaAbierta,
-        comandaActual: tieneComandaAbierta ? mesaJson.comandas[0].id : null
+        comandaActual: tieneComandaAbierta ? mesaJson.comandas[0].id : null,
+        usuariosAsignados
       };
     });
 
@@ -63,13 +79,20 @@ const getMesaById = async (req, res) => {
     const { id } = req.params;
 
     const mesa = await Mesa.findByPk(id, {
-      include: [{
-        model: Comanda,
-        as: 'comandas',
-        where: { estado: 'abierta' },
-        required: false,
-        include: ['pedidos']
-      }]
+      include: [
+        {
+          model: Comanda,
+          as: 'comandas',
+          where: { estado: 'abierta' },
+          required: false,
+          include: ['pedidos']
+        },
+        {
+          model: Usuario,
+          as: 'usuariosAsignados',
+          attributes: ['id', 'nombre', 'fotoUrl', 'foto_url', 'foto']
+        }
+      ]
     });
 
     if (!mesa) {
@@ -82,12 +105,19 @@ const getMesaById = async (req, res) => {
     const mesaJson = mesa.toJSON();
     const tieneComandaAbierta = mesaJson.comandas && mesaJson.comandas.length > 0;
 
+    const usuariosAsignados = (mesaJson.usuariosAsignados || []).map(u => ({
+      id: u.id,
+      nombre: u.nombre,
+      foto: u.fotoUrl || u.foto_url || u.foto || null
+    }));
+
     res.json({
       success: true,
       data: {
         ...mesaJson,
         disponible: !tieneComandaAbierta,
-        comandaActual: tieneComandaAbierta ? mesaJson.comandas[0] : null
+        comandaActual: tieneComandaAbierta ? mesaJson.comandas[0] : null,
+        usuariosAsignados
       }
     });
   } catch (error) {

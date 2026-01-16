@@ -55,6 +55,19 @@ const Usuario = sequelize.define('Usuario', {
     },
     comment: 'Para usuarios tipo cocina/bar: especifica si trabaja en cocina o bar'
   }
+  ,
+  foto: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Foto del usuario (URL o Base64)'
+  }
+  ,
+  fotoUrl: {
+    type: DataTypes.STRING(1000),
+    allowNull: true,
+    field: 'foto_url',
+    comment: 'URL pública al archivo de foto del usuario (en /uploads o CDN)'
+  }
 }, {
   tableName: 'usuarios',
   hooks: {
