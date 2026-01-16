@@ -54,9 +54,6 @@ services:
     volumes:
       - ./backend/uploads:/app/uploads
       - /app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - malafama-network
     command: ["sh", "/entrypoint.sh"]
