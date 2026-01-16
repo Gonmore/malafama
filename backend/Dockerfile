@@ -1,13 +1,21 @@
-FROM node:18-alpine
+FROM node:18-bullseye-slim
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm ci --omit=dev
 
 COPY . .
 
+ENV NODE_ENV=production
+
+# Create uploads dir
+RUN mkdir -p /app/uploads
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 5000
 
-CMD ["npm", "run", "dev"]
+ENTRYPOINT ["/entrypoint.sh"]
