@@ -60,12 +60,6 @@ volumes:
   malafama_uploads:
 
 networks:
-  # Network where nginx-proxy-manager lives (external)
-  proxy:
+  red-interna:
     external: true
-    name: ${NPM_NETWORK:-npm_default}
-
-  # Network where postgres-principal lives (external)
-  db:
-    external: true
-    name: ${POSTGRES_NETWORK:-postgres_default}
+    name: red-interna
