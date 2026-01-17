@@ -1,85 +1,64 @@
-services:
-  # PostgreSQL Database (external in production)
-  postgres:
-    image: postgres:14-alpine
-    container_name: malafama-db
-    environment:
-      POSTGRES_DB: malafama
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
-      - ./database/views.sql:/docker-entrypoint-initdb.d/2-views.sql
-    networks:
-      - malafama-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles:
-      - dev  # Only run in development
+version: '3.8'
 
-  # Backend API
+services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    container_name: malafama-backend
+      dockerfile: Dockerfile.prod
+    container_name: backend-malafama
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: production
       PORT: 5000
-      DB_HOST: ${DB_HOST:-postgres}
+
+      # DB (existing container)
+      DB_HOST: ${DB_HOST:-postgres-principal}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-malafama}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
+
+      # Auth
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRE: ${JWT_EXPIRE:-7d}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+
+      # API/CORS
+      API_VERSION: ${API_VERSION:-v1}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://comandas.malafamacomedia.com}
+
+      # Optional logging/limits
       LOG_SQL: ${LOG_SQL:-false}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-5000}
+
+      # Startup behavior
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-60}
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-2}
-    ports:
-      - "${BACKEND_PORT:-5000}:5000"
-    volumes:
-      - ./backend/uploads:/app/uploads
-      - /app/node_modules
-    networks:
-      - malafama-network
-    command: ["sh", "/entrypoint.sh"]
 
-  # Frontend Web
+    ports:
+      - "127.0.0.1:6010:5000"
+    volumes:
+      - malafama_uploads:/app/uploads
+    networks:
+      - red-interna
+
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
-    container_name: malafama-frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+    container_name: frontend-malafama
     restart: unless-stopped
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api/v1}
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
+      - "127.0.0.1:6011:80"
     networks:
-      - malafama-network
-    command: ["nginx", "-g", "daemon off;"]
+      - red-interna
 
 volumes:
-  postgres_data:
+  malafama_uploads:
 
 networks:
-  malafama-network:
-    external: true
+  red-interna:
     name: red-interna

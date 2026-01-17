@@ -61,5 +61,4 @@ volumes:
 
 networks:
   red-interna:
-    external: true
     name: red-interna
