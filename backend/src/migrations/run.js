@@ -10,6 +10,39 @@ const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR
 
 const MIGRATIONS_TABLE = process.env.MIGRATIONS_TABLE || 'schema_migrations';
 
+async function tableExists(tableName) {
+  // Use to_regclass for a simple existence check in the current DB.
+  // Default schema is typically "public".
+  const [rows] = await sequelize.query('SELECT to_regclass($1) AS regclass;', {
+    bind: [`public.${tableName}`]
+  });
+  return Boolean(rows && rows[0] && rows[0].regclass);
+}
+
+async function bootstrapSchemaIfNeeded() {
+  // If the DB is empty (or missing core tables), bootstrap from Sequelize models.
+  // This matches the schema that works locally (models + associations), then
+  // the existing SQL/JS migrations can safely apply incremental changes.
+  const hasUsuarios = await tableExists('usuarios');
+  const hasLocales = await tableExists('locales');
+
+  if (hasUsuarios && hasLocales) {
+    return;
+  }
+
+  console.log('[migrations] Base tables missing; bootstrapping schema from Sequelize models (sequelize.sync)...');
+  // UUID defaults for UUIDV4 on Postgres typically require uuid-ossp.
+  await sequelize.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+
+  // Load models and associations.
+  // eslint-disable-next-line global-require
+  require('../models');
+
+  // Create missing tables (does not drop; does not alter existing tables).
+  await sequelize.sync();
+  console.log('[migrations] Bootstrap completed (sequelize.sync)');
+}
+
 function isCandidate(filename) {
   return /^\d/.test(filename) && (filename.endsWith('.sql') || filename.endsWith('.js'));
 }
@@ -91,6 +124,7 @@ async function run() {
     return;
   }
 
+  await bootstrapSchemaIfNeeded();
   await ensureMigrationsTable();
   const applied = await getAppliedSet();
 
