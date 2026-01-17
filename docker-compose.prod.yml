@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -61,4 +59,5 @@ volumes:
 
 networks:
   red-interna:
+    external: true
     name: red-interna
