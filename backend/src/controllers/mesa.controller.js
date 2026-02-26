@@ -2,14 +2,23 @@ const { Mesa, Comanda } = require('../models');
 const { MesaAsignada, Usuario } = require('../models');
 const { sequelize } = require('../config/database');
 const { Op } = require('sequelize');
+const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
 // Listar todas las mesas
 const getAllMesas = async (req, res) => {
   try {
-    const { activo, disponible } = req.query;
+    const { activo, disponible, localId } = req.query;
     
     const where = {};
     if (activo !== undefined) where.activo = activo === 'true';
+
+    // Scope por local/tenant
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(where, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     const mesas = await Mesa.findAll({
       where,
@@ -78,6 +87,8 @@ const getMesaById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const mesa = await Mesa.findByPk(id, {
       include: [
         {
@@ -100,6 +111,12 @@ const getMesaById = async (req, res) => {
         success: false,
         message: 'Mesa no encontrada'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, mesa.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     const mesaJson = mesa.toJSON();
@@ -135,9 +152,17 @@ const createMesa = async (req, res) => {
   try {
     const { nombre, numero, ubicacion, capacidad, localId } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = localId || req.user?.localId || null;
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     // Verificar que el número no esté en uso. If a localId is provided, verify within that local only,
     // otherwise fall back to global uniqueness.
-    const existsQuery = localId ? { numero, localId } : { numero };
+    const existsQuery = targetLocalId ? { numero, localId: targetLocalId } : { numero };
     const mesaExistente = await Mesa.findOne({ where: existsQuery });
     if (mesaExistente) {
       return res.status(400).json({
@@ -151,7 +176,7 @@ const createMesa = async (req, res) => {
       numero,
       ubicacion,
       capacidad: capacidad || 4,
-      localId: localId || null
+      localId: targetLocalId
     });
 
     res.status(201).json({
@@ -173,6 +198,14 @@ const createMesa = async (req, res) => {
 const createMultipleMesas = async (req, res) => {
   try {
     const { cantidad, ubicacion, capacidad, localId } = req.body;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = localId || req.user?.localId || null;
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     if (!cantidad || cantidad < 1 || cantidad > 100) {
       return res.status(400).json({
@@ -196,7 +229,7 @@ const createMultipleMesas = async (req, res) => {
         numero,
         ubicacion: ubicacion || null,
         capacidad: capacidad || 4,
-        localId: localId || null
+        localId: targetLocalId
       });
     }
 
@@ -223,6 +256,8 @@ const updateMesa = async (req, res) => {
     const { id } = req.params;
     const { nombre, numero, ubicacion, capacidad, activo } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const mesa = await Mesa.findByPk(id);
 
     if (!mesa) {
@@ -230,6 +265,12 @@ const updateMesa = async (req, res) => {
         success: false,
         message: 'Mesa no encontrada'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, mesa.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Si se está actualizando el número, verificar que no exista
@@ -271,6 +312,8 @@ const deleteMesa = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const mesa = await Mesa.findByPk(id);
 
     if (!mesa) {
@@ -278,6 +321,12 @@ const deleteMesa = async (req, res) => {
         success: false,
         message: 'Mesa no encontrada'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, mesa.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar que no tenga comandas abiertas
@@ -314,10 +363,20 @@ const deleteMesa = async (req, res) => {
 // Obtener estado de ocupación de mesas
 const getEstadoOcupacion = async (req, res) => {
   try {
-    const totalMesas = await Mesa.count({ where: { activo: true } });
+    const { localId } = req.query;
+
+    const whereLocal = {};
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(whereLocal, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
+    const totalMesas = await Mesa.count({ where: { activo: true, ...whereLocal } });
     
     const mesasOcupadas = await Mesa.count({
-      where: { activo: true },
+      where: { activo: true, ...whereLocal },
       include: [{
         model: Comanda,
         as: 'comandas',
@@ -392,6 +451,8 @@ const assignMesas = async (req, res) => {
     // Default: asignacion del usuario actual si no se envia usuarioId
     const targetUserId = usuarioId || req.user.id;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     // Validar que el usuario existe y pertenezca al mismo local si no es admin
     const usuario = await Usuario.findByPk(targetUserId);
     if (!usuario) {
@@ -405,9 +466,9 @@ const assignMesas = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ success: false, message: 'Algunas mesas no existen' });
     }
-    if (req.user.tipo !== 'admin') {
-      const notInLocal = mesasObjs.some(m => m.localId !== req.user.localId);
-      if (notInLocal) {
+    if (allowedLocalIds !== null) {
+      const notAllowed = mesasObjs.some(m => !allowedLocalIds.includes(m.localId));
+      if (notAllowed) {
         await t.rollback();
         return res.status(403).json({ success: false, message: 'No puedes asignar mesas fuera de tu local' });
       }

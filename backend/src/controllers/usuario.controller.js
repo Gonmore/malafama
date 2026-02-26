@@ -1,21 +1,48 @@
 const { Usuario } = require('../models');
 const { Op } = require('sequelize');
+const { resolveAllowedLocalIds } = require('../utils/localScope');
+
+function isUsuarioInScope(usuario, allowedLocalIds, currentUserId) {
+  if (allowedLocalIds === null) return true;
+  if (!usuario) return false;
+  if (usuario.id === currentUserId) return true;
+  const uLocalId = usuario.localId;
+  return Boolean(uLocalId && allowedLocalIds.includes(uLocalId));
+}
 
 // Obtener todos los usuarios
 const getAllUsuarios = async (req, res) => {
   try {
     const { tipo, activo, search } = req.query;
 
-    const where = {};
-    if (tipo) where.tipo = tipo;
-    if (activo !== undefined) where.activo = activo === 'true';
-    
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
+    const baseWhere = {};
+    if (tipo) baseWhere.tipo = tipo;
+    if (activo !== undefined) baseWhere.activo = activo === 'true';
+
+    const andClauses = [baseWhere];
+
     if (search) {
-      where[Op.or] = [
-        { nombre: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } }
-      ];
+      andClauses.push({
+        [Op.or]: [
+          { nombre: { [Op.iLike]: `%${search}%` } },
+          { email: { [Op.iLike]: `%${search}%` } }
+        ]
+      });
     }
+
+    // Scope por tenant (admin): usuarios de los locales del admin + el propio admin.
+    if (allowedLocalIds !== null) {
+      andClauses.push({
+        [Op.or]: [
+          { id: req.user.id },
+          { localId: { [Op.in]: allowedLocalIds } }
+        ]
+      });
+    }
+
+    const where = andClauses.length === 1 ? baseWhere : { [Op.and]: andClauses };
 
     const usuarios = await Usuario.findAll({
       where,
@@ -50,6 +77,8 @@ const getUsuarioById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const usuario = await Usuario.findByPk(id, {
       attributes: { exclude: ['password'] }
     });
@@ -58,6 +87,13 @@ const getUsuarioById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    if (req.user.tipo === 'admin' && !isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para acceder a este usuario'
       });
     }
 
@@ -161,12 +197,22 @@ const updateUsuario = async (req, res) => {
     const { id } = req.params;
     const { nombre, email, telefono, direccion, tipo, activo, foto } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const usuario = await Usuario.findByPk(id);
 
     if (!usuario) {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    // Evitar que un admin edite usuarios de otros tenants
+    if (req.user.tipo === 'admin' && !isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para modificar este usuario'
       });
     }
 
@@ -238,12 +284,21 @@ const deleteUsuario = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const usuario = await Usuario.findByPk(id);
 
     if (!usuario) {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    if (!isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para eliminar este usuario'
       });
     }
 
@@ -257,7 +312,17 @@ const deleteUsuario = async (req, res) => {
 
     // No permitir eliminar el único admin
     if (usuario.tipo === 'admin') {
-      const adminCount = await Usuario.count({ where: { tipo: 'admin', activo: true } });
+      const adminCountWhere = {
+        tipo: 'admin',
+        activo: true,
+      };
+      if (allowedLocalIds !== null) {
+        adminCountWhere[Op.or] = [
+          { id: req.user.id },
+          { localId: { [Op.in]: allowedLocalIds } }
+        ];
+      }
+      const adminCount = await Usuario.count({ where: adminCountWhere });
       if (adminCount <= 1) {
         return res.status(400).json({
           success: false,
@@ -287,6 +352,8 @@ const getUsersByTipo = async (req, res) => {
   try {
     const { tipo } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const tiposValidos = ['admin', 'atencion', 'cocina', 'proveedor'];
     if (!tiposValidos.includes(tipo)) {
       return res.status(400).json({
@@ -296,11 +363,20 @@ const getUsersByTipo = async (req, res) => {
       });
     }
 
+    const where = {
+      tipo,
+      activo: true
+    };
+
+    if (allowedLocalIds !== null) {
+      where[Op.or] = [
+        { id: req.user.id },
+        { localId: { [Op.in]: allowedLocalIds } }
+      ];
+    }
+
     const usuarios = await Usuario.findAll({
-      where: {
-        tipo,
-        activo: true
-      },
+      where,
       attributes: { exclude: ['password'] },
       order: [['nombre', 'ASC']]
     });
@@ -324,12 +400,21 @@ const activarUsuario = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const usuario = await Usuario.findByPk(id);
 
     if (!usuario) {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    if (!isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para activar este usuario'
       });
     }
 
@@ -358,12 +443,21 @@ const desactivarUsuario = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const usuario = await Usuario.findByPk(id);
 
     if (!usuario) {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    if (!isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para desactivar este usuario'
       });
     }
 
@@ -377,7 +471,17 @@ const desactivarUsuario = async (req, res) => {
 
     // No permitir desactivar el único admin
     if (usuario.tipo === 'admin') {
-      const adminCount = await Usuario.count({ where: { tipo: 'admin', activo: true } });
+      const adminCountWhere = {
+        tipo: 'admin',
+        activo: true,
+      };
+      if (allowedLocalIds !== null) {
+        adminCountWhere[Op.or] = [
+          { id: req.user.id },
+          { localId: { [Op.in]: allowedLocalIds } }
+        ];
+      }
+      const adminCount = await Usuario.count({ where: adminCountWhere });
       if (adminCount <= 1) {
         return res.status(400).json({
           success: false,
@@ -410,10 +514,15 @@ const desactivarUsuario = async (req, res) => {
 const resetPassword = async (req, res) => {
   try {
     const { id } = req.params;
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
     const usuario = await Usuario.findByPk(id);
 
     if (!usuario) {
       return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
+
+    if (!isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({ success: false, message: 'No tienes permisos para resetear esta contraseña' });
     }
 
     // Generar contraseña por defecto (en producción debería venir de env)
@@ -440,6 +549,8 @@ const cambiarPassword = async (req, res) => {
     const { id } = req.params;
     const { passwordActual, passwordNueva } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     console.log('🔐 Cambiar contraseña:', { 
       usuarioId: id, 
       tienePasswordActual: !!passwordActual, 
@@ -453,6 +564,13 @@ const cambiarPassword = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
+      });
+    }
+
+    if (req.user.tipo === 'admin' && !isUsuarioInScope(usuario, allowedLocalIds, req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'No tienes permisos para cambiar esta contraseña'
       });
     }
 

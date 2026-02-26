@@ -10,6 +10,7 @@ const ConfiguracionRestaurante = require('./ConfiguracionRestaurante');
 const ReporteDiario = require('./ReporteDiario');
 const ScheduledReport = require('./ScheduledReport');
 const PagoProveedor = require('./PagoProveedor');
+const Tenant = require('./Tenant');
 
 // Definir relaciones
 
@@ -21,6 +22,16 @@ Usuario.hasMany(Local, {
 Local.belongsTo(Usuario, {
   foreignKey: 'usuarioPropietarioId',
   as: 'propietario'
+});
+
+// Usuario (admin) - Tenant (1:1)
+Usuario.hasOne(Tenant, {
+  foreignKey: 'adminUsuarioId',
+  as: 'tenant'
+});
+Tenant.belongsTo(Usuario, {
+  foreignKey: 'adminUsuarioId',
+  as: 'adminUsuario'
 });
 
 // Local - Usuario (1:N) - Empleados del local
@@ -210,6 +221,7 @@ ConfiguracionRestaurante.belongsTo(Usuario, {
 module.exports = {
   Usuario,
   Local,
+  Tenant,
   Proveedor,
   Producto,
   Mesa,

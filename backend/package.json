@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest --watchAll",
+    "test": "jest",
+    "test:watch": "jest --watchAll",
     "db:migrate": "node src/migrations/run.js",
     "migrate:sql": "node ./scripts/run_sql_migration.js",
     "seed:reportes:fri-sat": "node src/scripts/seed-reportes-fri-sat.js",

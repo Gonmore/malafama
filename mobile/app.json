@@ -5,9 +5,21 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.malafama.mobile" },
-    "android": { "package": "com.malafama.mobile" },
-    "scheme": "malafama"
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.malafama.mobile"
+    },
+    "android": {
+      "package": "com.malafama.mobile"
+    },
+    "scheme": "malafama",
+    "extra": {
+      "eas": {
+        "projectId": "b6915574-a391-4d63-ada2-751e73ff78fe"
+      }
+    }
   }
 }

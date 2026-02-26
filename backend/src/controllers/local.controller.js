@@ -1,4 +1,4 @@
-const { Local, Mesa, Producto, Usuario } = require('../models');
+const { Local, Mesa, Producto, Usuario, Tenant } = require('../models');
 
 const { saveBase64ToUploads } = require('../services/storage.service');
 
@@ -49,6 +49,26 @@ const crearLocal = async (req, res) => {
       });
     }
 
+    // Enforce tenant subscription / max locales if this admin is linked to a Tenant
+    const tenant = await Tenant.findOne({ where: { adminUsuarioId: usuarioId, activo: true } });
+    if (tenant) {
+      const now = new Date();
+      if (tenant.suscripcionHasta && new Date(tenant.suscripcionHasta) < now) {
+        return res.status(403).json({
+          success: false,
+          message: 'Suscripción vencida. No puedes crear más locales.',
+        });
+      }
+
+      const localesActuales = await Local.count({ where: { usuarioPropietarioId: usuarioId } });
+      if (Number.isFinite(tenant.maxLocales) && localesActuales >= tenant.maxLocales) {
+        return res.status(403).json({
+          success: false,
+          message: `Límite de locales alcanzado (${tenant.maxLocales}).`,
+        });
+      }
+    }
+
     // If logo is base64/data URI, save to uploads and set logo_url
     const localData = {
       nombre,
@@ -58,7 +78,8 @@ const crearLocal = async (req, res) => {
       email,
       qr,
       usuarioPropietarioId: usuarioId,
-      plan: 'gratuito'
+      plan: tenant?.planDefault || 'gratuito',
+      moneda: tenant?.monedaDefault || undefined
     };
 
     if (logo && typeof logo === 'string') {

@@ -1,6 +1,7 @@
 const { Comanda, Pedido, Producto, Mesa } = require('../models');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
+const { resolveLocalWhere } = require('../utils/localScope');
 
 // Obtener métricas del dashboard
 const getDashboardMetrics = async (req, res) => {
@@ -12,6 +13,12 @@ const getDashboardMetrics = async (req, res) => {
         success: false,
         message: 'localId es requerido'
       });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     const hoy = new Date();
@@ -151,6 +158,12 @@ const getVentasPorPeriodo = async (req, res) => {
         success: false,
         message: 'localId es requerido'
       });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     let fechaDesde = new Date();

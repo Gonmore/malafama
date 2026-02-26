@@ -23,7 +23,9 @@ export default function Login() {
       toast.success('Inicio de sesión exitoso')
 
       // Redirigir según el tipo de usuario
-      if (usuario.tipo === 'admin') {
+      if (usuario.tipo === 'platform_admin') {
+        navigate('/platform-admin')
+      } else if (usuario.tipo === 'admin') {
         navigate('/admin')
       } else if (usuario.tipo === 'atencion') {
         navigate('/mesero')

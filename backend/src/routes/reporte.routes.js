@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 const reporteController = require('../controllers/reporte.controller');
+const { resolveLocalWhere } = require('../utils/localScope');
 
 // Reporte del día para mesero (6 AM a 6 AM)
 router.get('/mesero/dia', authenticate, authorize('atencion'), reporteController.getReporteDiaMesero);
@@ -19,6 +20,13 @@ router.get('/admin/stored', authenticate, authorize('admin'), async (req, res) =
 		const { ReporteDiario } = require('../models');
 		const { localId, date } = req.query;
 		if (!localId) return res.status(400).json({ success: false, message: 'Debe proporcionar localId' });
+
+		try {
+			await resolveLocalWhere(req, localId);
+		} catch (e) {
+			return res.status(e.status || 403).json({ success: false, message: e.message });
+		}
+
 		const where = { localId };
 		if (date) where.fecha = date;
 		const items = await ReporteDiario.findAll({ where, order: [['fecha','DESC']] });

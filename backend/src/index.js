@@ -25,6 +25,7 @@ const configRoutes = require('./routes/config.routes');
 const onboardingRoutes = require('./routes/onboarding.routes');
 const localesRoutes = require('./routes/locales.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const platformAdminRoutes = require('./routes/platformAdmin.routes');
 
 // Inicializar Express
 const app = express();
@@ -97,6 +98,7 @@ app.use(`/api/${API_VERSION}/config`, configRoutes);
 app.use(`/api/${API_VERSION}/onboarding`, onboardingRoutes);
 app.use(`/api/${API_VERSION}/locales`, localesRoutes);
 app.use(`/api/${API_VERSION}/dashboard`, dashboardRoutes);
+app.use(`/api/${API_VERSION}/platform-admin`, platformAdminRoutes);
 
 // Ruta de health check
 app.get('/health', (req, res) => {
@@ -132,7 +134,7 @@ app.use((err, req, res, next) => {
 // Iniciar servidor
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
+const startServer = async ({ port, startScheduler } = {}) => {
   try {
     // Probar conexión a base de datos
     await testConnection();
@@ -143,19 +145,31 @@ const startServer = async () => {
       console.log('✓ Modelos sincronizados con la base de datos');
     }
     
+    const effectivePort = port ?? PORT;
+    const shouldStartScheduler =
+      (startScheduler ?? process.env.NODE_ENV !== 'test') &&
+      process.env.DISABLE_SCHEDULER !== 'true';
+
     // Iniciar servidor
-    server.listen(PORT, () => {
-      console.log(`✓ Servidor corriendo en puerto ${PORT}`);
-      console.log(`✓ Ambiente: ${process.env.NODE_ENV}`);
-      console.log(`✓ API Version: ${API_VERSION}`);
-      console.log(`✓ Socket.io inicializado`);
+    await new Promise((resolve) => {
+      server.listen(effectivePort, () => {
+        const actualPort = server.address()?.port;
+        console.log(`✓ Servidor corriendo en puerto ${actualPort}`);
+        console.log(`✓ Ambiente: ${process.env.NODE_ENV}`);
+        console.log(`✓ API Version: ${API_VERSION}`);
+        console.log(`✓ Socket.io inicializado`);
+        resolve();
+      });
     });
+
     // Start background scheduler for daily reports (6 AM run)
-    try {
-      const { scheduleDailyReports } = require('./services/reportes.scheduler');
-      scheduleDailyReports();
-    } catch (err) {
-      console.error('No se pudo iniciar reportes.scheduler:', err.message || err);
+    if (shouldStartScheduler) {
+      try {
+        const { scheduleDailyReports } = require('./services/reportes.scheduler');
+        scheduleDailyReports();
+      } catch (err) {
+        console.error('No se pudo iniciar reportes.scheduler:', err.message || err);
+      }
     }
   } catch (error) {
     console.error('✗ Error al iniciar el servidor:', error);
@@ -163,6 +177,8 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
-module.exports = { app, server, io };
+module.exports = { app, server, io, startServer };

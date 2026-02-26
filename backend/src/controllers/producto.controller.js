@@ -1,5 +1,7 @@
 const { Producto, Proveedor } = require('../models');
 const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
+const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
 // Listar todos los productos
 const getAllProductos = async (req, res) => {
@@ -10,7 +12,12 @@ const getAllProductos = async (req, res) => {
     if (activo !== undefined) where.activo = activo === 'true';
     if (categoria) where.categoria = categoria;
     if (proveedorId) where.proveedorId = proveedorId;
-    if (localId) where.localId = localId;
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(where, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
     if (tipo) where.tipo = tipo;
 
     const productos = await Producto.findAll({
@@ -44,7 +51,12 @@ const getProductosPorCategoria = async (req, res) => {
     
     const where = {};
     if (activo !== undefined) where.activo = activo === 'true';
-    if (localId) where.localId = localId;
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(where, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     const productos = await Producto.findAll({
       where,
@@ -110,6 +122,13 @@ const getProductoById = async (req, res) => {
       });
     }
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    try {
+      assertLocalIdAllowed(allowedLocalIds, producto.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     res.json({
       success: true,
       data: producto
@@ -128,6 +147,17 @@ const getProductoById = async (req, res) => {
 const createProducto = async (req, res) => {
   try {
     const { nombre, descripcion, foto, precio, costo, proveedorId, categoria, tipo, localId } = req.body;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = localId || req.user?.localId || null;
+    if (!targetLocalId) {
+      return res.status(400).json({ success: false, message: 'localId es requerido' });
+    }
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     // Verificar que el proveedor existe
     if (proveedorId) {
@@ -149,7 +179,7 @@ const createProducto = async (req, res) => {
       proveedorId,
       categoria,
       tipo: tipo || 'otros',
-      localId: localId || req.user?.localId
+      localId: targetLocalId
     });
 
     const productoCompleto = await Producto.findByPk(producto.id, {
@@ -179,6 +209,8 @@ const createMultipleProductos = async (req, res) => {
   try {
     const { productos } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     if (!Array.isArray(productos) || productos.length === 0) {
       return res.status(400).json({
         success: false,
@@ -186,7 +218,27 @@ const createMultipleProductos = async (req, res) => {
       });
     }
 
-    const productosCreados = await Producto.bulkCreate(productos);
+    const defaultLocalId = req.user?.localId || req.body.localId || null;
+    const productosNormalizados = productos.map((p) => ({
+      ...p,
+      localId: p.localId || defaultLocalId
+    }));
+
+    for (const p of productosNormalizados) {
+      if (!p.localId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cada producto debe incluir localId (o enviar localId por defecto)'
+        });
+      }
+      try {
+        assertLocalIdAllowed(allowedLocalIds, p.localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+    }
+
+    const productosCreados = await Producto.bulkCreate(productosNormalizados);
 
     res.status(201).json({
       success: true,
@@ -209,6 +261,8 @@ const updateProducto = async (req, res) => {
     const { id } = req.params;
     const { nombre, descripcion, foto, precio, costo, proveedorId, categoria, activo, tipo } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const producto = await Producto.findByPk(id);
 
     if (!producto) {
@@ -216,6 +270,12 @@ const updateProducto = async (req, res) => {
         success: false,
         message: 'Producto no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, producto.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar proveedor si se está actualizando
@@ -269,6 +329,8 @@ const updateProductoProveedor = async (req, res) => {
     const { id } = req.params;
     const { proveedorId, costo } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const producto = await Producto.findByPk(id);
 
     if (!producto) {
@@ -276,6 +338,12 @@ const updateProductoProveedor = async (req, res) => {
         success: false,
         message: 'Producto no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, producto.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar que el proveedor existe
@@ -319,6 +387,8 @@ const deleteProducto = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const producto = await Producto.findByPk(id);
 
     if (!producto) {
@@ -326,6 +396,12 @@ const deleteProducto = async (req, res) => {
         success: false,
         message: 'Producto no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, producto.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     await producto.update({ activo: false });
@@ -353,8 +429,13 @@ const getCategorias = async (req, res) => {
       categoria: { [Op.ne]: null },
       activo: true
     };
-    
-    if (localId) where.localId = localId;
+
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(where, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     const categorias = await Producto.findAll({
       attributes: [

@@ -20,9 +20,29 @@ import AtencionDashboard from './pages/atencion/Dashboard'
 import CocinaDashboard from './pages/cocina/Dashboard'
 import ProveedorDashboard from './pages/proveedor/Dashboard'
 import Footer from './components/Footer'
+import PlatformAdminDashboard from './pages/platformAdmin/PlatformAdminDashboard'
 
 // Layout
 import Layout from './components/Layout'
+
+function redirectPathForUser(user) {
+  if (!user?.tipo) return '/login'
+  if (user.tipo === 'platform_admin') return '/platform-admin'
+  if (user.tipo === 'admin') return '/admin'
+  if (user.tipo === 'atencion') return '/mesero'
+  if (user.tipo === 'cocina') return '/cocina'
+  if (user.tipo === 'bar') return '/bar'
+  if (user.tipo === 'proveedor') return '/proveedor'
+  return `/${user.tipo}`
+}
+
+function HomeRedirect() {
+  const { user, token } = useAuthStore()
+  if (token && user) {
+    return <Navigate to={redirectPathForUser(user)} replace />
+  }
+  return <Navigate to="/login" replace />
+}
 
 function App() {
   return (
@@ -31,6 +51,14 @@ function App() {
       <div className="min-h-screen pb-10">
         <Routes>
         <Route path="/login" element={<Login />} />
+
+        <Route path="/platform-admin" element={
+          <ProtectedRoute role="platform_admin">
+            <Layout>
+              <PlatformAdminDashboard />
+            </Layout>
+          </ProtectedRoute>
+        } />
         <Route path="/onboarding" element={
           <ProtectedRoute role="admin" requireOnboarding={false}>
             <OnboardingWizard />
@@ -134,7 +162,7 @@ function App() {
           </ProtectedRoute>
         } />
         
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
         </Routes>
       </div>
       <Footer />
@@ -150,9 +178,21 @@ function ProtectedRoute({ children, role, requireOnboarding = true }) {
     return <Navigate to="/login" replace />
   }
 
-  // Permitir acceso si el rol coincide o si es admin (admin puede ver todo)
-  if (role && user.tipo !== role && user.tipo !== 'admin') {
-    return <Navigate to={`/${user.tipo}`} replace />
+  const redirectForTipo = (tipo) => {
+    if (tipo === 'platform_admin') return '/platform-admin'
+    return `/${tipo}`
+  }
+
+  // platform_admin: acceso exclusivo a rutas platform_admin
+  if (role === 'platform_admin' && user.tipo !== 'platform_admin') {
+    return <Navigate to={redirectForTipo(user.tipo)} replace />
+  }
+
+  // Admin puede ver todo EXCEPTO platform_admin
+  if (role && role !== 'platform_admin') {
+    if (user.tipo !== role && user.tipo !== 'admin') {
+      return <Navigate to={redirectForTipo(user.tipo)} replace />
+    }
   }
 
   // Ya no redirigimos automáticamente al onboarding

@@ -59,6 +59,11 @@ export default function AdminDashboard() {
     ventasUltimos7Dias: []
   });
 
+  const localIdForPreview = (localActivo || stats.local)?.id || null;
+  const previewQuery = localIdForPreview
+    ? `?localId=${encodeURIComponent(localIdForPreview)}&preview=1`
+    : '';
+
   useEffect(() => {
     cargarDashboard();
     // Inicializar moneda seleccionada del local activo o del usuario
@@ -210,7 +215,7 @@ export default function AdminDashboard() {
               <LocalSelector onLocalChange={handleLocalChange} />
               
               <button
-                onClick={() => navigate('/onboarding')}
+                onClick={() => navigate('/onboarding', { state: { nuevoLocal: true } })}
                 className="px-3 py-2 sm:px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium text-sm flex-shrink-0"
                 title="Crear un nuevo local"
               >
@@ -350,7 +355,13 @@ export default function AdminDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/admin/proveedores')}
+              onClick={() => {
+                if (localIdForPreview) {
+                  navigate(`/admin/proveedores?localId=${encodeURIComponent(localIdForPreview)}`);
+                } else {
+                  navigate('/admin/proveedores');
+                }
+              }}
               className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
             >
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -393,6 +404,63 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500 hidden sm:block">Análisis y estadísticas</p>
               </div>
             </button>
+
+            <a
+              href={`/mesero${previewQuery}`}
+              onClick={(e) => {
+                if (!localIdForPreview) {
+                  e.preventDefault();
+                  toast.error('No hay local seleccionado');
+                }
+              }}
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+            >
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-base sm:text-xl">🧑‍🍳</span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Mesero</p>
+                <p className="text-xs text-gray-500 hidden sm:block">Preview del salón</p>
+              </div>
+            </a>
+
+            <a
+              href={`/cocina${previewQuery}`}
+              onClick={(e) => {
+                if (!localIdForPreview) {
+                  e.preventDefault();
+                  toast.error('No hay local seleccionado');
+                }
+              }}
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+            >
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-base sm:text-xl">🍳</span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Cocina</p>
+                <p className="text-xs text-gray-500 hidden sm:block">Preview de pedidos</p>
+              </div>
+            </a>
+
+            <a
+              href={`/bar${previewQuery}`}
+              onClick={(e) => {
+                if (!localIdForPreview) {
+                  e.preventDefault();
+                  toast.error('No hay local seleccionado');
+                }
+              }}
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+            >
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-base sm:text-xl">🍺</span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Bar</p>
+                <p className="text-xs text-gray-500 hidden sm:block">Preview de bebidas</p>
+              </div>
+            </a>
 
             <button
               onClick={() => navigate('/admin/configuracion')}

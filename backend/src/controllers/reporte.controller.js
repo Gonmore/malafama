@@ -2,6 +2,7 @@ const { sequelize } = require('../config/database');
 const { QueryTypes } = require('sequelize');
 const { Comanda, Pedido, Producto, Mesa, Usuario, MesaAsignada, Local, PagoProveedor, Proveedor } = require('../models');
 const { Op } = require('sequelize');
+const { resolveAllowedLocalIds, resolveLocalWhere, assertLocalIdAllowed } = require('../utils/localScope');
 
 /**
  * Obtener reporte del día para el mesero
@@ -298,8 +299,11 @@ const getVentasPorPeriodo = async (req, res) => {
       }
     };
 
-    if (localId) {
-      whereClause.localId = localId;
+    try {
+      const scoped = await resolveLocalWhere(req, localId || null);
+      Object.assign(whereClause, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Obtener ventas agrupadas por fecha
@@ -359,11 +363,29 @@ const getVentasPorPeriodo = async (req, res) => {
 // Reporte de productos más vendidos
 const getProductosMasVendidos = async (req, res) => {
   try {
-    const { fechaInicio, fechaFin, limit = 20 } = req.query;
+    const { fechaInicio, fechaFin, limit = 20, localId } = req.query;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    let localIdsFilter = null;
+    if (localId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localIdsFilter = [localId];
+    } else if (Array.isArray(allowedLocalIds)) {
+      localIdsFilter = allowedLocalIds;
+    }
 
     // Hacemos la consulta directamente combinando comandas/pedidos/productos para poder filtrar por rango de fechas
     const replacements = { limit: parseInt(limit) };
     let whereClause = `WHERE c.estado = 'cerrada'`;
+
+    if (Array.isArray(localIdsFilter)) {
+      replacements.localIds = localIdsFilter;
+      whereClause += ` AND p.local_id IN (:localIds) AND c.local_id IN (:localIds)`;
+    }
 
     if (fechaInicio && fechaFin) {
       whereClause += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
@@ -417,11 +439,29 @@ const getProductosMasVendidos = async (req, res) => {
 // Reporte de ventas por producto
 const getVentasPorProducto = async (req, res) => {
   try {
-    const { fechaInicio, fechaFin, categoria } = req.query;
+    const { fechaInicio, fechaFin, categoria, localId } = req.query;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    let localIdsFilter = null;
+    if (localId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localIdsFilter = [localId];
+    } else if (Array.isArray(allowedLocalIds)) {
+      localIdsFilter = allowedLocalIds;
+    }
 
     // Generar ventas por producto con filtrado por fechas sobre comandas
     const replacements = {};
     let whereClauses = `WHERE c.estado = 'cerrada'`;
+
+    if (Array.isArray(localIdsFilter)) {
+      replacements.localIds = localIdsFilter;
+      whereClauses += ` AND p.local_id IN (:localIds) AND c.local_id IN (:localIds)`;
+    }
 
     if (fechaInicio && fechaFin) {
       whereClauses += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
@@ -484,11 +524,29 @@ const getVentasPorProducto = async (req, res) => {
 // Reporte de ventas por mesa
 const getVentasPorMesa = async (req, res) => {
   try {
-    const { fechaInicio, fechaFin } = req.query;
+    const { fechaInicio, fechaFin, localId } = req.query;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    let localIdsFilter = null;
+    if (localId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localIdsFilter = [localId];
+    } else if (Array.isArray(allowedLocalIds)) {
+      localIdsFilter = allowedLocalIds;
+    }
 
     // Calculamos ventas por mesa usando comandas para permitir filtrado por fechas
     const replacements = {};
     let whereClauses = `WHERE c.estado = 'cerrada'`;
+
+    if (Array.isArray(localIdsFilter)) {
+      replacements.localIds = localIdsFilter;
+      whereClauses += ` AND m.local_id IN (:localIds) AND c.local_id IN (:localIds)`;
+    }
 
     if (fechaInicio && fechaFin) {
       whereClauses += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
@@ -541,10 +599,67 @@ const getVentasPorMesa = async (req, res) => {
 // Reporte de pagos pendientes a proveedores
 const getPagosPendientesProveedores = async (req, res) => {
   try {
-    const pagos = await sequelize.query(
-      `SELECT * FROM v_pagos_pendientes_proveedores ORDER BY monto_pendiente DESC`,
-      { type: QueryTypes.SELECT }
-    );
+    const { localId } = req.query;
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
+    let localIdsFilter = null;
+    if (localId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localIdsFilter = [localId];
+    } else if (Array.isArray(allowedLocalIds)) {
+      localIdsFilter = allowedLocalIds;
+    }
+
+    if (Array.isArray(localIdsFilter) && localIdsFilter.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          pagos: [],
+          resumen: { totalPendiente: '0.00', proveedoresConDeuda: 0 }
+        }
+      });
+    }
+
+    const replacements = {};
+    let localWhereSql = '';
+    if (Array.isArray(localIdsFilter)) {
+      replacements.localIds = localIdsFilter;
+      localWhereSql = ' AND p.local_id IN (:localIds) AND c.local_id IN (:localIds)';
+    }
+
+    const query = `
+      SELECT 
+          pr.id as proveedor_id,
+          pr.nombre as proveedor,
+          pr.contacto,
+          pr.telefono,
+          pr.email,
+          SUM(ped.cantidad * p.costo) as monto_pendiente,
+          COUNT(DISTINCT c.id) as comandas_asociadas,
+          MIN(c.fecha) as fecha_primera_venta,
+          MAX(c.fecha) as fecha_ultima_venta
+      FROM proveedores pr
+      INNER JOIN productos p ON pr.id = p.proveedor_id
+      INNER JOIN pedidos ped ON p.id = ped.producto_id
+      INNER JOIN comandas c ON ped.comanda_id = c.id
+      WHERE c.estado = 'cerrada'
+      ${localWhereSql}
+      AND NOT EXISTS (
+          SELECT 1 FROM pagos_proveedores pp
+          WHERE pp.proveedor_id = pr.id
+          AND pp.local_id = p.local_id
+          AND pp.estado = 'pagado'
+          AND c.fecha BETWEEN pp.fecha_inicio AND pp.fecha_fin
+      )
+      GROUP BY pr.id, pr.nombre, pr.contacto, pr.telefono, pr.email
+      ORDER BY monto_pendiente DESC
+    `;
+
+    const pagos = await sequelize.query(query, { replacements, type: QueryTypes.SELECT });
 
     const totalPendiente = pagos.reduce((sum, p) => sum + parseFloat(p.monto_pendiente || 0), 0);
 
@@ -580,6 +695,12 @@ const getPagosSemanaProveedores = async (req, res) => {
       if (locales && locales.length > 0) localId = locales[0].id;
     }
     if (!localId) return res.status(400).json({ success: false, message: 'LocalId requerido' });
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     // interpret startDate/endDate as business-day dates (YYYY-MM-DD) — day defined as 06:00→06:00
     const now = new Date();
@@ -636,6 +757,12 @@ const getDetalleProveedor = async (req, res) => {
     }
     if (!localId) return res.status(400).json({ success: false, message: 'LocalId requerido' });
 
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     // Use business-day date strings for filtering
     const now = new Date();
     const start = startDate || (() => { const d = new Date(now); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })();
@@ -665,11 +792,27 @@ const getDetalleProveedor = async (req, res) => {
 // Reporte de rendimiento de meseros
 const getRendimientoMeseros = async (req, res) => {
   try {
-    const { fechaInicio, fechaFin } = req.query;
+    const adminUser = req.user;
+    const { fechaInicio, fechaFin, localId: qLocalId } = req.query;
+
+    let localId = qLocalId || adminUser.localId || null;
+    if (!localId) {
+      const locales = await Local.findAll({ where: { usuarioPropietarioId: adminUser.id }, attributes: ['id'] });
+      if (locales && locales.length > 0) localId = locales[0].id;
+    }
+    if (!localId) {
+      return res.status(400).json({ success: false, message: 'localId es requerido' });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     // Calcular rendimiento por mesero usando comandas directamente para permitir filtrado por fechas
-    const replacements = {};
-    let whereClause = `WHERE u.tipo = 'atencion' AND c.estado = 'cerrada'`;
+    const replacements = { localId };
+    let whereClause = `WHERE u.tipo = 'atencion' AND c.estado = 'cerrada' AND c.local_id = :localId`;
 
     if (fechaInicio && fechaFin) {
       whereClause += ` AND DATE(c.fecha) BETWEEN :fechaInicio AND :fechaFin`;
@@ -738,6 +881,12 @@ const getReportesDiariosLocal = async (req, res) => {
     if (!localId) {
       // No hay local disponible para el admin
       return res.status(400).json({ success: false, message: 'No se encontró un local objetivo para generar reportes. Proporciona ?localId o configura un local para el usuario admin.' });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Calcular inicio y fin del día (6 AM a 6 AM)
@@ -891,6 +1040,12 @@ const getDiasConReportesLocal = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No se encontró local objetivo (proporciona localId o configura un local para el admin).' });
     }
 
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     const ahora = new Date();
     // inicioDia como hoy a las 6AM según regla del negocio
     let inicioDia = new Date(ahora);
@@ -958,6 +1113,12 @@ const crearReporteDiario = async (req, res) => {
       if (locales && locales.length > 0) localId = locales[0].id;
     }
     if (!localId) return res.status(400).json({ success: false, message: 'Local objetivo no encontrado' });
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     // fecha objetivo (YYYY-MM-DD) -> inicio a las 06:00
     const fechaTarget = date || (new Date()).toISOString().split('T')[0];
@@ -1058,6 +1219,12 @@ const createScheduledReport = async (req, res) => {
     const { localId, nombre, frecuencia = 'daily', tiempo = '06:00', diaSemana = null, diaMes = null, formato = 'csv', destinatarios = null, activo = true } = req.body;
     if (!localId) return res.status(400).json({ success: false, message: 'localId es requerido' });
 
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     const { ScheduledReport } = require('../models');
     const schedule = await ScheduledReport.create({ localId, nombre, frecuencia, tiempo, diaSemana, diaMes, formato, destinatarios, activo });
     res.json({ success: true, data: schedule });
@@ -1072,7 +1239,19 @@ const listScheduledReports = async (req, res) => {
     const { localId } = req.query;
     const { ScheduledReport } = require('../models');
     const where = {};
-    if (localId) where.localId = localId;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    if (localId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, localId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      where.localId = localId;
+    } else if (Array.isArray(allowedLocalIds)) {
+      where.localId = { [Op.in]: allowedLocalIds };
+    }
+
     const items = await ScheduledReport.findAll({ where, order: [['created_at','DESC']] });
     res.json({ success: true, data: items });
   } catch (error) {
@@ -1088,6 +1267,18 @@ const updateScheduledReport = async (req, res) => {
     const { ScheduledReport } = require('../models');
     const item = await ScheduledReport.findByPk(id);
     if (!item) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    try {
+      assertLocalIdAllowed(allowedLocalIds, item.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
+    if (updates.localId && String(updates.localId) !== String(item.localId)) {
+      return res.status(400).json({ success: false, message: 'No se permite cambiar el localId de una programación' });
+    }
+
     await item.update(updates);
     res.json({ success: true, data: item });
   } catch (error) {
@@ -1102,6 +1293,14 @@ const deleteScheduledReport = async (req, res) => {
     const { ScheduledReport } = require('../models');
     const item = await ScheduledReport.findByPk(id);
     if (!item) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    try {
+      assertLocalIdAllowed(allowedLocalIds, item.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     await item.destroy();
     res.json({ success: true });
   } catch (error) {
@@ -1117,6 +1316,13 @@ const runScheduledReportNow = async (req, res) => {
     const { ScheduledReport } = require('../models');
     const sched = await ScheduledReport.findByPk(id);
     if (!sched) return res.status(404).json({ success: false, message: 'Programación no encontrada' });
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    try {
+      assertLocalIdAllowed(allowedLocalIds, sched.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     // Determine target date for report (if provided use date else use previous business day)
     let fechaTarget;
@@ -1218,9 +1424,71 @@ const generarYGuardarReporte = async (localId, fechaTarget) => {
 // Estado de comandas
 const getEstadoComandas = async (req, res) => {
   try {
+    const { localId } = req.query;
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
+    let localIdsFilter = null;
+    const requestedLocalId = localId || req.user?.localId || null;
+    if (requestedLocalId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, requestedLocalId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localIdsFilter = [requestedLocalId];
+    } else if (Array.isArray(allowedLocalIds)) {
+      localIdsFilter = allowedLocalIds;
+    }
+
+    const replacements = {};
+    let localWhereSql = '';
+    if (Array.isArray(localIdsFilter)) {
+      if (localIdsFilter.length === 0) {
+        return res.json({
+          success: true,
+          data: {
+            comandas: [],
+            resumen: {
+              comandasAbiertas: 0,
+              totalPendiente: '0.00',
+              pedidosTotales: 0,
+              pedidosListos: 0,
+              pedidosPendientes: 0,
+              pedidosPreparando: 0
+            }
+          }
+        });
+      }
+      replacements.localIds = localIdsFilter;
+      localWhereSql = ' AND c.local_id IN (:localIds)';
+    }
+
     const estado = await sequelize.query(
-      `SELECT * FROM v_estado_comandas ORDER BY mesa_numero`,
-      { type: QueryTypes.SELECT }
+      `
+      SELECT 
+        c.id as comanda_id,
+        c.fecha,
+        m.nombre as mesa,
+        m.numero as mesa_numero,
+        u.nombre as mesero,
+        c.estado as estado_comanda,
+        COUNT(ped.id) as total_pedidos,
+        SUM(CASE WHEN ped.estado = 'pendiente' THEN 1 ELSE 0 END) as pedidos_pendientes,
+        SUM(CASE WHEN ped.estado = 'en_preparacion' THEN 1 ELSE 0 END) as pedidos_preparando,
+        SUM(CASE WHEN ped.estado = 'listo' THEN 1 ELSE 0 END) as pedidos_listos,
+        SUM(CASE WHEN ped.estado = 'entregado' THEN 1 ELSE 0 END) as pedidos_entregados,
+        c.total as total_comanda,
+        c.local_id
+      FROM comandas c
+      INNER JOIN mesas m ON c.mesa_id = m.id
+      INNER JOIN usuarios u ON c.usuario_atencion_id = u.id
+      LEFT JOIN pedidos ped ON c.id = ped.comanda_id
+      WHERE c.estado = 'abierta'
+      ${localWhereSql}
+      GROUP BY c.id, c.fecha, m.nombre, m.numero, u.nombre, c.estado, c.total, c.local_id
+      ORDER BY m.numero
+      `,
+      { replacements, type: QueryTypes.SELECT }
     );
 
     const resumen = {
@@ -1302,6 +1570,12 @@ const getDashboardResumen = async (req, res) => {
         success: false,
         message: 'localId es requerido'
       });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     const hoy = new Date();
@@ -1411,6 +1685,12 @@ const getReportePorPeriodo = async (req, res) => {
         success: false,
         message: 'localId es requerido'
       });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     let fechaDesde = new Date();
@@ -1662,6 +1942,16 @@ const registrarPagoProveedor = async (req, res) => {
       observaciones 
     } = req.body;
 
+    if (!localId) {
+      return res.status(400).json({ error: 'localId es requerido' });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+
     // Validar que no exista ya un pago para este proveedor y período
     const pagoExistente = await PagoProveedor.findOne({
       where: {
@@ -1711,6 +2001,16 @@ const verificarPagoProveedor = async (req, res) => {
   try {
     const { proveedorId, localId, fechaInicio, fechaFin } = req.query;
 
+    if (!localId) {
+      return res.status(400).json({ error: 'localId es requerido' });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
+
     const pago = await PagoProveedor.findOne({
       where: {
         proveedor_id: proveedorId,
@@ -1757,6 +2057,16 @@ const verificarPagoProveedor = async (req, res) => {
 const listarPagosProveedores = async (req, res) => {
   try {
     const { localId, proveedorId, fechaDesde, fechaHasta } = req.query;
+
+    if (!localId) {
+      return res.status(400).json({ error: 'localId es requerido' });
+    }
+
+    try {
+      await resolveLocalWhere(req, localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ error: e.message });
+    }
 
     const whereClause = { local_id: localId };
     

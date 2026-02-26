@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import localService from '../../services/localService';
 import { useAuthStore } from '../../store/authStore';
 import { reporteService } from '../../services/reporteService';
@@ -8,7 +8,8 @@ import proveedorService from '../../services/proveedorService';
 export default function ProveedoresManagement() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [localId, setLocalId] = useState(user?.local?.id || null);
+  const [searchParams] = useSearchParams();
+  const [localId, setLocalId] = useState(() => searchParams.get('localId') || user?.local?.id || null);
   const [locales, setLocales] = useState([]);
   const [loading, setLoading] = useState(false);
   const [proveedores, setProveedores] = useState([]);

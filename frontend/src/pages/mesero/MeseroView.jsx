@@ -18,6 +18,14 @@ function resolveSocketUrl() {
 
 export default function MeseroView() {
   const { user } = useAuthStore();
+  const previewLocalId = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('localId');
+    } catch (e) {
+      return null;
+    }
+  })();
+  const effectiveLocalId = previewLocalId || user?.localId || null;
   const [mesas, setMesas] = useState([]);
   const [assignedMesas, setAssignedMesas] = useState(new Set());
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -79,7 +87,7 @@ export default function MeseroView() {
     
     socket.on('connect', () => {
       console.log('Socket conectado');
-      const room = user?.localId ? `atencion:${user.localId}` : 'atencion';
+      const room = effectiveLocalId ? `atencion:${effectiveLocalId}` : 'atencion';
       socket.emit('join-room', room);
     });
 
@@ -161,7 +169,7 @@ export default function MeseroView() {
   const cargarMesas = async () => {
     try {
       setLoading(true);
-      const response = await mesaService.getAll();
+      const response = await mesaService.getAll(effectiveLocalId ? { localId: effectiveLocalId } : {});
       const mesasData = response.data || [];
       setMesas(mesasData);
 

@@ -40,8 +40,15 @@ export default function LocalesView() {
     navigate(`/admin/local/${local.id}`);
   };
 
+  const handleKeyDownSelect = (e, local) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleSelectLocal(local);
+    }
+  };
+
   const handleCrearLocal = () => {
-    navigate('/onboarding');
+    navigate('/onboarding', { state: { nuevoLocal: true } });
   };
 
   if (loading) {
@@ -98,10 +105,13 @@ export default function LocalesView() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {locales.map((local) => (
-              <button
+              <div
                 key={local.id}
                 onClick={() => handleSelectLocal(local)}
-                className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 hover:border-blue-500 hover:shadow-xl transition-all p-6 text-left group"
+                onKeyDown={(e) => handleKeyDownSelect(e, local)}
+                role="button"
+                tabIndex={0}
+                className="bg-white rounded-2xl shadow-sm border-2 border-gray-200 hover:border-blue-500 hover:shadow-xl transition-all p-6 text-left group cursor-pointer"
               >
                 {/* Logo y Nombre */}
                 <div className="flex items-start gap-4 mb-4">
@@ -149,6 +159,37 @@ export default function LocalesView() {
                   )}
                 </div>
 
+                {/* Vistas rápidas */}
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  <a
+                    href={`/mesero?localId=${encodeURIComponent(local.id)}&preview=1`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-sm font-semibold"
+                    title="Ver como Mesero"
+                  >
+                    <span>🧑‍🍳</span>
+                    <span className="hidden sm:inline">Mesero</span>
+                  </a>
+                  <a
+                    href={`/cocina?localId=${encodeURIComponent(local.id)}&preview=1`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-sm font-semibold"
+                    title="Ver como Cocina"
+                  >
+                    <span>🍳</span>
+                    <span className="hidden sm:inline">Cocina</span>
+                  </a>
+                  <a
+                    href={`/bar?localId=${encodeURIComponent(local.id)}&preview=1`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-sm font-semibold"
+                    title="Ver como Bar"
+                  >
+                    <span>🍺</span>
+                    <span className="hidden sm:inline">Bar</span>
+                  </a>
+                </div>
+
                 {/* Badge de Plan */}
                 <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                   <span className="text-xs font-semibold text-gray-500 uppercase">
@@ -161,7 +202,7 @@ export default function LocalesView() {
                     </svg>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

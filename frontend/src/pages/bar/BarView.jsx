@@ -15,6 +15,13 @@ function resolveSocketUrl() {
 
 export default function BarView() {
   const { user } = useAuthStore();
+  const previewLocalId = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('localId');
+    } catch (e) {
+      return null;
+    }
+  })();
   const [pedidosPendientes, setPedidosPendientes] = useState([]);
   const [pedidosRecientes, setPedidosRecientes] = useState([]);
   const [localId, setLocalId] = useState(null);
@@ -92,6 +99,11 @@ export default function BarView() {
 
   const cargarLocalId = async () => {
     try {
+      // Preview: allow admin to force a specific local
+      if (previewLocalId) {
+        setLocalId(previewLocalId);
+        return;
+      }
       // If the user has a localId (cocina/bar as employees), use that
       if (user?.localId) {
         setLocalId(user.localId);

@@ -15,6 +15,13 @@ function resolveSocketUrl() {
 
 export default function CocinaView() {
   const { user } = useAuthStore();
+  const previewLocalId = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('localId');
+    } catch (e) {
+      return null;
+    }
+  })();
   const [pedidosPendientes, setPedidosPendientes] = useState([]);
   const [pedidosRecientes, setPedidosRecientes] = useState([]);
   const [localId, setLocalId] = useState(null);
@@ -94,6 +101,11 @@ export default function CocinaView() {
   const cargarLocalId = async () => {
     try {
       // use the `user` from the component scope (top-level useAuthStore hook)
+      // Preview: allow admin to force a specific local
+      if (previewLocalId) {
+        setLocalId(previewLocalId);
+        return;
+      }
       // If user already has localId (employee), use it
       if (user?.localId) {
         setLocalId(user.localId);

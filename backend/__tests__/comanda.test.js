@@ -1,3 +1,5 @@
+process.env.NODE_ENV = 'test';
+
 const request = require('supertest');
 const { app, server } = require('../src/index');
 const { sequelize } = require('../src/config/database');
@@ -8,7 +10,7 @@ describe('Comanda flow with notas and forzar', () => {
   let admin, mesero, local, mesa, producto, token;
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
+    await sequelize.drop({ cascade: true });
     await sequelize.sync({ force: true });
 
     // Crear admin, local y mesero
@@ -25,7 +27,9 @@ describe('Comanda flow with notas and forzar', () => {
 
   afterAll(async () => {
     await sequelize.close();
-    server.close();
+    if (server?.listening) {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   test('should create comanda for mesa', async () => {

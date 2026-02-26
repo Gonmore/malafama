@@ -1,12 +1,16 @@
 const { Proveedor, Usuario, Producto } = require('../models');
+const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
 // Listar todos los proveedores
 const getAllProveedores = async (req, res) => {
   try {
-    // Filtrar por localId: prefer query param ?localId, luego usuario.localId
     const whereClause = {};
-    const qLocal = req.query.localId || (req.user && req.user.localId);
-    if (qLocal) whereClause.localId = qLocal;
+    try {
+      const scoped = await resolveLocalWhere(req, req.query.localId || req.user?.localId);
+      Object.assign(whereClause, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
 
     const proveedores = await Proveedor.findAll({
       where: whereClause,
@@ -37,6 +41,8 @@ const getProveedorById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const proveedor = await Proveedor.findByPk(id, {
       include: [
         {
@@ -60,6 +66,12 @@ const getProveedorById = async (req, res) => {
       });
     }
 
+    try {
+      assertLocalIdAllowed(allowedLocalIds, proveedor.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     res.json({
       success: true,
       data: proveedor
@@ -79,6 +91,17 @@ const createProveedor = async (req, res) => {
   try {
     const { nombre, contacto, telefono, email, esPropio, usuarioId, localId } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const proveedorLocalId = localId || req.user?.localId || null;
+    if (!proveedorLocalId) {
+      return res.status(400).json({ success: false, message: 'localId es requerido' });
+    }
+    try {
+      assertLocalIdAllowed(allowedLocalIds, proveedorLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     // Si se proporciona usuarioId, verificar que existe y es tipo proveedor
     if (usuarioId) {
       const usuario = await Usuario.findByPk(usuarioId);
@@ -94,10 +117,20 @@ const createProveedor = async (req, res) => {
           message: 'El usuario debe ser de tipo proveedor'
         });
       }
-    }
 
-    // Asignar localId: primero del body, luego del usuario autenticado
-    const proveedorLocalId = localId || req.user?.localId || null;
+      if (!usuario.localId) {
+        return res.status(400).json({
+          success: false,
+          message: 'El usuario proveedor debe pertenecer a un local'
+        });
+      }
+      if (String(usuario.localId) !== String(proveedorLocalId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El usuario proveedor debe pertenecer al mismo local'
+        });
+      }
+    }
 
     const proveedor = await Proveedor.create({
       nombre,
@@ -140,6 +173,8 @@ const updateProveedor = async (req, res) => {
     const { id } = req.params;
     const { nombre, contacto, telefono, email, esPropio, usuarioId } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const proveedor = await Proveedor.findByPk(id);
 
     if (!proveedor) {
@@ -147,6 +182,12 @@ const updateProveedor = async (req, res) => {
         success: false,
         message: 'Proveedor no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, proveedor.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar usuario si se está actualizando
@@ -162,6 +203,19 @@ const updateProveedor = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'El usuario debe ser de tipo proveedor'
+        });
+      }
+
+      if (!usuario.localId) {
+        return res.status(400).json({
+          success: false,
+          message: 'El usuario proveedor debe pertenecer a un local'
+        });
+      }
+      if (String(usuario.localId) !== String(proveedor.localId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El usuario proveedor debe pertenecer al mismo local'
         });
       }
     }
@@ -203,6 +257,8 @@ const deleteProveedor = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const proveedor = await Proveedor.findByPk(id);
 
     if (!proveedor) {
@@ -210,6 +266,12 @@ const deleteProveedor = async (req, res) => {
         success: false,
         message: 'Proveedor no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, proveedor.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar que no tenga productos asociados activos
@@ -246,9 +308,18 @@ const deleteProveedor = async (req, res) => {
 // Obtener proveedor "Propio"
 const getProveedorPropio = async (req, res) => {
   try {
-    const localId = req.query.localId || req.user?.localId || null;
+    const requestedLocalId = req.query.localId || req.user?.localId || null;
+    if (!requestedLocalId) {
+      return res.status(400).json({ success: false, message: 'localId es requerido' });
+    }
+
     const whereClause = { esPropio: true };
-    if (localId) whereClause.localId = localId;
+    try {
+      const scoped = await resolveLocalWhere(req, requestedLocalId);
+      Object.assign(whereClause, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
     
     const proveedorPropio = await Proveedor.findOne({
       where: whereClause
@@ -260,7 +331,7 @@ const getProveedorPropio = async (req, res) => {
         nombre: 'Propio',
         esPropio: true,
         contacto: 'Productos elaborados en el establecimiento',
-        localId
+        localId: requestedLocalId
       });
 
       return res.json({

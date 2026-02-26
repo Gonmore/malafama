@@ -1,5 +1,6 @@
 const { Pedido, Producto, Comanda, Mesa, Usuario } = require('../models');
-const { col } = require('sequelize');
+const { col, Op } = require('sequelize');
+const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
 // Obtener el socket.io instance
 let io;
@@ -12,6 +13,8 @@ const updateEstadoPedido = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
 
     const estadosValidos = ['pendiente', 'preparando', 'listo', 'entregado', 'cancelado'];
     
@@ -42,6 +45,12 @@ const updateEstadoPedido = async (req, res) => {
         success: false,
         message: 'Pedido no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, pedido.comanda?.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     const estadoAnterior = pedido.estado;
@@ -137,6 +146,8 @@ const marcarPedidoListo = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const pedido = await Pedido.findByPk(id, {
       include: [
         { model: Producto, as: 'producto' },
@@ -153,6 +164,12 @@ const marcarPedidoListo = async (req, res) => {
         success: false,
         message: 'Pedido no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, pedido.comanda?.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     if (pedido.estado === 'cancelado') {
@@ -227,6 +244,18 @@ const getPedidosByComanda = async (req, res) => {
   try {
     const { comandaId } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
+    const comanda = await Comanda.findByPk(comandaId);
+    if (!comanda) {
+      return res.status(404).json({ success: false, message: 'Comanda no encontrada' });
+    }
+    try {
+      assertLocalIdAllowed(allowedLocalIds, comanda.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
     const pedidos = await Pedido.findAll({
       where: { comandaId },
       include: [{ model: Producto, as: 'producto' }],
@@ -256,13 +285,28 @@ const getPedidosPendientesCocina = async (req, res) => {
     const { estado = 'pendiente,en_preparacion', tipo, localId } = req.query;
     const estados = estado.split(',');
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const requestedLocalId = (req.user?.tipo !== 'admin' && req.user?.localId)
+      ? req.user.localId
+      : (localId || null);
+
+    let localFilter = null;
+    if (requestedLocalId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, requestedLocalId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localFilter = requestedLocalId;
+    } else if (Array.isArray(allowedLocalIds)) {
+      localFilter = { [Op.in]: allowedLocalIds };
+    }
+
     const whereProducto = {};
     if (tipo) {
       whereProducto.tipo = tipo;
     }
-    if (localId) {
-      whereProducto.localId = localId;
-    }
+    if (localFilter) whereProducto.localId = localFilter;
 
     const pedidos = await Pedido.findAll({
       where: {
@@ -277,7 +321,7 @@ const getPedidosPendientesCocina = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
-          where: { estado: 'abierta' },
+          where: { estado: 'abierta', ...(localFilter ? { localId: localFilter } : {}) },
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }
@@ -307,19 +351,34 @@ const getPedidosRecientes = async (req, res) => {
     const { tipo, localId } = req.query;
     const hace5Min = new Date(Date.now() - 5 * 60 * 1000);
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const requestedLocalId = (req.user?.tipo !== 'admin' && req.user?.localId)
+      ? req.user.localId
+      : (localId || null);
+
+    let localFilter = null;
+    if (requestedLocalId) {
+      try {
+        assertLocalIdAllowed(allowedLocalIds, requestedLocalId);
+      } catch (e) {
+        return res.status(e.status || 403).json({ success: false, message: e.message });
+      }
+      localFilter = requestedLocalId;
+    } else if (Array.isArray(allowedLocalIds)) {
+      localFilter = { [Op.in]: allowedLocalIds };
+    }
+
     const whereProducto = {};
     if (tipo) {
       whereProducto.tipo = tipo;
     }
-    if (localId) {
-      whereProducto.localId = localId;
-    }
+    if (localFilter) whereProducto.localId = localFilter;
 
     const pedidos = await Pedido.findAll({
       where: {
         estado: ['listo', 'entregado'],
         listoAt: {
-          [require('sequelize').Op.gte]: hace5Min
+          [Op.gte]: hace5Min
         }
       },
       include: [
@@ -331,6 +390,7 @@ const getPedidosRecientes = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
+          where: localFilter ? { localId: localFilter } : undefined,
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }
@@ -360,6 +420,8 @@ const updateCantidadPedido = async (req, res) => {
     const { id } = req.params;
     const { cantidad } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     if (!cantidad || cantidad < 1) {
       return res.status(400).json({
         success: false,
@@ -379,6 +441,12 @@ const updateCantidadPedido = async (req, res) => {
         success: false,
         message: 'Pedido no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, pedido.comanda?.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     if (pedido.comanda.estado !== 'abierta') {
@@ -418,6 +486,8 @@ const cancelarPedido = async (req, res) => {
     const { id } = req.params;
     const { motivo } = req.body;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const pedido = await Pedido.findByPk(id, {
       include: [
         { model: Producto, as: 'producto' },
@@ -430,6 +500,12 @@ const cancelarPedido = async (req, res) => {
         success: false,
         message: 'Pedido no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, pedido.comanda?.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     if (pedido.comanda.estado !== 'abierta') {
@@ -488,6 +564,8 @@ const getPedidoById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+
     const pedido = await Pedido.findByPk(id, {
       include: [
         { model: Producto, as: 'producto' },
@@ -507,6 +585,12 @@ const getPedidoById = async (req, res) => {
         success: false,
         message: 'Pedido no encontrado'
       });
+    }
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, pedido.comanda?.localId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     res.json({

@@ -1,78 +1,108 @@
 services:
-  # PostgreSQL Database (dev only)
-  postgres:
-    image: postgres:14-alpine
-    container_name: malafama-db
+  # One-shot DB bootstrap (dev)
+  # Ensures DB_NAME exists inside the external postgres-local container.
+  db-init:
+    image: postgres:15-alpine
+    container_name: malafama-db-init
+    restart: "no"
+    env_file:
+      - ./.env
     environment:
-      POSTGRES_DB: malafama
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
-      - ./database/views.sql:/docker-entrypoint-initdb.d/2-views.sql
+      PGPASSWORD: ${DB_PASSWORD}
     networks:
-      - malafama-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - red-desarrollo
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "[db-init] Waiting for postgres-local..."
+        until pg_isready -h ${DB_HOST_DOCKER:-postgres-local} -p ${DB_PORT_DOCKER:-5432} -U ${DB_USER:-postgres}; do
+          sleep 1
+        done
+        echo "[db-init] Ensuring database '${DB_NAME:-malafama}' exists..."
+        psql -h ${DB_HOST_DOCKER:-postgres-local} -p ${DB_PORT_DOCKER:-5432} -U ${DB_USER:-postgres} -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME:-malafama}'" | grep -q 1 \
+          || psql -h ${DB_HOST_DOCKER:-postgres-local} -p ${DB_PORT_DOCKER:-5432} -U ${DB_USER:-postgres} -d postgres -c "CREATE DATABASE \"${DB_NAME:-malafama}\";"
+        echo "[db-init] Done."
 
   # Backend API (dev)
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: malafama-backend
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      PORT: 5000
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-malafama}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      JWT_SECRET: ${JWT_SECRET:-dev-secret}
-      JWT_EXPIRE: ${JWT_EXPIRE:-7d}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # Usar el Postgres Docker llamado "postgres-local" (contenedor existente).
+      # Este contenedor vive en la red "red-desarrollo".
+      DB_HOST: ${DB_HOST_DOCKER:-postgres-local}
+      DB_PORT: ${DB_PORT_DOCKER:-5432}
       LOG_SQL: ${LOG_SQL:-false}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-5000}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-60}
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-2}
     ports:
-      - "${BACKEND_PORT:-5000}:5000"
+      - "${PORT:-5000}:${PORT:-5000}"
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/src:/app/src
       - /app/node_modules
     networks:
       - malafama-network
-    command: ["sh", "/entrypoint.sh"]
+      - red-desarrollo
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      platform-admin-init:
+        condition: service_completed_successfully
+    command: ["npm", "run", "dev"]
+
+  # One-shot Platform Admin bootstrap
+  # - runs migrations (creates tenants table)
+  # - ensures admin@supernovatel.com exists as platform_admin
+  platform-admin-init:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: malafama-platform-admin-init
+    restart: "no"
+    env_file:
+      - ./.env
+    environment:
+      DB_HOST: ${DB_HOST_DOCKER:-postgres-local}
+      DB_PORT: ${DB_PORT_DOCKER:-5432}
+      LOG_SQL: ${LOG_SQL:-false}
+      NODE_ENV: ${NODE_ENV:-development}
+    networks:
+      - red-desarrollo
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    command: ["sh", "-c", "npm run db:migrate && node scripts/init-platform-admin.js"]
 
   # Frontend Web (dev)
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: node:18-alpine
     container_name: malafama-frontend
     restart: unless-stopped
+    env_file:
+      - ./.env
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api/v1}
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    working_dir: /app
     depends_on:
       - backend
     networks:
       - malafama-network
-    command: ["nginx", "-g", "daemon off;"]
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 3000"]
+
 
 volumes:
   postgres_data:
@@ -80,3 +110,6 @@ volumes:
 networks:
   malafama-network:
     name: red-interna
+  red-desarrollo:
+    external: true
+    name: red-desarrollo

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import onboardingService from '../../services/onboardingService';
@@ -21,6 +21,7 @@ const PASOS = [
 
 export default function OnboardingWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
   const [pasoActual, setPasoActual] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -37,11 +38,32 @@ export default function OnboardingWizard() {
 
   useEffect(() => {
     verificarConfiguracionExistente();
-  }, []);
+  }, [location.key]);
+
+  const isNuevoLocalFlow = () => {
+    if (location.state?.nuevoLocal) return true;
+    const params = new URLSearchParams(location.search);
+    const value = params.get('nuevoLocal');
+    return value === '1' || value === 'true';
+  };
 
   const verificarConfiguracionExistente = async () => {
     try {
       setLoading(true);
+
+      // Si el usuario eligió explícitamente crear un nuevo local,
+      // no mostramos el diálogo de configuración existente.
+      if (isNuevoLocalFlow()) {
+        setMostrarDialogExistente(false);
+        setConfiguracionExistente(null);
+        setLocalCreado(null);
+        setDatosMesas(null);
+        setDatosProductos([]);
+        setProductosScrapeados([]);
+        setPasoActual(0);
+        await cargarProveedores();
+        return;
+      }
       
       // Verificar si ya existe un local
       const responseLocales = await localService.obtenerLocales();

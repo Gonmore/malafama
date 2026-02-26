@@ -1,6 +1,8 @@
+process.env.NODE_ENV = 'test';
+
 const request = require('supertest');
 const { io: Client } = require('socket.io-client');
-const { app, server } = require('../src/index');
+const { app, server, startServer } = require('../src/index');
 const { sequelize } = require('../src/config/database');
 const { Usuario, Local, Producto, Mesa } = require('../src/models');
 const { generateToken } = require('../src/config/jwt');
@@ -9,8 +11,11 @@ describe('Socket integration - comanda emissions', () => {
   let mesero, local, mesa, producto, token;
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
+    await sequelize.drop({ cascade: true });
     await sequelize.sync({ force: true });
+
+    // Start an ephemeral server port for this test suite
+    await startServer({ port: 0, startScheduler: false });
 
     const admin = await Usuario.create({ nombre: 'Admin', email: 'a@test.local', password: 'password123', tipo: 'admin' });
     local = await Local.create({ nombre: 'Local Test', usuarioPropietarioId: admin.id });
@@ -22,11 +27,14 @@ describe('Socket integration - comanda emissions', () => {
 
   afterAll(async () => {
     await sequelize.close();
-    server.close();
+    if (server?.listening) {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 
   test('cocina should receive nueva-comanda with local scoping', (done) => {
-    const URL = process.env.VITE_API_URL?.replace('/api/v1', '') || 'http://localhost:5000';
+    const address = server.address();
+    const URL = `http://127.0.0.1:${address.port}`;
     const client = new Client(URL, { transports: ['websocket'] });
 
     client.on('connect', () => {

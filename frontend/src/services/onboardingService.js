@@ -9,7 +9,7 @@ const onboardingService = {
 
   // Paso 1: Crear mesas
   async crearMesas(cantidad, ubicacion = 'General', capacidad = 4, localId) {
-    const response = await api.post('/onboarding/paso1/mesas', {
+    const response = await api.post('/onboarding/mesas', {
       cantidad,
       ubicacion,
       capacidad,
@@ -20,7 +20,7 @@ const onboardingService = {
 
   // Paso 2: Preview de scraping
   async previewScraping(url) {
-    const response = await api.post('/onboarding/paso2/preview', {
+    const response = await api.post('/onboarding/scraping/preview', {
       url
     });
     return response.data;
@@ -28,7 +28,7 @@ const onboardingService = {
 
   // Paso 3: Importar productos scrapeados con costo y proveedor
   async importarProductos(productos, localId) {
-    const response = await api.post('/onboarding/paso3/importar', {
+    const response = await api.post('/onboarding/productos/importar', {
       productos,
       localId
     });
