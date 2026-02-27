@@ -92,7 +92,12 @@ const createProveedor = async (req, res) => {
     const { nombre, contacto, telefono, email, esPropio, usuarioId, localId } = req.body;
 
     const allowedLocalIds = await resolveAllowedLocalIds(req);
-    const proveedorLocalId = localId || req.user?.localId || null;
+    const proveedorLocalId =
+      localId ||
+      req.query?.localId ||
+      req.headers?.['x-local-id'] ||
+      req.user?.localId ||
+      null;
     if (!proveedorLocalId) {
       return res.status(400).json({ success: false, message: 'localId es requerido' });
     }

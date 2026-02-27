@@ -128,14 +128,17 @@ const proveedorSchemas = {
     contacto: Joi.string().max(255).allow('', null),
     telefono: Joi.string().max(50).allow('', null),
     email: Joi.string().email({ tlds: { allow: false } }).allow('', null),
-    esPropio: Joi.boolean().default(false)
+    esPropio: Joi.boolean().default(false),
+    usuarioId: Joi.string().uuid().allow(null),
+    localId: Joi.string().uuid().allow(null)
   }),
   update: Joi.object({
     nombre: Joi.string().min(2).max(255),
     contacto: Joi.string().max(255).allow('', null),
     telefono: Joi.string().max(50).allow('', null),
     email: Joi.string().email({ tlds: { allow: false } }).allow('', null),
-    esPropio: Joi.boolean()
+    esPropio: Joi.boolean(),
+    usuarioId: Joi.string().uuid().allow(null)
   })
 };
 
