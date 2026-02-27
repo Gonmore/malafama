@@ -377,6 +377,7 @@ export default function OnboardingWizard() {
               productosScrapeados={productosScrapeados}
               proveedores={proveedores}
               moneda={monedaLocal}
+              localId={localCreado?.id || null}
               onCompletar={handleCompletarPaso3}
               onRetroceder={handleRetroceder}
             />

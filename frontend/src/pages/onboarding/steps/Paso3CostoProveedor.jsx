@@ -8,6 +8,7 @@ export default function Paso3CostoProveedor({
   productosScrapeados,
   proveedores, 
   moneda = 'Bs',
+  localId,
   onCompletar, 
   onRetroceder 
 }) {
@@ -21,7 +22,7 @@ export default function Paso3CostoProveedor({
   useEffect(() => {
     // Cargar proveedores del local del usuario autenticado
     cargarProveedores();
-  }, []);
+  }, [localId]);
 
   useEffect(() => {
     // Inicializar productos con campos de costo, proveedor y tipo detectado automáticamente
@@ -55,7 +56,9 @@ export default function Paso3CostoProveedor({
   const cargarProveedores = async () => {
     try {
       setCargandoProveedores(true);
-      const response = await proveedorService.getAll();
+      const params = {};
+      if (localId) params.localId = localId;
+      const response = await proveedorService.getAll(params);
       const proveedoresCargados = response.data.proveedores || response.data || [];
       setProveedoresDisponibles(proveedoresCargados);
     } catch (error) {
@@ -96,7 +99,11 @@ export default function Paso3CostoProveedor({
     e.preventDefault();
     
     try {
-      const response = await proveedorService.create(nuevoProveedor);
+      const payload = {
+        ...nuevoProveedor,
+        ...(localId ? { localId } : {})
+      };
+      const response = await proveedorService.create(payload);
       const proveedorCreado = response.data.proveedor;
       
       setProveedoresDisponibles([...proveedoresDisponibles, proveedorCreado]);

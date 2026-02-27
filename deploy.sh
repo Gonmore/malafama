@@ -75,6 +75,17 @@ ssh "$SERVER_USER@$SERVER_IP" "SERVER_PATH=$SERVER_PATH VERSION=$VERSION DOCKER_
     exit 1
   fi
 
+  # Nginx Proxy Manager (OpenResty) resuelve hostnames de upstream al cargar/reload.
+  # Si backend/frontend fueron recreados y cambiaron de IP, un reload evita 502 por IP stale.
+  npm_status=$(docker inspect -f '{{.State.Status}}' nginx-proxy-manager 2>/dev/null || echo missing)
+  if [ "$npm_status" = "running" ]; then
+    echo "🔁 Recargando nginx-proxy-manager (refrescar DNS de upstreams)..."
+    docker exec nginx-proxy-manager nginx -s reload || {
+      echo "⚠️  Reload falló; reiniciando nginx-proxy-manager..."
+      docker restart nginx-proxy-manager >/dev/null
+    }
+  fi
+
   echo "✅ Despliegue completado en $VERSION"
 EOF
 
