@@ -30,6 +30,12 @@ ssh "$SERVER_USER@$SERVER_IP" "SERVER_PATH=$SERVER_PATH VERSION=$VERSION DOCKER_
   set -e
   cd "$SERVER_PATH"
 
+  # Ensure external network exists (docker-compose.prod.yml expects it)
+  if ! docker network inspect red-interna >/dev/null 2>&1; then
+    echo "🕸️  Creando red externa red-interna..."
+    docker network create red-interna >/dev/null
+  fi
+
   # Leer RUN_SEED_ON_DEPLOY si existe (adaptado del ejemplo)
   RUN_SEED_ON_DEPLOY=0
   if [ -f .env ]; then
@@ -50,6 +56,24 @@ ssh "$SERVER_USER@$SERVER_IP" "SERVER_PATH=$SERVER_PATH VERSION=$VERSION DOCKER_
 
   echo "🔄 Reiniciando contenedores..."
   docker compose --env-file .env --env-file .env.version -f docker-compose.prod.yml up -d --remove-orphans
+
+  echo "📋 Estado de servicios:"
+  docker compose --env-file .env --env-file .env.version -f docker-compose.prod.yml ps
+
+  backend_status=$(docker inspect -f '{{.State.Status}}' backend-malafama 2>/dev/null || echo missing)
+  frontend_status=$(docker inspect -f '{{.State.Status}}' frontend-malafama 2>/dev/null || echo missing)
+
+  if [ "$backend_status" != "running" ]; then
+    echo "❌ backend-malafama no está running (status=$backend_status)"
+    docker logs --tail 200 backend-malafama || true
+    exit 1
+  fi
+
+  if [ "$frontend_status" != "running" ]; then
+    echo "❌ frontend-malafama no está running (status=$frontend_status)"
+    docker logs --tail 200 frontend-malafama || true
+    exit 1
+  fi
 
   echo "✅ Despliegue completado en $VERSION"
 EOF

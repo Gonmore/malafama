@@ -15,7 +15,9 @@ ENV NODE_ENV=production
 RUN mkdir -p /app/uploads
 
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Normalize line endings in case the file was edited on Windows (CRLF)
+RUN sed -i 's/\r$//' /entrypoint.sh \
+	&& chmod +x /entrypoint.sh
 
 EXPOSE 5000
 
