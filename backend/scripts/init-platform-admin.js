@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 
 const { sequelize } = require('../src/config/database');
 const { Usuario, Tenant } = require('../src/models');
@@ -25,8 +26,10 @@ function addDays(date, days) {
 }
 
 async function init() {
-  const platformAdminEmail = process.env.PLATFORM_ADMIN_EMAIL || 'admin@supernovatel.com';
+  const platformAdminEmailRaw = process.env.PLATFORM_ADMIN_EMAIL || 'admin@supernovatel.com';
+  const platformAdminEmail = String(platformAdminEmailRaw).trim().toLowerCase();
   const platformAdminName = process.env.PLATFORM_ADMIN_NAME || 'Platform Admin';
+  const allowPromote = String(process.env.PLATFORM_ADMIN_ALLOW_PROMOTE || 'false').toLowerCase() === 'true';
 
   const providedPassword = process.env.PLATFORM_ADMIN_PASSWORD;
   const rawPassword = providedPassword || crypto.randomBytes(12).toString('base64url');
@@ -44,9 +47,18 @@ async function init() {
     await sequelize.sync({ alter: false });
   }
 
-  const [platformAdminUser, created] = await Usuario.findOrCreate({
-    where: { email: platformAdminEmail },
-    defaults: {
+  let platformAdminUser = await Usuario.findOne({
+    where: {
+      email: {
+        [Op.iLike]: platformAdminEmail
+      }
+    }
+  });
+
+  let created = false;
+
+  if (!platformAdminUser) {
+    platformAdminUser = await Usuario.create({
       nombre: platformAdminName,
       email: platformAdminEmail,
       password: rawPassword,
@@ -54,14 +66,23 @@ async function init() {
       activo: true,
       onboarding_completado: true,
       localId: null,
-    },
-  });
+    });
+    created = true;
+  }
 
   // If user existed but is not platform_admin, don't silently change it.
   if (platformAdminUser.tipo !== 'platform_admin') {
-    throw new Error(
-      `User ${platformAdminEmail} exists but tipo='${platformAdminUser.tipo}'. Please change it to 'platform_admin' manually or pick another email.`
-    );
+    if (allowPromote) {
+      platformAdminUser.tipo = 'platform_admin';
+      platformAdminUser.localId = null;
+      platformAdminUser.onboarding_completado = true;
+      platformAdminUser.activo = true;
+      await platformAdminUser.save();
+    } else {
+      throw new Error(
+        `User ${platformAdminEmail} exists but tipo='${platformAdminUser.tipo}'. Set PLATFORM_ADMIN_ALLOW_PROMOTE=true to promote it, or pick another email.`
+      );
+    }
   }
 
   // If the user already existed, allow updating name/password from env.

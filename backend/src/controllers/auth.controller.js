@@ -1,13 +1,21 @@
 const { Usuario, Local } = require('../models');
+const { Op } = require('sequelize');
 const { generateToken } = require('../config/jwt');
 
 // Registrar nuevo usuario
 const register = async (req, res) => {
   try {
     const { nombre, email, password, tipo } = req.body;
+    const emailNormalized = String(email || '').trim().toLowerCase();
 
     // Verificar si el email ya existe
-    const usuarioExistente = await Usuario.findOne({ where: { email } });
+    const usuarioExistente = await Usuario.findOne({
+      where: {
+        email: {
+          [Op.iLike]: emailNormalized
+        }
+      }
+    });
     if (usuarioExistente) {
       return res.status(400).json({
         success: false,
@@ -18,7 +26,7 @@ const register = async (req, res) => {
     // Crear usuario
     const usuario = await Usuario.create({
       nombre,
-      email,
+      email: emailNormalized,
       password,
       tipo
     });
@@ -52,6 +60,7 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const emailNormalized = String(email || '').trim().toLowerCase();
 
     // Extra logging to help identify where login attempts come from (e.g., mobile device)
     const origin = req.get('origin') || req.get('host') || 'unknown';
@@ -65,7 +74,7 @@ const login = async (req, res) => {
     };
 
     console.log('🔑 Intento de login:', {
-      email,
+      email: emailNormalized,
       tienePassword: !!password,
       passwordLength: password?.length,
       origin,
@@ -74,7 +83,7 @@ const login = async (req, res) => {
       body: maskedBody,
     });
 
-    if (!email || !password) {
+    if (!emailNormalized || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email y contraseña son requeridos'
@@ -83,7 +92,11 @@ const login = async (req, res) => {
 
     // Buscar usuario por email e incluir el local
     const usuario = await Usuario.findOne({ 
-      where: { email },
+      where: {
+        email: {
+          [Op.iLike]: emailNormalized
+        }
+      },
       include: [{
         model: Local,
         as: 'local',
@@ -91,7 +104,7 @@ const login = async (req, res) => {
       }]
     });
     if (!usuario) {
-      console.log('❌ Usuario no encontrado:', email);
+      console.log('❌ Usuario no encontrado:', emailNormalized);
       return res.status(401).json({
         success: false,
         message: 'Credenciales inválidas'
@@ -109,7 +122,7 @@ const login = async (req, res) => {
 
     // Verificar password
     const isPasswordValid = await usuario.comparePassword(password);
-    console.log('🔐 Validación de password:', { email, valida: isPasswordValid });
+    console.log('🔐 Validación de password:', { email: emailNormalized, valida: isPasswordValid });
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
@@ -117,13 +130,7 @@ const login = async (req, res) => {
       });
     }
 
-    console.log('✅ Login exitoso:', email);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciales inválidas'
-      });
-    }
+    console.log('✅ Login exitoso:', emailNormalized);
 
     // Generar token
     const token = generateToken({
@@ -174,10 +181,17 @@ const updateProfile = async (req, res) => {
   try {
     const { nombre, email, password } = req.body;
     const usuario = req.user;
+    const emailNormalized = email ? String(email).trim().toLowerCase() : null;
 
     // Verificar si el nuevo email ya existe
-    if (email && email !== usuario.email) {
-      const emailExistente = await Usuario.findOne({ where: { email } });
+    if (emailNormalized && emailNormalized !== String(usuario.email || '').trim().toLowerCase()) {
+      const emailExistente = await Usuario.findOne({
+        where: {
+          email: {
+            [Op.iLike]: emailNormalized
+          }
+        }
+      });
       if (emailExistente) {
         return res.status(400).json({
           success: false,
@@ -188,7 +202,7 @@ const updateProfile = async (req, res) => {
 
     // Actualizar campos
     if (nombre) usuario.nombre = nombre;
-    if (email) usuario.email = email;
+    if (emailNormalized) usuario.email = emailNormalized;
     if (password) usuario.password = password;
 
     await usuario.save();
