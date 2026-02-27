@@ -1,41 +1,4 @@
 services:
-  # One-shot Platform Admin bootstrap (prod)
-  # - ensures admin@supernovatel.com exists as platform_admin
-  # - safe to re-run (idempotent)
-  platform-admin-init:
-    image: ${DOCKER_USER:-gonmore14}/backend-malafama:${APP_VERSION:-latest}
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
-    container_name: platform-admin-init-malafama
-    restart: "no"
-    entrypoint: ["sh", "-c"]
-    command: "node src/migrations/run.js && node scripts/init-platform-admin.js"
-    environment:
-      NODE_ENV: production
-
-      # DB (same as backend)
-      DB_HOST: ${DB_HOST:-postgres-principal}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-malafama}
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD}
-
-      # Optional: set explicitly in your prod env/secret store
-      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@supernovatel.com}
-      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-Platform Admin}
-      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD}
-
-      # Tenant referencia defaults
-      REFERENCIA_TENANT_NOMBRE: ${REFERENCIA_TENANT_NOMBRE:-Tenant Admin (Referencia)}
-      REFERENCIA_TENANT_PLAN_DEFAULT: ${REFERENCIA_TENANT_PLAN_DEFAULT:-gratuito}
-      REFERENCIA_TENANT_MONEDA_DEFAULT: ${REFERENCIA_TENANT_MONEDA_DEFAULT:-Bs}
-      REFERENCIA_TENANT_MAX_LOCALES: ${REFERENCIA_TENANT_MAX_LOCALES:-999999}
-      REFERENCIA_TENANT_SUSCRIPCION_DIAS: ${REFERENCIA_TENANT_SUSCRIPCION_DIAS:-36500}
-
-    networks:
-      - red-interna
-
   backend:
     image: ${DOCKER_USER:-gonmore14}/backend-malafama:${APP_VERSION:-latest}
     build:
@@ -71,6 +34,19 @@ services:
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-60}
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-2}
+
+      # Platform admin bootstrap (runs inside backend container; idempotent)
+      RUN_PLATFORM_ADMIN_SEED: ${RUN_PLATFORM_ADMIN_SEED:-true}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@supernovatel.com}
+      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-Platform Admin}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD}
+
+      # Tenant referencia defaults
+      REFERENCIA_TENANT_NOMBRE: ${REFERENCIA_TENANT_NOMBRE:-Tenant Admin (Referencia)}
+      REFERENCIA_TENANT_PLAN_DEFAULT: ${REFERENCIA_TENANT_PLAN_DEFAULT:-gratuito}
+      REFERENCIA_TENANT_MONEDA_DEFAULT: ${REFERENCIA_TENANT_MONEDA_DEFAULT:-Bs}
+      REFERENCIA_TENANT_MAX_LOCALES: ${REFERENCIA_TENANT_MAX_LOCALES:-999999}
+      REFERENCIA_TENANT_SUSCRIPCION_DIAS: ${REFERENCIA_TENANT_SUSCRIPCION_DIAS:-36500}
 
     ports:
       - "127.0.0.1:6010:5000"

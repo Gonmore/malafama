@@ -11,16 +11,19 @@ VERSION=$(date +%Y%m%d%H%M)
 echo "🏗️  1. Iniciando construcción de versión: $VERSION"
 
 # Build & Push Backend
-docker build -t $USER_DOCKER/backend-malafama:$VERSION ./backend
+docker build -t $USER_DOCKER/backend-malafama:$VERSION -f ./backend/Dockerfile.prod ./backend
 docker push $USER_DOCKER/backend-malafama:$VERSION
 
 # Build & Push Frontend (Inyectando URL de producción)
 docker build -t $USER_DOCKER/frontend-malafama:$VERSION \
   --build-arg VITE_API_URL=$API_PROD/api/v1 \
-  ./frontend
+  -f ./frontend/Dockerfile.prod ./frontend
 docker push $USER_DOCKER/frontend-malafama:$VERSION
 
 echo "🚀 2. Actualizando servidor remoto..."
+
+echo "📄 2.1 Sincronizando docker-compose.prod.yml al servidor..."
+scp ./docker-compose.prod.yml "$SERVER_USER@$SERVER_IP:$SERVER_PATH/docker-compose.prod.yml"
 
 ssh "$SERVER_USER@$SERVER_IP" "SERVER_PATH=$SERVER_PATH VERSION=$VERSION DOCKER_USER=$USER_DOCKER bash -s" << 'EOF'
   set -e
@@ -45,7 +48,7 @@ ssh "$SERVER_USER@$SERVER_IP" "SERVER_PATH=$SERVER_PATH VERSION=$VERSION DOCKER_
   docker compose --env-file .env --env-file .env.version -f docker-compose.prod.yml pull
 
   echo "🔄 Reiniciando contenedores..."
-  docker compose --env-file .env --env-file .env.version -f docker-compose.prod.yml up -d
+  docker compose --env-file .env --env-file .env.version -f docker-compose.prod.yml up -d --remove-orphans
 
   echo "✅ Despliegue completado en $VERSION"
 EOF

@@ -67,6 +67,7 @@ async function init() {
   // If the user already existed, allow updating name/password from env.
   // This keeps the process idempotent and makes PASSWORD rotation explicit.
   let updated = false;
+  let passwordUpdated = false;
 
   if (!created && platformAdminName && platformAdminUser.nombre !== platformAdminName) {
     platformAdminUser.nombre = platformAdminName;
@@ -76,6 +77,7 @@ async function init() {
   if (!created && providedPassword) {
     platformAdminUser.password = providedPassword;
     updated = true;
+    passwordUpdated = true;
   }
 
   if (updated) {
@@ -107,7 +109,13 @@ async function init() {
 
   console.log('✅ Platform admin listo');
   console.log(`   Email: ${platformAdminEmail}`);
-  console.log(`   Password: ${providedPassword ? '(provisto por env)' : rawPassword}`);
+  if (created) {
+    console.log(`   Password: ${providedPassword ? '(provisto por env)' : rawPassword}`);
+  } else if (passwordUpdated) {
+    console.log('   Password: (actualizado desde env)');
+  } else {
+    console.log('   Password: (sin cambios)');
+  }
   console.log(`✅ Tenant referencia listo: ${referenciaTenant.id}`);
 }
 

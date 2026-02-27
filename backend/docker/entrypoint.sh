@@ -35,5 +35,14 @@ else
   echo "[backend] RUN_MIGRATIONS=false (skipping)"
 fi
 
+# Optional: ensure platform_admin credentials + referencia tenant exist.
+# Idempotent: safe to run multiple times.
+if [ "${RUN_PLATFORM_ADMIN_SEED:-true}" = "true" ]; then
+  echo "[backend] Ensuring platform admin seed..."
+  node scripts/init-platform-admin.js
+else
+  echo "[backend] RUN_PLATFORM_ADMIN_SEED=false (skipping)"
+fi
+
 echo "[backend] Starting API..."
 exec node src/index.js

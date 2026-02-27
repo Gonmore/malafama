@@ -5,6 +5,7 @@ services:
     image: postgres:15-alpine
     container_name: malafama-db-init
     restart: "no"
+    profiles: ["tools"]
     env_file:
       - ./.env
     environment:
@@ -52,11 +53,6 @@ services:
     networks:
       - malafama-network
       - red-desarrollo
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
-      platform-admin-init:
-        condition: service_completed_successfully
     command: ["npm", "run", "dev"]
 
   # One-shot Platform Admin bootstrap
@@ -68,6 +64,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: malafama-platform-admin-init
     restart: "no"
+    profiles: ["tools"]
     env_file:
       - ./.env
     environment:
