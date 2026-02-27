@@ -3,9 +3,11 @@ const cheerio = require('cheerio');
 const axios = require('axios');
 
 // Servicio de web scraping genérico
-const scrapeMenu = async (url) => {
+const scrapeMenu = async (url, options = {}) => {
   try {
     console.log(`Iniciando scraping de: ${url}`);
+
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
     
     // Intentar con Puppeteer (más robusto para SPAs)
     const browser = await puppeteer.launch({
@@ -33,6 +35,15 @@ const scrapeMenu = async (url) => {
       // Buscar todas las pestañas (TabsControlItem)
       const tabs = await page.$$('div[class*="TabsControlItem"]');
       console.log(`Encontradas ${tabs.length} pestañas`);
+
+      if (onProgress) {
+        onProgress({
+          message: `Encontradas ${tabs.length} pestañas` ,
+          totalTabs: tabs.length,
+          currentTab: 0,
+          productsFound: 0
+        });
+      }
       
       // Hacer clic en cada pestaña y extraer productos
       for (let i = 0; i < tabs.length; i++) {
@@ -53,6 +64,15 @@ const scrapeMenu = async (url) => {
           
           console.log(`  → ${productosDeCategoria.length} productos encontrados en ${categoria}`);
           todosLosProductos = todosLosProductos.concat(productosDeCategoria);
+
+          if (onProgress) {
+            onProgress({
+              message: `Procesando ${categoria} (${i + 1}/${tabs.length})`,
+              totalTabs: tabs.length,
+              currentTab: i + 1,
+              productsFound: todosLosProductos.length
+            });
+          }
           
         } catch (err) {
           console.log(`Error al procesar pestaña ${i}:`, err.message);

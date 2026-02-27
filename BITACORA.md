@@ -1,6 +1,6 @@
 # Bitácora del Proyecto MalaFama - Sistema de Gestión de Pedidos para Restaurante
 
-**Última actualización:** 28 de Noviembre 2025
+**Última actualización:** 27 de Febrero 2026
 
 ## 📋 Descripción del Proyecto
 
@@ -13,6 +13,34 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 ---
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
+
+### Sesión del 27 de Febrero 2026 - CRUD de Proveedores, alta desde Productos, Scraping con progreso y navegación "Volver al local"
+
+#### ✅ Cambios principales (frontend)
+- Vista de **Proveedores** convertida a CRUD (listar/crear/editar/eliminar) con modal reutilizable.
+- En **Productos**, el selector de proveedor ahora **siempre** muestra `+ Agregar proveedor` y abre el mismo modal; al guardar, refresca proveedores y auto-selecciona el nuevo.
+- Se estandarizó la navegación en vistas del admin accesibles desde "Accesos Rápidos": ahora muestran **"Volver al local"** y vuelven al dashboard del local (`/admin/local/:localId`) con fallback a `/admin`.
+- Flujo de scraping en Productos con **barra de progreso** (previsualización por job + polling) y **importación por chunks** para mostrar avance.
+
+#### ✅ Cambios principales (backend)
+- Nuevo esquema de **jobs en memoria** para previsualización de scraping con progreso:
+  - Inicio de job (202 Accepted)
+  - Consulta de estado/progreso (polling)
+- `scrapeMenu()` ahora soporta callback `onProgress` (tabs procesadas/productos encontrados).
+
+#### ✅ Tests
+- Se ajustó el timeout del test de integración de sockets para evitar falsos negativos por operaciones de DB + server boot en entornos lentos.
+
+#### ✅ Archivos modificados / claves
+- `frontend/src/pages/admin/ProveedoresManagement.jsx` — CRUD de proveedores.
+- `frontend/src/components/ProveedorModal.jsx` — Modal reutilizable (crear/editar).
+- `frontend/src/pages/admin/ProductosManagement.jsx` — "Agregar proveedor" + progreso scraping + import por chunks.
+- `frontend/src/pages/admin/{ProductosManagement,ProveedoresManagement,UsuariosManagement,ReportesPage,MesasManagement}.jsx` — Botón "Volver al local".
+- `backend/src/controllers/scraping.controller.js` + `backend/src/routes/scraping.routes.js` — endpoints de preview-job.
+- `backend/src/services/scraping.service.js` — `onProgress`.
+- `backend/__tests__/socket.comanda.test.js` — timeout.
+
+---
 
 ### Sesión del 28 de Noviembre 2025 - App Móvil Mesero: Reporte Diario con Estadísticas
 

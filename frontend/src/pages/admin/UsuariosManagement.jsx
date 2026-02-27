@@ -4,9 +4,14 @@ import { toast } from 'react-hot-toast';
 import userService from '../../services/userService';
 import localService from '../../services/localService';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useAuthStore } from '../../store/authStore';
+import { useLocalStore } from '../../store/localStore';
 
 export default function UsuariosManagement() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { localActivo } = useLocalStore();
+  const effectiveLocalId = localActivo?.id || user?.localId || user?.local?.id || null;
   const [loading, setLoading] = useState(true);
   const [usuarios, setUsuarios] = useState([]);
   const [locales, setLocales] = useState([]);
@@ -248,13 +253,13 @@ export default function UsuariosManagement() {
           <div className="flex items-center justify-between">
             <div>
               <button
-                onClick={() => navigate('/admin')}
+                onClick={() => navigate(effectiveLocalId ? `/admin/local/${effectiveLocalId}` : '/admin')}
                 className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Volver al Dashboard
+                Volver al local
               </button>
               <h1 className="text-3xl font-bold text-gray-900">👥 Gestión de Usuarios</h1>
               <p className="text-gray-600 mt-1">Administra meseros, cocina y usuarios del sistema</p>

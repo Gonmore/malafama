@@ -4,6 +4,8 @@ const scrapingController = require('../controllers/scraping.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 
 // Todas las rutas requieren ser admin
+router.post('/preview-job', authenticate, authorize('admin'), scrapingController.iniciarPreviewJob);
+router.get('/preview-job/:jobId', authenticate, authorize('admin'), scrapingController.getPreviewJob);
 router.post('/preview', authenticate, authorize('admin'), scrapingController.previsualizarScraping);
 router.post('/import', authenticate, authorize('admin'), scrapingController.importarProductosScrapeados);
 router.post('/menu', authenticate, authorize('admin'), scrapingController.scrapearMenu);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
@@ -7,15 +7,19 @@ import productoService from '../../services/productoService';
 import proveedorService from '../../services/proveedorService';
 import scrapingService from '../../services/scrapingService';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import ProveedorModal from '../../components/ProveedorModal';
 
 export default function ProductosManagement() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { localActivo } = useLocalStore();
   const effectiveLocalId = localActivo?.id || user?.localId || null;
+  const previewJobTimerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [productos, setProductos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  const [proveedorModalOpen, setProveedorModalOpen] = useState(false);
+  const [editingProveedor, setEditingProveedor] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
@@ -41,6 +45,11 @@ export default function ProductosManagement() {
   const [scrapingPreview, setScrapingPreview] = useState([]);
   const [scrapingTotal, setScrapingTotal] = useState(0);
   const [scrapingImporting, setScrapingImporting] = useState(false);
+  const [scrapingProgress, setScrapingProgress] = useState({
+    percent: 0,
+    message: '',
+    productsFound: 0
+  });
 
   const moneda = localActivo?.moneda || user?.local?.moneda || 'Bs';
 
@@ -54,6 +63,15 @@ export default function ProductosManagement() {
   useEffect(() => {
     cargarDatos();
   }, [effectiveLocalId]);
+
+  useEffect(() => {
+    return () => {
+      if (previewJobTimerRef.current) {
+        clearInterval(previewJobTimerRef.current);
+        previewJobTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const cargarDatos = async () => {
     try {
@@ -80,6 +98,20 @@ export default function ProductosManagement() {
     }
   };
 
+  const cargarProveedores = async () => {
+    if (!effectiveLocalId) {
+      setProveedores([]);
+      return;
+    }
+    try {
+      const responseProv = await proveedorService.getAll({ localId: effectiveLocalId, t: Date.now() });
+      setProveedores(responseProv.data?.proveedores || responseProv.data || []);
+    } catch (err) {
+      console.error('Error al cargar proveedores:', err);
+      setProveedores([]);
+    }
+  };
+
   const detectarTipoPorCategoria = (categoria) => {
     const c = (categoria || '').toLowerCase();
     if (c.includes('bebida') || c.includes('trago') || c.includes('cerveza') || c.includes('vino') || c.includes('coctel') || c.includes('cocktail')) {
@@ -92,6 +124,11 @@ export default function ProductosManagement() {
   };
 
   const handlePreviewScraping = async () => {
+    // Backwards-compatible wrapper; keep only one implementation.
+    return handlePreviewScrapingConProgreso();
+  };
+
+  const handlePreviewScrapingConProgreso = async () => {
     const url = (scrapingUrl || '').trim();
     if (!url) {
       toast.error('Ingresa una URL');
@@ -103,19 +140,59 @@ export default function ProductosManagement() {
     }
 
     try {
+      if (previewJobTimerRef.current) {
+        clearInterval(previewJobTimerRef.current);
+        previewJobTimerRef.current = null;
+      }
+
       setScrapingLoading(true);
-      const resp = await scrapingService.preview(url);
-      const items = resp.data?.productos || [];
-      setScrapingPreview(items);
-      setScrapingTotal(resp.data?.total || items.length);
-      if (items.length === 0) toast.error('No se encontraron productos');
-    } catch (err) {
-      console.error('Error preview scraping:', err);
-      toast.error(err.response?.data?.message || 'Error al previsualizar scraping');
+      setScrapingProgress({ percent: 0, message: 'Iniciando...', productsFound: 0 });
       setScrapingPreview([]);
       setScrapingTotal(0);
-    } finally {
-      setScrapingLoading(false);
+
+      const start = await scrapingService.startPreviewJob(url);
+      const jobId = start.data?.id;
+      if (!jobId) throw new Error('No se recibió jobId');
+
+      previewJobTimerRef.current = setInterval(async () => {
+        try {
+          const st = await scrapingService.getPreviewJob(jobId);
+          const data = st.data;
+          const percent = typeof data.progress === 'number' ? data.progress : 0;
+          const msg = data.message || '';
+          const found = typeof data.productsFound === 'number' ? data.productsFound : 0;
+          setScrapingProgress({ percent, message: msg, productsFound: found });
+
+          if (data.status === 'done') {
+            clearInterval(previewJobTimerRef.current);
+            previewJobTimerRef.current = null;
+            const items = data.productos || [];
+            setScrapingPreview(items);
+            setScrapingTotal(data.total || items.length);
+            setScrapingLoading(false);
+            setScrapingProgress({ percent: 100, message: 'Listo', productsFound: items.length });
+          }
+
+          if (data.status === 'error') {
+            clearInterval(previewJobTimerRef.current);
+            previewJobTimerRef.current = null;
+            setScrapingLoading(false);
+            toast.error(data.error || 'Error al previsualizar scraping');
+          }
+        } catch (e) {
+          // ignore transient polling errors
+        }
+      }, 500);
+    } catch (err) {
+      if (previewJobTimerRef.current) {
+        clearInterval(previewJobTimerRef.current);
+        previewJobTimerRef.current = null;
+      }
+      console.error('Error preview scraping:', err);
+      toast.error(err.response?.data?.message || err.message || 'Error al previsualizar scraping');
+      setScrapingPreview([]);
+      setScrapingTotal(0);
+      setScrapingProgress({ percent: 0, message: '', productsFound: 0 });
     }
   };
 
@@ -150,7 +227,22 @@ export default function ProductosManagement() {
 
     try {
       setScrapingImporting(true);
-      await productoService.createBulk(normalizados);
+      setScrapingProgress({ percent: 0, message: 'Importando...', productsFound: 0 });
+
+      const chunkSize = 100;
+      let imported = 0;
+      for (let i = 0; i < normalizados.length; i += chunkSize) {
+        const chunk = normalizados.slice(i, i + chunkSize);
+        await productoService.createBulk(chunk);
+        imported += chunk.length;
+        const percent = Math.round((imported / normalizados.length) * 100);
+        setScrapingProgress({
+          percent,
+          message: `Importando... (${imported}/${normalizados.length})`,
+          productsFound: imported
+        });
+      }
+
       toast.success(`✅ ${normalizados.length} productos importados`);
       setShowScraping(false);
       setScrapingPreview([]);
@@ -339,13 +431,13 @@ export default function ProductosManagement() {
           <div className="flex items-center justify-between">
             <div>
               <button
-                onClick={() => navigate('/admin')}
+                onClick={() => navigate(effectiveLocalId ? `/admin/local/${effectiveLocalId}` : '/admin')}
                 className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Volver al Dashboard
+                Volver al local
               </button>
               <h1 className="text-3xl font-bold text-gray-900">🍽️ Gestión de Productos</h1>
               <p className="text-gray-600 mt-1">Administra tu menú y precios</p>
@@ -389,7 +481,7 @@ export default function ProductosManagement() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handlePreviewScraping}
+                  onClick={handlePreviewScrapingConProgreso}
                   disabled={scrapingLoading}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
@@ -404,6 +496,26 @@ export default function ProductosManagement() {
                 </button>
               </div>
             </div>
+
+            {(scrapingLoading || scrapingImporting) && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
+                  <span>{scrapingProgress.message || (scrapingImporting ? 'Importando...' : 'Procesando...')}</span>
+                  <span className="font-medium">{scrapingProgress.percent}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all"
+                    style={{ width: `${Math.max(0, Math.min(100, scrapingProgress.percent))}%` }}
+                  />
+                </div>
+                {(scrapingProgress.productsFound || 0) > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Productos encontrados/importados: {scrapingProgress.productsFound}
+                  </p>
+                )}
+              </div>
+            )}
 
             {scrapingTotal > 0 && (
               <div className="mt-4">
@@ -1039,13 +1151,22 @@ export default function ProductosManagement() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
                   <select
                     value={formData.proveedorId}
-                    onChange={(e) => setFormData({ ...formData, proveedorId: e.target.value })}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '__add__') {
+                        setEditingProveedor(null);
+                        setProveedorModalOpen(true);
+                        return;
+                      }
+                      setFormData({ ...formData, proveedorId: value });
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Sin proveedor</option>
                     {proveedores.map(prov => (
                       <option key={prov.id} value={prov.id}>{prov.nombre}</option>
                     ))}
+                    <option value="__add__">+ Agregar proveedor</option>
                   </select>
                 </div>
 
@@ -1081,6 +1202,19 @@ export default function ProductosManagement() {
           </div>
         </div>
       )}
+
+      <ProveedorModal
+        open={proveedorModalOpen}
+        onClose={() => setProveedorModalOpen(false)}
+        onSaved={async (saved) => {
+          await cargarProveedores();
+          if (saved?.id) {
+            setFormData((prev) => ({ ...prev, proveedorId: saved.id }));
+          }
+        }}
+        localId={effectiveLocalId}
+        initialProveedor={editingProveedor}
+      />
     </div>
   );
 }

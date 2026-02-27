@@ -79,6 +79,7 @@ export default function MesasManagement() {
   const navigate = useNavigate();
   const { localActivo } = useLocalStore();
   const { user } = useAuthStore();
+  const effectiveLocalId = localActivo?.id || user?.localId || user?.local?.id || null;
   const moneda = localActivo?.moneda || user?.local?.moneda || 'Bs';
 
   if (loading) return <LoadingSpinner text="Cargando mesas..." />;
@@ -93,10 +94,10 @@ export default function MesasManagement() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin')}
+            onClick={() => navigate(effectiveLocalId ? `/admin/local/${effectiveLocalId}` : '/admin')}
             className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
-            title="Volver al dashboard"
-            aria-label="Volver al dashboard"
+            title="Volver al local"
+            aria-label="Volver al local"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />

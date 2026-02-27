@@ -2,7 +2,7 @@
 
 **Base URL:** `http://localhost:5000/api/v1`
 
-**Última actualización:** 28 de Noviembre 2025
+**Última actualización:** 27 de Febrero 2026
 
 ---
 
@@ -192,7 +192,8 @@ Eliminar (soft delete) producto
 
 ### GET `/proveedores`
 Listar todos los proveedores
-- Query: `?activo=true|false&search=texto`
+- Query: `?localId=<uuid>` (recomendado para admin multi-local)
+- Scope: el backend aplica scoping por `localId` permitido (según rol/tenant)
 
 ### GET `/proveedores/propio`
 Obtener datos del proveedor autenticado
@@ -205,11 +206,12 @@ Crear proveedor (Admin)
 ```json
 {
   "nombre": "string",
-  "email": "string",
-  "password": "string",
   "telefono": "string",
-  "direccion": "string",
-  "ruc": "string"
+  "contacto": "string",
+  "email": "string",
+  "esPropio": false,
+  "usuarioId": "uuid (opcional)",
+  "localId": "uuid (requerido)"
 }
 ```
 
@@ -225,19 +227,70 @@ Eliminar proveedor
 
 **Acceso:** Solo Admin
 
-### POST `/scraping/scrapear`
-Iniciar web scraping
+### POST `/scraping/preview-job`
+Iniciar previsualización de scraping como **job** (con progreso)
 ```json
 {
   "url": "https://restaurante.com/menu"
 }
 ```
 
-### POST `/scraping/previsualizar`
-Vista previa del scraping sin guardar
+**Response (202):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "status": "running",
+    "phase": "starting|simple|puppeteer|done|error",
+    "progress": 0,
+    "productsFound": 0,
+    "tabs": { "total": null, "current": 0 },
+    "message": "Iniciando scraping...",
+    "url": "https://..."
+  }
+}
+```
+
+### GET `/scraping/preview-job/:jobId`
+Consultar progreso/resultado del job
+
+**Response (done):** incluye `productos`.
+
+### POST `/scraping/preview`
+Vista previa del scraping sin guardar (sin job / modo directo)
 ```json
 {
   "url": "https://restaurante.com/menu"
+}
+```
+
+### GET `/scraping/preview-url`
+Vista previa para onboarding (URL en query)
+- Query: `?url=https://...`
+
+### POST `/scraping/menu`
+Scraping de menú (extrae productos y retorna la lista)
+```json
+{
+  "url": "https://restaurante.com/menu",
+  "metodo": "simple|puppeteer"
+}
+```
+
+### POST `/scraping/import`
+Importar productos scrapeados (requiere costo + proveedor)
+```json
+{
+  "productos": [
+    {
+      "nombre": "string",
+      "precio": 12.5,
+      "costo": 8,
+      "proveedor_id": "uuid",
+      "localId": "uuid"
+    }
+  ]
 }
 ```
 
@@ -256,7 +309,7 @@ Confirmar y guardar productos scrapeados
 }
 ```
 
-### POST `/scraping/test`
+### GET `/scraping/test`
 Probar scraping (modo debug)
 ```json
 {

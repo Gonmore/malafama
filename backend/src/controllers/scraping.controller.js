@@ -1,6 +1,180 @@
 const scrapingService = require('../services/scraping.service');
 const { Producto } = require('../models');
 
+const { randomUUID } = require('crypto');
+
+// In-memory jobs store (sufficient for single-instance deploy)
+const PREVIEW_JOBS = new Map();
+const PREVIEW_JOB_TTL_MS = 15 * 60 * 1000;
+
+const pruneJobs = () => {
+  const now = Date.now();
+  for (const [id, job] of PREVIEW_JOBS.entries()) {
+    if (!job?.updatedAt || now - job.updatedAt > PREVIEW_JOB_TTL_MS) {
+      PREVIEW_JOBS.delete(id);
+    }
+  }
+};
+
+const sanitizeProgress = (job) => {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    phase: job.phase,
+    progress: job.progress,
+    productsFound: job.productsFound,
+    tabs: job.tabs,
+    url: job.url,
+    message: job.message,
+    error: job.error ? String(job.error) : null,
+    total: job.total,
+    updatedAt: job.updatedAt,
+    done: job.status === 'done'
+  };
+};
+
+// Start a scraping preview job that can be polled for progress
+const iniciarPreviewJob = async (req, res) => {
+  try {
+    pruneJobs();
+
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ success: false, message: 'URL es requerida' });
+    }
+    if (!scrapingService.validateUrl(url)) {
+      return res.status(400).json({ success: false, message: 'URL inválida' });
+    }
+
+    const id = randomUUID();
+    const job = {
+      id,
+      url,
+      status: 'running',
+      phase: 'starting',
+      progress: 0,
+      productsFound: 0,
+      total: null,
+      tabs: { total: null, current: 0 },
+      message: 'Iniciando scraping...',
+      error: null,
+      result: null,
+      updatedAt: Date.now()
+    };
+
+    PREVIEW_JOBS.set(id, job);
+
+    // Run async (fire-and-forget)
+    (async () => {
+      try {
+        job.phase = 'simple';
+        job.message = 'Intentando scraping simple...';
+        job.progress = 10;
+        job.updatedAt = Date.now();
+
+        let resultado = null;
+        try {
+          resultado = await scrapingService.scrapeMenuSimple(url);
+        } catch (e) {
+          resultado = null;
+        }
+
+        if (resultado?.success && Array.isArray(resultado.productos) && resultado.productos.length > 0) {
+          job.status = 'done';
+          job.phase = 'done';
+          job.progress = 100;
+          job.productsFound = resultado.productos.length;
+          job.total = resultado.productos.length;
+          job.message = 'Scraping completado (simple)';
+          job.result = resultado.productos;
+          job.updatedAt = Date.now();
+          return;
+        }
+
+        job.phase = 'puppeteer';
+        job.message = 'Scraping con navegador (Puppeteer)...';
+        job.progress = 20;
+        job.updatedAt = Date.now();
+
+        const resP = await scrapingService.scrapeMenu(url, {
+          onProgress: (p) => {
+            if (typeof p?.totalTabs === 'number') job.tabs.total = p.totalTabs;
+            if (typeof p?.currentTab === 'number') job.tabs.current = p.currentTab;
+            if (typeof p?.productsFound === 'number') job.productsFound = p.productsFound;
+
+            // Progress: 20% base + 80% based on tabs (if known)
+            if (job.tabs.total && job.tabs.total > 0) {
+              const ratio = Math.min(1, Math.max(0, job.tabs.current / job.tabs.total));
+              job.progress = Math.round(20 + ratio * 80);
+            }
+            job.message = p?.message || job.message;
+            job.updatedAt = Date.now();
+          }
+        });
+
+        if (!resP?.success || !Array.isArray(resP.productos) || resP.productos.length === 0) {
+          job.status = 'error';
+          job.phase = 'error';
+          job.progress = 100;
+          job.error = 'No se pudieron extraer productos.';
+          job.message = 'No se pudieron extraer productos.';
+          job.updatedAt = Date.now();
+          return;
+        }
+
+        job.status = 'done';
+        job.phase = 'done';
+        job.progress = 100;
+        job.productsFound = resP.productos.length;
+        job.total = resP.productos.length;
+        job.message = 'Scraping completado';
+        job.result = resP.productos;
+        job.updatedAt = Date.now();
+      } catch (err) {
+        job.status = 'error';
+        job.phase = 'error';
+        job.progress = 100;
+        job.error = err?.message || String(err);
+        job.message = 'Error en scraping';
+        job.updatedAt = Date.now();
+      }
+    })();
+
+    return res.status(202).json({
+      success: true,
+      message: 'Scraping iniciado',
+      data: sanitizeProgress(job)
+    });
+  } catch (error) {
+    console.error('Error en iniciarPreviewJob:', error);
+    return res.status(500).json({ success: false, message: 'Error al iniciar scraping', error: error.message });
+  }
+};
+
+// Get preview job progress or final result
+const getPreviewJob = async (req, res) => {
+  try {
+    pruneJobs();
+    const { jobId } = req.params;
+    const job = PREVIEW_JOBS.get(jobId);
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job no encontrado o expirado' });
+    }
+
+    const payload = sanitizeProgress(job);
+    if (job.status === 'done') {
+      payload.productos = job.result || [];
+      payload.total = payload.productos.length;
+    }
+
+    return res.json({ success: true, data: payload });
+  } catch (error) {
+    console.error('Error en getPreviewJob:', error);
+    return res.status(500).json({ success: false, message: 'Error al obtener job', error: error.message });
+  }
+};
+
 // Scraping de menú desde URL
 const scrapearMenu = async (req, res) => {
   try {
@@ -267,6 +441,8 @@ const testScraping = async (req, res) => {
 };
 
 module.exports = {
+  iniciarPreviewJob,
+  getPreviewJob,
   scrapearMenu,
   previsualizarScraping,
   previsualizarScrapingUrl,

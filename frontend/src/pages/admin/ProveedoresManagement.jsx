@@ -1,233 +1,205 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import localService from '../../services/localService';
 import { useAuthStore } from '../../store/authStore';
-import { reporteService } from '../../services/reporteService';
+import { useLocalStore } from '../../store/localStore';
 import proveedorService from '../../services/proveedorService';
+import ProveedorModal from '../../components/ProveedorModal';
 
 export default function ProveedoresManagement() {
   const { user } = useAuthStore();
+  const { localActivo } = useLocalStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [localId, setLocalId] = useState(() => searchParams.get('localId') || user?.local?.id || null);
+
+  const initialLocalId = useMemo(() => {
+    return (
+      searchParams.get('localId') ||
+      localActivo?.id ||
+      user?.localId ||
+      user?.local?.id ||
+      null
+    );
+  }, [searchParams, localActivo?.id, user?.localId, user?.local?.id]);
+
+  const [localId, setLocalId] = useState(initialLocalId);
   const [locales, setLocales] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [proveedores, setProveedores] = useState([]);
-  const [selectedProv, setSelectedProv] = useState(null);
-  const [provDetalle, setProvDetalle] = useState(null);
-  const [detalleLoading, setDetalleLoading] = useState(false);
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingProveedor, setEditingProveedor] = useState(null);
 
   useEffect(() => {
-    if (!localId) return;
-    loadData();
-  }, [localId, startDate, endDate]);
+    setLocalId(initialLocalId);
+  }, [initialLocalId]);
 
-  // load locales list for admin to select
+  // Load locales list (useful for platform_admin; harmless if API returns a single local)
   useEffect(() => {
     const cargarLocales = async () => {
       try {
         const res = await localService.obtenerLocales();
         const list = res.data?.locales || res.data || [];
         setLocales(list);
-        if (!localId && list.length > 0) setLocalId(list[0].id);
+        if (!initialLocalId && list.length > 0) setLocalId(list[0].id);
       } catch (err) {
         console.error('Error al cargar locales:', err);
       }
     };
 
     cargarLocales();
-  }, []);
+  }, [initialLocalId]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (!localId) {
+      setProveedores([]);
+      setLoading(false);
+      return;
+    }
+    loadProveedores();
+  }, [localId]);
+
+  const loadProveedores = async () => {
     try {
       setLoading(true);
-      // fetch providers (all) and then fetch owed amounts within the range
-      const timestamp = Date.now();
-      const [provResp, pagosResp] = await Promise.allSettled([
-        proveedorService.getAll({ localId, t: timestamp }),
-        reporteService.getPagosSemanaProveedores(localId, startDate, endDate, timestamp)
-      ]);
-
-      const allProveedores = provResp.status === 'fulfilled' ? (provResp.value.data || provResp.value.proveedores || provResp.value || []) : [];
-      const pagosRows = pagosResp.status === 'fulfilled' ? (pagosResp.value.data?.proveedores || pagosResp.value.proveedores || []) : [];
-
-      // Build lookup maps and union providers from both sources (prov list + pagos rows)
-      const pagosMap = {};
-      pagosRows.forEach(p => { pagosMap[p.proveedor_id] = p; });
-
-      const provMap = {};
-      (allProveedores || []).forEach(p => {
-        provMap[p.id] = p;
-      });
-
-      // Produce union of provider ids from both sources
-      const idsSet = new Set([...(Object.keys(provMap)), ...(Object.keys(pagosMap))]);
-      const merged = Array.from(idsSet).map(id => {
-        const p = provMap[id] || {};
-        const pago = pagosMap[id] || null;
-        return {
-          proveedor_id: id,
-          proveedor: p.nombre || pago?.proveedor || '—',
-          telefono: p.telefono || p.contacto || pago?.telefono || (p.usuario?.telefono || ''),
-          email: p.email || (p.usuario?.email || null) || pago?.email || null,
-          unidades_vendidas: pago ? pago.unidades_vendidas : 0,
-          monto_adeudado: pago ? pago.monto_adeudado : '0.00',
-          comandas: pago ? pago.comandas : 0
-        };
-      });
-
-      setProveedores(merged);
+      const resp = await proveedorService.getAll({ localId, t: Date.now() });
+      const list = resp.data?.proveedores || resp.data || [];
+      setProveedores(Array.isArray(list) ? list : []);
     } catch (err) {
-      console.error('Error fetching provider weekly:', err);
+      console.error('Error cargando proveedores:', err);
       setProveedores([]);
+      toast.error(err?.response?.data?.message || 'Error al cargar proveedores');
     } finally {
       setLoading(false);
     }
   };
 
-  const sendWhatsApp = (prov) => {
-    const phone = (prov.telefono || prov.phone || '').replace(/\D/g, '');
-    if (!phone) return alert('Proveedor no tiene teléfono disponible');
-    const msg = `Hola ${prov.proveedor}, te informamos el resumen de ventas del período ${startDate} → ${endDate}.\n\n` +
-      `Unidades vendidas: ${prov.unidades_vendidas || 0}\n` +
-      `Monto adeudado: ${prov.monto_adeudado || '0.00'}\n\n` +
-      `Por favor confirma recepción y envía comprobante de pago cuando corresponda.`;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+  const handleNuevo = () => {
+    setEditingProveedor(null);
+    setModalOpen(true);
+  };
+
+  const handleEditar = (prov) => {
+    setEditingProveedor(prov);
+    setModalOpen(true);
+  };
+
+  const handleEliminar = async (prov) => {
+    if (!confirm(`¿Eliminar proveedor "${prov.nombre}"?`)) return;
+    try {
+      await proveedorService.delete(prov.id);
+      toast.success('Proveedor eliminado');
+      await loadProveedores();
+    } catch (err) {
+      console.error('Error eliminando proveedor:', err);
+      toast.error(err?.response?.data?.message || 'Error al eliminar proveedor');
+    }
   };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/admin/dashboard')} className="px-2 py-1 rounded bg-gray-100 text-sm">← Volver</button>
-          <div>
-            <h1 className="text-2xl font-bold">Proveedores — Resumen semanal</h1>
-            <p className="text-sm text-gray-500">Resumen por proveedor del costo de productos vendidos en el período seleccionado</p>
-          </div>
-        </div>
-        {/* main title moved to the left; removed duplicate header */}
-        <div className="flex items-center gap-2">
-          {locales.length > 0 && (
-            <select value={localId || ''} onChange={(e) => setLocalId(e.target.value)} className="px-3 py-2 rounded border">
-              {locales.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-            </select>
-          )}
-          <input type="date" value={startDate} onChange={(e)=>setStartDate(e.target.value)} className="px-3 py-2 rounded border" />
-          <input type="date" value={endDate} onChange={(e)=>setEndDate(e.target.value)} className="px-3 py-2 rounded border" />
-          <button onClick={loadData} className="px-3 py-2 rounded bg-blue-600 text-white">Actualizar</button>
-        </div>
-      </div>
-
-      <div className="bg-white shadow rounded p-4">
-        {loading ? (
-          <div className="text-center py-8">Cargando...</div>
-        ) : (
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="text-xs text-gray-600 border-b">
-                <th className="py-2 px-2">Proveedor</th>
-                <th className="py-2 px-2">Contacto</th>
-                <th className="py-2 px-2">Unidades</th>
-                <th className="py-2 px-2">Monto adeudado</th>
-                <th className="py-2 px-2">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proveedores.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-6 text-center text-sm text-gray-500">
-                    <div>No se encontraron proveedores para este local y período.</div>
-                    <div className="mt-3">
-                      <button onClick={() => navigate('/admin/productos')} className="px-3 py-1 rounded bg-blue-600 text-white text-sm">Ir a administrar proveedores / productos</button>
-                      <span className="text-xs text-gray-400 block mt-2">Si quieres datos de prueba, ejecuta <code>npm run seed:proveedores:demo</code> en el backend.</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : proveedores.map(p => (
-                <tr key={p.proveedor_id} className="border-b hover:bg-gray-50 cursor-pointer" onClick={() => openDetalle(p)}>
-                  <td className="py-3 px-2 font-semibold">{p.proveedor}</td>
-                  <td className="py-3 px-2 text-sm">
-                    {p.telefono ? <div>{p.telefono}</div> : <div className="text-xs text-gray-400">Sin teléfono</div>}
-                    {p.email ? <div className="text-xs text-gray-500">{p.email}</div> : null}
-                  </td>
-                  <td className="py-3 px-2">{p.unidades_vendidas || 0}</td>
-                  <td className="py-3 px-2">Bs {parseFloat(p.monto_adeudado || 0).toFixed(2)}</td>
-                  <td className="py-3 px-2">
-                    <div className="flex items-center gap-2">
-                      <button onClick={()=>sendWhatsApp(p)} className="px-3 py-1 rounded bg-green-500 text-white text-sm" disabled={!p.telefono}>Enviar WhatsApp</button>
-                      <button className="px-3 py-1 rounded bg-gray-100 text-sm" onClick={(e)=>{ e.stopPropagation(); alert('Funcionalidad de comprobante no implementada aún') }}>Adjuntar comprobante</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Detalle modal */}
-      {selectedProv && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded p-6 w-full max-w-2xl shadow-lg">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold">Detalle - {selectedProv.proveedor}</h3>
-                <p className="text-xs text-gray-500">Período: {startDate} → {endDate}</p>
-              </div>
-              <div>
-                <button onClick={() => { setSelectedProv(null); setProvDetalle(null); }} className="px-2 py-1 rounded">Cerrar</button>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <button
+                onClick={() => navigate(localId ? `/admin/local/${localId}` : '/admin')}
+                className="text-blue-600 hover:text-blue-700 mb-2 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Volver al local
+              </button>
+              <h1 className="text-3xl font-bold text-gray-900">📦 Proveedores</h1>
+              <p className="text-gray-600 mt-1">Administra proveedores del local</p>
             </div>
 
-            {detalleLoading ? (
-              <div className="p-6 text-center">Cargando detalle...</div>
-            ) : provDetalle ? (
-              <div>
-                <div className="mb-4 text-sm text-gray-600">Total adeudado: <strong>Bs {provDetalle.resumen.total}</strong></div>
-                <table className="w-full text-left border-collapse">
-                  <thead className="text-xs text-gray-600 border-b">
-                    <tr>
-                      <th className="py-2 px-2">Producto</th>
-                      <th className="py-2 px-2">Unidades</th>
-                      <th className="py-2 px-2">Monto adeudado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {provDetalle.productos.map(prod => (
-                      <tr key={prod.producto_id} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-2">{prod.producto}</td>
-                        <td className="py-2 px-2">{prod.unidades_vendidas || 0}</td>
-                        <td className="py-2 px-2">Bs {parseFloat(prod.monto_adeudado || 0).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="p-6 text-center text-sm text-gray-500">Seleccione un proveedor para ver detalle</div>
-            )}
+            <div className="flex items-center gap-2">
+              {locales.length > 0 && (
+                <select
+                  value={localId || ''}
+                  onChange={(e) => setLocalId(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                >
+                  {locales.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={handleNuevo}
+                disabled={!localId}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                Nuevo proveedor
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="p-6 text-center text-gray-500">Cargando...</div>
+          ) : proveedores.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">No hay proveedores para este local</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacto</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teléfono</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {proveedores.map((p) => (
+                    <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 font-medium text-gray-900">{p.nombre}</td>
+                      <td className="px-6 py-3 text-gray-700">{p.contacto || '—'}</td>
+                      <td className="px-6 py-3 text-gray-700">{p.telefono || '—'}</td>
+                      <td className="px-6 py-3 text-gray-700">{p.email || '—'}</td>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEditar(p)}
+                            className="px-3 py-1 rounded bg-gray-100 text-sm hover:bg-gray-200"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleEliminar(p)}
+                            className="px-3 py-1 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <ProveedorModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSaved={async () => {
+          await loadProveedores();
+        }}
+        localId={localId}
+        initialProveedor={editingProveedor}
+      />
     </div>
   );
-
-  async function openDetalle(p) {
-    setSelectedProv(p);
-    setDetalleLoading(true);
-    try {
-      const res = await reporteService.getDetalleProveedor(p.proveedor_id, localId, startDate, endDate);
-      setProvDetalle(res.data || res);
-    } catch (err) {
-      console.error('Error fetching detalle prov:', err);
-      setProvDetalle(null);
-    } finally {
-      setDetalleLoading(false);
-    }
-  }
 }

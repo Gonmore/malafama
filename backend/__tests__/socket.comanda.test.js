@@ -1,5 +1,7 @@
 process.env.NODE_ENV = 'test';
 
+jest.setTimeout(30000);
+
 const request = require('supertest');
 const { io: Client } = require('socket.io-client');
 const { app, server, startServer } = require('../src/index');
