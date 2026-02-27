@@ -5,12 +5,14 @@ import { useAuthStore } from '../../store/authStore';
 import { useLocalStore } from '../../store/localStore';
 import productoService from '../../services/productoService';
 import proveedorService from '../../services/proveedorService';
+import scrapingService from '../../services/scrapingService';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function ProductosManagement() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { localActivo } = useLocalStore();
+  const effectiveLocalId = localActivo?.id || user?.localId || null;
   const [loading, setLoading] = useState(true);
   const [productos, setProductos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
@@ -33,6 +35,13 @@ export default function ProductosManagement() {
     activo: true
   });
 
+  const [showScraping, setShowScraping] = useState(false);
+  const [scrapingUrl, setScrapingUrl] = useState('');
+  const [scrapingLoading, setScrapingLoading] = useState(false);
+  const [scrapingPreview, setScrapingPreview] = useState([]);
+  const [scrapingTotal, setScrapingTotal] = useState(0);
+  const [scrapingImporting, setScrapingImporting] = useState(false);
+
   const moneda = localActivo?.moneda || user?.local?.moneda || 'Bs';
 
   const categorias = ['Platos', 'Bebidas', 'Postres', 'Snacks', 'Cervezas'];
@@ -44,14 +53,21 @@ export default function ProductosManagement() {
 
   useEffect(() => {
     cargarDatos();
-  }, []);
+  }, [effectiveLocalId]);
 
   const cargarDatos = async () => {
     try {
       setLoading(true);
+
+      if (!effectiveLocalId) {
+        setProductos([]);
+        setProveedores([]);
+        return;
+      }
+
       const [responseProd, responseProv] = await Promise.all([
-        productoService.getAll({ localId: user.localId }),
-        proveedorService.getAll()
+        productoService.getAll({ localId: effectiveLocalId }),
+        proveedorService.getAll({ localId: effectiveLocalId })
       ]);
 
       setProductos(responseProd.data?.productos || responseProd.data || []);
@@ -61,6 +77,91 @@ export default function ProductosManagement() {
       toast.error('Error al cargar productos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const detectarTipoPorCategoria = (categoria) => {
+    const c = (categoria || '').toLowerCase();
+    if (c.includes('bebida') || c.includes('trago') || c.includes('cerveza') || c.includes('vino') || c.includes('coctel') || c.includes('cocktail')) {
+      return 'bebida';
+    }
+    if (c.includes('comida') || c.includes('pizza') || c.includes('hamburguesa') || c.includes('entrada') || c.includes('plato') || c.includes('picoteo') || c.includes('menú') || c.includes('menu')) {
+      return 'comida';
+    }
+    return 'otros';
+  };
+
+  const handlePreviewScraping = async () => {
+    const url = (scrapingUrl || '').trim();
+    if (!url) {
+      toast.error('Ingresa una URL');
+      return;
+    }
+    if (!effectiveLocalId) {
+      toast.error('Selecciona un local antes de importar');
+      return;
+    }
+
+    try {
+      setScrapingLoading(true);
+      const resp = await scrapingService.preview(url);
+      const items = resp.data?.productos || [];
+      setScrapingPreview(items);
+      setScrapingTotal(resp.data?.total || items.length);
+      if (items.length === 0) toast.error('No se encontraron productos');
+    } catch (err) {
+      console.error('Error preview scraping:', err);
+      toast.error(err.response?.data?.message || 'Error al previsualizar scraping');
+      setScrapingPreview([]);
+      setScrapingTotal(0);
+    } finally {
+      setScrapingLoading(false);
+    }
+  };
+
+  const handleImportarScraping = async () => {
+    if (!effectiveLocalId) {
+      toast.error('Selecciona un local antes de importar');
+      return;
+    }
+
+    const normalizados = (scrapingPreview || [])
+      .map((p) => {
+        const precio = typeof p.precio === 'number' ? p.precio : parseFloat(String(p.precio || '').replace(',', '.'));
+        return {
+          nombre: p.nombre,
+          descripcion: p.descripcion || '',
+          foto: p.foto || null,
+          precio: Number.isFinite(precio) ? precio : null,
+          costo: 0,
+          categoria: p.categoria || 'Otros',
+          tipo: detectarTipoPorCategoria(p.categoria),
+          proveedorId: null,
+          localId: effectiveLocalId,
+          activo: true
+        };
+      })
+      .filter((p) => p.nombre && p.precio !== null);
+
+    if (normalizados.length === 0) {
+      toast.error('No hay productos válidos para importar');
+      return;
+    }
+
+    try {
+      setScrapingImporting(true);
+      await productoService.createBulk(normalizados);
+      toast.success(`✅ ${normalizados.length} productos importados`);
+      setShowScraping(false);
+      setScrapingPreview([]);
+      setScrapingTotal(0);
+      setScrapingUrl('');
+      await cargarDatos();
+    } catch (err) {
+      console.error('Error import scraping:', err);
+      toast.error(err.response?.data?.message || 'Error al importar productos');
+    } finally {
+      setScrapingImporting(false);
     }
   };
 
@@ -77,7 +178,7 @@ export default function ProductosManagement() {
         ...formData,
         precio: parseFloat(formData.precio),
         costo: parseFloat(formData.costo),
-        localId: user.localId,
+        localId: effectiveLocalId,
         proveedorId: formData.proveedorId || null
       };
 
@@ -249,18 +350,94 @@ export default function ProductosManagement() {
               <h1 className="text-3xl font-bold text-gray-900">🍽️ Gestión de Productos</h1>
               <p className="text-gray-600 mt-1">Administra tu menú y precios</p>
             </div>
-            <button
-              onClick={openNewModal}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Nuevo Producto
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowScraping((v) => !v)}
+                className="px-4 py-3 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Importar por scraping
+              </button>
+              <button
+                onClick={openNewModal}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuevo Producto
+              </button>
+            </div>
           </div>
         </div>
       </header>
+
+      {showScraping && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-[260px]">
+                <label className="block text-sm font-medium text-gray-700 mb-1">URL del menú</label>
+                <input
+                  value={scrapingUrl}
+                  onChange={(e) => setScrapingUrl(e.target.value)}
+                  placeholder="https://malafamacomedia.com/menu/"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Importa productos al local activo. Costo se setea en 0 para editar después.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePreviewScraping}
+                  disabled={scrapingLoading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {scrapingLoading ? 'Previsualizando...' : 'Previsualizar'}
+                </button>
+                <button
+                  onClick={handleImportarScraping}
+                  disabled={scrapingImporting || scrapingPreview.length === 0}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  {scrapingImporting ? 'Importando...' : 'Importar'}
+                </button>
+              </div>
+            </div>
+
+            {scrapingTotal > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-gray-700 mb-2">
+                  Encontrados: <span className="font-semibold">{scrapingTotal}</span>
+                </p>
+                <div className="max-h-64 overflow-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-gray-600 font-medium">Producto</th>
+                        <th className="text-left px-3 py-2 text-gray-600 font-medium">Categoría</th>
+                        <th className="text-right px-3 py-2 text-gray-600 font-medium">Precio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scrapingPreview.slice(0, 100).map((p, idx) => (
+                        <tr key={`${p.nombre}-${idx}`} className="border-t">
+                          <td className="px-3 py-2 text-gray-800">{p.nombre}</td>
+                          <td className="px-3 py-2 text-gray-600">{p.categoria || 'Otros'}</td>
+                          <td className="px-3 py-2 text-right text-gray-800">{p.precio}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {scrapingPreview.length > 100 && (
+                  <p className="text-xs text-gray-500 mt-2">Mostrando 100 de {scrapingPreview.length} en preview</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
