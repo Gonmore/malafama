@@ -11,11 +11,12 @@ VERSION=$(date +%Y%m%d%H%M)
 echo "🏗️  1. Iniciando construcción de versión: $VERSION"
 
 # Build & Push Backend
-docker build -t $USER_DOCKER/backend-malafama:$VERSION -f ./backend/Dockerfile.prod ./backend
+docker build --progress=plain -t $USER_DOCKER/backend-malafama:$VERSION -f ./backend/Dockerfile.prod ./backend
 docker push $USER_DOCKER/backend-malafama:$VERSION
 
 # Build & Push Frontend (Inyectando URL de producción)
 docker build -t $USER_DOCKER/frontend-malafama:$VERSION \
+  --progress=plain \
   --build-arg VITE_API_URL=$API_PROD/api/v1 \
   -f ./frontend/Dockerfile.prod ./frontend
 docker push $USER_DOCKER/frontend-malafama:$VERSION
