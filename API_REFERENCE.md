@@ -2,7 +2,7 @@
 
 **Base URL:** `http://localhost:5000/api/v1`
 
-**Última actualización:** 27 de Febrero 2026
+**Última actualización:** 23 de Marzo 2026
 
 ---
 
@@ -422,6 +422,8 @@ Obtener todas las comandas abiertas
 ### GET `/comandas/:id`
 Obtener comanda por ID
 
+Incluye los pedidos asociados con su producto cuando el front operativo necesita reconstruir el detalle actual de una mesa.
+
 ### GET `/comandas/mesa/:mesaId`
 Obtener comandas de una mesa
 - Query: `?estado=abierta|cerrada&limit=10`
@@ -483,13 +485,31 @@ Cerrar comanda y generar total (Admin/Atención)
 }
 ```
 
+### PUT `/comandas/:id/entregar`
+Marcar comanda como entregada (Admin/Atención)
+
+Se usa en Mesero web y mobile para persistir la entrega real de la comanda.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Comanda marcada como entregada",
+  "data": {
+    "id": "uuid",
+    "entregado": true,
+    "entregadoAt": "2026-03-23T03:15:00Z"
+  }
+}
+```
+
 ---
 
 ## 🍽️ Pedido Routes (`/pedidos`)
 
 ### GET `/pedidos/cocina/pendientes`
 Obtener pedidos pendientes (Admin/Cocina)
-- Query: `?estado=pendiente,preparando`
+- Query: `?estado=pendiente,preparando&tipo=comida|bebida&localId=<uuid>`
 ```json
 Response: [
   {
@@ -499,11 +519,19 @@ Response: [
 ]
 ```
 
+El backend resuelve el tipo operativo real del producto y aplica fallback de `localId` desde la mesa/comanda cuando hay datos históricos incompletos.
+
+### GET `/pedidos/cocina/recientes`
+Obtener pedidos recientes listos o entregados (Admin/Cocina/Bar)
+- Query: `?tipo=comida|bebida&localId=<uuid>`
+
 ### GET `/pedidos/:id`
 Obtener pedido por ID
 
 ### GET `/pedidos/comanda/:comandaId`
 Obtener pedidos de una comanda
+
+Se usa en Mesero web para refrescar el detalle de "Pedidos actuales" y preservar notas por pedido.
 
 ### PUT `/pedidos/:id/estado`
 Actualizar estado de pedido (Admin/Cocina)

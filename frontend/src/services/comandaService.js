@@ -45,5 +45,11 @@ export const comandaService = {
   cerrar: async (comandaId) => {
     const response = await api.put(`/comandas/${comandaId}/cerrar`);
     return response.data;
+  },
+
+  // Marcar comanda como entregada
+  marcarEntregada: async (comandaId) => {
+    const response = await api.put(`/comandas/${comandaId}/entregar`);
+    return response.data;
   }
 };

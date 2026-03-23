@@ -8,6 +8,14 @@ import PagoModal from './PagoModal';
 
 export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode = false }) {
   const { user } = useAuthStore();
+  const previewLocalId = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('localId');
+    } catch (e) {
+      return null;
+    }
+  })();
+  const effectiveLocalId = previewLocalId || mesa?.localId || user?.localId || null;
 
   const [comanda, setComanda] = useState(null);
   const [productos, setProductos] = useState([]);
@@ -18,16 +26,87 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
   const [mostrarResumen, setMostrarResumen] = useState(false);
   const [mostrarPago, setMostrarPago] = useState(false);
   const [notasPorProducto, setNotasPorProducto] = useState({});
+  const [notasBorrador, setNotasBorrador] = useState({});
+
+  const PLACEHOLDER_NOTES = new Set(['sin nota', 'null', 'undefined', 'false', 'n/a', 'na']);
+
+  const sanitizeNote = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    return PLACEHOLDER_NOTES.has(normalized.toLowerCase()) ? '' : normalized;
+  };
+
+  const normalizarPedido = (pedido) => {
+    const nota = sanitizeNote(pedido?.notas || pedido?.observaciones || pedido?.nota);
+    return {
+      ...pedido,
+      notas: nota || null,
+    };
+  };
+
+  const normalizarPedidos = (lista) => (Array.isArray(lista) ? lista.map(normalizarPedido) : []);
+
+  const fusionarPedidos = (...colecciones) => {
+    const merged = new Map();
+
+    colecciones
+      .flat()
+      .filter(Boolean)
+      .map(normalizarPedido)
+      .forEach((pedido) => {
+        const existing = merged.get(pedido.id);
+        if (!existing) {
+          merged.set(pedido.id, pedido);
+          return;
+        }
+
+        merged.set(pedido.id, {
+          ...existing,
+          ...pedido,
+          notas: pedido.notas || existing.notas || null,
+          producto: pedido.producto || existing.producto,
+        });
+      });
+
+    return Array.from(merged.values()).sort((a, b) => {
+      const fechaA = new Date(a.createdAt || a.created_at || 0).getTime();
+      const fechaB = new Date(b.createdAt || b.created_at || 0).getTime();
+      return fechaA - fechaB;
+    });
+  };
+
+  const comandaEmbebida = comandaId
+    ? (mesa?.comandas || []).find((item) => String(item.id) === String(comandaId)) || null
+    : null;
 
   useEffect(() => {
     cargarDatos();
   }, [mesa, comandaId]);
 
+  const cargarPedidosDeComanda = async (targetComandaId) => {
+    if (!targetComandaId) return [];
+
+    try {
+      const response = await api.get(`/pedidos/comanda/${targetComandaId}`);
+      const pedidosActualizados = normalizarPedidos(response?.data?.data);
+      setPedidos((prev) => fusionarPedidos(comandaEmbebida?.pedidos, prev, pedidosActualizados));
+      return pedidosActualizados;
+    } catch (error) {
+      console.error('cargarPedidosDeComanda', error);
+      return [];
+    }
+  };
+
   const cargarDatos = async () => {
     try {
       setLoading(true);
-      const prodResp = await productoService.getAll({ activo: true });
+      const prodResp = await productoService.getAll({ activo: true, ...(effectiveLocalId ? { localId: effectiveLocalId } : {}) });
       setProductos(prodResp.data || []);
+
+      if (comandaEmbebida) {
+        setComanda(comandaEmbebida);
+        setPedidos(fusionarPedidos(comandaEmbebida.pedidos));
+      }
 
       // Si hay comandaId, cargar esa comanda específica
       if (comandaId) {
@@ -35,7 +114,9 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
         const resp = await comandaService.getById(comandaId);
         if (resp?.data) {
           setComanda(resp.data);
-          setPedidos(resp.data.pedidos || []);
+          const pedidosNormalizados = normalizarPedidos(resp.data.pedidos);
+          setPedidos((prev) => fusionarPedidos(comandaEmbebida?.pedidos, prev, pedidosNormalizados));
+          await cargarPedidosDeComanda(resp.data.id || comandaId);
         }
       }
     } catch (error) {
@@ -49,12 +130,56 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
   const categorias = Array.from(new Set(productos.map((p) => p.categoria).filter(Boolean)));
   const productosFiltrados = productos.filter((p) => !categoriaFiltro || p.categoria === categoriaFiltro);
   const productosCarrito = Object.entries(carrito);
+  const pedidosActuales = fusionarPedidos(comandaEmbebida?.pedidos, comanda?.pedidos, pedidos);
   const cantidadProductosCarrito = productosCarrito.reduce((suma, [, cantidad]) => suma + Number(cantidad || 0), 0);
   const totalCarrito = productosCarrito.reduce((suma, [id, cantidad]) => {
     const prod = productos.find((p) => String(p.id) === String(id));
     return suma + ((prod ? Number(prod.precio) : 0) * Number(cantidad || 0));
   }, 0);
-  const totalGeneral = totalCarrito + pedidos.reduce((suma, pedido) => suma + (pedido.subtotal ? Number(pedido.subtotal) : 0), 0);
+  const totalGeneral = totalCarrito + pedidosActuales.reduce((suma, pedido) => suma + (pedido.subtotal ? Number(pedido.subtotal) : 0), 0);
+
+  const normalizarNota = (valor) => String(valor || '').trim();
+
+  const obtenerNotaEditable = (productoId) => {
+    if (Object.prototype.hasOwnProperty.call(notasBorrador, productoId)) {
+      return notasBorrador[productoId];
+    }
+    return notasPorProducto[productoId] || '';
+  };
+
+  const notaProductoGuardada = (productoId) => {
+    const actual = normalizarNota(obtenerNotaEditable(productoId));
+    const guardada = normalizarNota(notasPorProducto[productoId]);
+    return actual === guardada;
+  };
+
+  const actualizarNotaProducto = (productoId, valor) => {
+    setNotasBorrador((prev) => ({
+      ...prev,
+      [productoId]: String(valor || '')
+    }));
+  };
+
+  const guardarNotaProducto = (productoId) => {
+    const notaNormalizada = normalizarNota(obtenerNotaEditable(productoId));
+
+    setNotasPorProducto((prev) => {
+      const next = { ...prev };
+      if (notaNormalizada) {
+        next[productoId] = notaNormalizada;
+      } else {
+        delete next[productoId];
+      }
+      return next;
+    });
+
+    setNotasBorrador((prev) => ({
+      ...prev,
+      [productoId]: notaNormalizada
+    }));
+
+    toast.success(notaNormalizada ? 'Nota guardada para el pedido' : 'Nota eliminada');
+  };
 
   const handleProductoClick = (productoId) => {
     setCarrito((prev) => ({ ...prev, [productoId]: (prev[productoId] || 0) + 1 }));
@@ -70,6 +195,21 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
       }
       return copy;
     });
+
+    if (!nuevaCantidad || nuevaCantidad <= 0) {
+      setNotasPorProducto((prev) => {
+        if (!prev[productoId]) return prev;
+        const next = { ...prev };
+        delete next[productoId];
+        return next;
+      });
+      setNotasBorrador((prev) => {
+        if (!prev[productoId]) return prev;
+        const next = { ...prev };
+        delete next[productoId];
+        return next;
+      });
+    }
   };
 
   const enviarPedidos = async () => {
@@ -80,6 +220,17 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
       }
 
       setLoading(true);
+      const notasFinales = productosCarrito.reduce((acc, [productoId]) => {
+        const nota = normalizarNota(obtenerNotaEditable(productoId));
+        if (nota) {
+          acc[productoId] = nota;
+        }
+        return acc;
+      }, {});
+
+      setNotasPorProducto(notasFinales);
+      setNotasBorrador(notasFinales);
+
       const pedidosData = productosCarrito.map(([productoId, cantidad]) => ({
         productoId,
         cantidad: Number(cantidad),
@@ -88,7 +239,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
 
       const pedidosConNotas = pedidosData.map((pedido) => ({
         ...pedido,
-        notas: notasPorProducto[pedido.productoId] || null,
+        notas: notasFinales[pedido.productoId] || null,
       }));
 
       console.log('Enviando pedidos...', {
@@ -113,12 +264,14 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
         console.log('Respuesta crear comanda:', resp);
         if (resp?.data) {
           setComanda(resp.data);
-          setPedidos(resp.data.pedidos || []);
+          setPedidos(normalizarPedidos(resp.data.pedidos));
+          await cargarPedidosDeComanda(resp.data.id);
         }
         toast.success('Comanda creada y pedidos enviados');
       }
       setCarrito({});
       setNotasPorProducto({});
+      setNotasBorrador({});
       setMostrarResumen(false);
       
       // Cerrar el modal y volver al dashboard de mesas
@@ -140,7 +293,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
     }
 
     // Verificar que todos los pedidos estén listos
-    const pedidosPendientes = pedidos.filter(
+    const pedidosPendientes = pedidosActuales.filter(
       p => p.estado !== 'listo' && p.estado !== 'cancelado'
     );
 
@@ -181,7 +334,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
   if (mostrarResumen) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50">
-        <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col`}>
+        <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-none sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[90vh] flex flex-col`}>
           <div className={`p-4 ${darkMode ? 'border-gray-700' : 'border-gray-200'} border-b flex-shrink-0`}>
             <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>Resumen del pedido ({cantidadProductosCarrito})</h3>
           </div>
@@ -204,18 +357,27 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
                       </div>
                     </div>
                     <div className="mt-2">
-                      <input
-                        type="text"
+                      <textarea
+                        rows={2}
                         placeholder="Notas (ej: sin picante, sin hielo...)"
-                        value={notasPorProducto[productoId] || ''}
-                        onChange={(e) => setNotasPorProducto(prev => ({
-                          ...prev,
-                          [productoId]: e.target.value
-                        }))}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                        value={obtenerNotaEditable(productoId)}
+                        onChange={(e) => actualizarNotaProducto(productoId, e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                           darkMode ? 'bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                         }`}
                       />
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className={`text-xs ${notaProductoGuardada(productoId) ? 'text-green-600' : darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                          {notaProductoGuardada(productoId) ? 'Nota confirmada' : 'Hay cambios sin confirmar'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => guardarNotaProducto(productoId)}
+                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          Guardar nota
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -233,7 +395,7 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-blue-50 to-purple-50'} rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col`}>
+      <div className={`${darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800' : 'bg-gradient-to-br from-blue-50 to-purple-50'} rounded-none sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[90vh] flex flex-col`}>
         
         {/* Header - Fixed */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-4 flex items-center justify-between shadow-lg flex-shrink-0">
@@ -332,12 +494,91 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
                   })}
                 </div>
 
+                {productosCarrito.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 uppercase tracking-wide`}>📝 Productos seleccionados</h3>
+                    <div className="space-y-3">
+                      {productosCarrito.map(([productoId, cantidad]) => {
+                        const prod = productos.find((item) => String(item.id) === String(productoId));
+                        if (!prod) return null;
+
+                        return (
+                          <div
+                            key={`seleccionado-${productoId}`}
+                            className={`rounded-2xl border p-3 shadow-sm ${
+                              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{prod.nombre}</p>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  {user?.local?.moneda || 'Bs'} {parseFloat(prod.precio).toFixed(2)} c/u
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 rounded-full bg-black/5 px-2 py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => modificarCantidad(productoId, Number(cantidad) - 1)}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold ${
+                                    darkMode ? 'bg-gray-700 text-gray-100 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  -
+                                </button>
+                                <span className={`min-w-6 text-center font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{cantidad}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => modificarCantidad(productoId, Number(cantidad) + 1)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-lg font-bold text-white hover:bg-blue-700"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-3">
+                              <label className={`mb-1 block text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                Nota para cocina/bar
+                              </label>
+                              <textarea
+                                rows={2}
+                                placeholder="Ej: sin cebolla, término medio, sin hielo"
+                                value={obtenerNotaEditable(productoId)}
+                                onChange={(e) => actualizarNotaProducto(productoId, e.target.value)}
+                                className={`w-full rounded-xl border px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                  darkMode ? 'bg-gray-900 border-gray-600 text-gray-100 placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
+                                }`}
+                              />
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className={`text-xs font-medium ${notaProductoGuardada(productoId) ? 'text-green-600' : darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                                  {notaProductoGuardada(productoId) ? 'Nota guardada' : 'Escribe y confirma la nota'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => guardarNotaProducto(productoId)}
+                                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                                >
+                                  Confirmar nota
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Pedidos actuales */}
-                {pedidos.length > 0 && (
+                {pedidosActuales.length > 0 && (
                   <div className="mb-4">
                     <h3 className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 uppercase tracking-wide`}>📋 Pedidos Actuales</h3>
                     <div className="space-y-2">
-                      {pedidos.map((pedido) => (
+                      {pedidosActuales.map((pedido) => {
+                        const notaPedido = sanitizeNote(pedido?.notas || pedido?.observaciones || pedido?.nota);
+
+                        return (
                         <div
                           key={pedido.id}
                           className={`flex items-center justify-between p-3 rounded-xl shadow-md border ${
@@ -354,6 +595,13 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
                                 </span>
                               )}
                             </p>
+                            {notaPedido && (
+                              <div className={`mt-2 rounded-lg border px-2.5 py-2 text-xs ${
+                                darkMode ? 'border-yellow-800 bg-yellow-900/30 text-yellow-100' : 'border-amber-200 bg-amber-50 text-amber-900'
+                              }`}>
+                                <p className="text-xs italic leading-relaxed">📝 {notaPedido}</p>
+                              </div>
+                            )}
                           </div>
                           <div className="text-right ml-3">
                             <p className={`font-bold text-base ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
@@ -372,13 +620,13 @@ export default function ComandaModal({ mesa, comandaId = null, onClose, darkMode
                             </span>
                           </div>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 )}
 
                 {/* Total general */}
-                {(pedidos.length > 0 || cantidadProductosCarrito > 0) && (
+                {(pedidosActuales.length > 0 || cantidadProductosCarrito > 0) && (
                   <div className="mb-4">
                     <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-xl shadow-lg">
                       <div className="flex justify-between items-center">

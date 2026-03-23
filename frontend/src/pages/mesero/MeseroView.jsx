@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import { mesaService } from '../../services/mesaService';
+import { comandaService } from '../../services/comandaService';
 import ComandaModal from './ComandaModal';
 import MesaConComandaModal from './MesaConComandaModal';
 import AssignMesasModal from './AssignMesasModal';
@@ -37,11 +38,15 @@ export default function MeseroView() {
   const [comandaIdSeleccionada, setComandaIdSeleccionada] = useState(null);
   const [mesasConPedidoListo, setMesasConPedidoListo] = useState(new Set());
   const [mesasConComandaCompleta, setMesasConComandaCompleta] = useState(new Set());
-  const [comandasAcknowledged, setComandasAcknowledged] = useState(new Set()); // Comandas reconocidas por el mesero
+  const [deliveredOptimistic, setDeliveredOptimistic] = useState(new Set());
   const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
   const [tiempoActual, setTiempoActual] = useState(new Date());
   const [showReporteDia, setShowReporteDia] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 640;
+  });
 
   useEffect(() => {
     localStorage.setItem('mesero_vista_mode', vistaMode);
@@ -57,6 +62,18 @@ export default function MeseroView() {
       setTiempoActual(new Date());
     }, 1000);
     return () => clearInterval(intervalo);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleResize = () => {
+      setIsMobileLayout(window.innerWidth < 640);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
@@ -160,6 +177,10 @@ export default function MeseroView() {
       toast.success(data.mensaje || `Mesa ${data.mesa} completa!`, { icon: '🍽️' });
     });
 
+    socket.on('comanda-entregada', () => {
+      cargarMesas();
+    });
+
     return () => {
       socket.disconnect();
       try { window.removeEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
@@ -198,6 +219,13 @@ export default function MeseroView() {
   };
 
   const handleMesaClick = (mesa) => {
+    const comandasOrdenadas = [...(mesa?.comandas || [])].sort((a, b) => {
+      const fechaA = new Date(a.createdAt || a.created_at || a.fecha || 0);
+      const fechaB = new Date(b.createdAt || b.created_at || b.fecha || 0);
+      return fechaA - fechaB;
+    });
+    const unicaComandaId = comandasOrdenadas[0]?.id || null;
+
     // Si ya tiene pedido listo, primer click quita el indicador y abre el modal
     if (mesasConPedidoListo.has(String(mesa.id))) {
       setMesasConPedidoListo(prev => {
@@ -208,10 +236,14 @@ export default function MeseroView() {
       // después de quitar el indicador abrimos la comanda para elegir continuar o crear
       setSelectedMesa(mesa);
       
-      // Si tiene comandas, mostrar modal de selección
-      if (mesa?.comandas?.length > 0) {
+      // Si tiene una sola comanda, abrir directo para reducir un paso en móvil/web
+      if (mesa?.comandas?.length === 1 && unicaComandaId) {
+        setComandaIdSeleccionada(unicaComandaId);
+        setShowComandaModal(true);
+      } else if (mesa?.comandas?.length > 0) {
         setShowMesaConComandaModal(true);
       } else {
+        setComandaIdSeleccionada(null);
         setShowComandaModal(true);
       }
       return;
@@ -219,10 +251,14 @@ export default function MeseroView() {
 
     setSelectedMesa(mesa);
     
-    // Si tiene comandas, mostrar modal de selección
-    if (mesa?.comandas?.length > 0) {
+    // Si tiene una sola comanda, entrar directo al detalle
+    if (mesa?.comandas?.length === 1 && unicaComandaId) {
+      setComandaIdSeleccionada(unicaComandaId);
+      setShowComandaModal(true);
+    } else if (mesa?.comandas?.length > 0) {
       setShowMesaConComandaModal(true);
     } else {
+      setComandaIdSeleccionada(null);
       setShowComandaModal(true);
     }
   };
@@ -295,7 +331,46 @@ export default function MeseroView() {
     return mins;
   };
 
-  const handleComandaClick = (mesa, comandaId) => {
+  const obtenerNotasMesa = (mesa) => {
+    return (mesa?.comandas || [])
+      .flatMap((comanda) => comanda?.pedidos || [])
+      .map((pedido) => String(pedido?.notas || '').trim())
+      .filter(Boolean);
+  };
+
+  const isComandaEntregada = (comanda) => {
+    if (!comanda?.id) return false;
+    return Boolean(comanda.entregado || deliveredOptimistic.has(String(comanda.id)));
+  };
+
+  const marcarComandaEntregada = async (mesa, comandaId) => {
+    const mesaId = String(mesa?.id || '');
+
+    setDeliveredOptimistic(prev => new Set([...prev, String(comandaId)]));
+    if (mesaId) {
+      setMesasConPedidoListo(prev => {
+        const next = new Set(prev);
+        next.delete(mesaId);
+        return next;
+      });
+    }
+
+    try {
+      await comandaService.marcarEntregada(comandaId);
+      toast.success('Comanda marcada como entregada', { icon: '✓', duration: 2000 });
+      await cargarMesas();
+    } catch (error) {
+      console.error('Error al marcar comanda como entregada:', error);
+      setDeliveredOptimistic(prev => {
+        const next = new Set(prev);
+        next.delete(String(comandaId));
+        return next;
+      });
+      toast.error(error.response?.data?.message || 'Error al marcar comanda como entregada');
+    }
+  };
+
+  const handleComandaClick = async (mesa, comandaId) => {
     // Buscar la comanda
     const comanda = mesa.comandas?.find(c => c.id === comandaId);
     const pedidos = comanda?.pedidos || [];
@@ -303,64 +378,48 @@ export default function MeseroView() {
       ['listo', 'entregado', 'cancelado'].includes(p.estado)
     );
 
-    // Si la comanda está lista y no ha sido acknowledged, marcarla como acknowledged con animación
-    if (todosPedidosListos && !comandasAcknowledged.has(comandaId)) {
-      // Marcar como acknowledged inmediatamente para detener el parpadeo
-      setComandasAcknowledged(prev => new Set([...prev, comandaId]));
-      
-      // Mostrar toast después de un breve delay para sincronizar con la animación
-      setTimeout(() => {
-        toast.success('Comanda reconocida como entregada', { icon: '✓', duration: 2000 });
-      }, 300);
-      
-      return; // Solo acknowledge en el primer click
+    // Primer click: persistir entrega real en backend; segundo click: abrir detalle
+    if (todosPedidosListos && !isComandaEntregada(comanda)) {
+      await marcarComandaEntregada(mesa, comandaId);
+      return;
     }
 
-    // Si ya fue acknowledged o no está lista, abrir el modal
+    // Si ya fue entregada o no está lista, abrir el modal
     setSelectedMesa(mesa);
     setComandaIdSeleccionada(comandaId);
     setShowComandaModal(true);
   };
 
+  const mesasVisibles = mesas.filter((mesa) => {
+    if (showUnassigned) return !assignedMesas.has(mesa.id);
+    return assignedMesas.size === 0 ? true : assignedMesas.has(mesa.id);
+  });
+
   // Vista en Lista
   const renderVistaLista = () => {
-    const mesasFiltradas = mesas.filter(m => {
-      if (showUnassigned) return !assignedMesas.has(m.id);
-      return assignedMesas.size === 0 ? true : assignedMesas.has(m.id);
-    });
-
     // Ordenar mesas por prioridad
-    const mesasOrdenadas = [...mesasFiltradas].sort((a, b) => {
+    const mesasOrdenadas = [...mesasVisibles].sort((a, b) => {
       const getPrioridad = (mesa) => {
         const comandas = mesa.comandas || [];
         if (comandas.length === 0) return 4; // Sin comandas - última prioridad
-        
-        // Verificar si toda la mesa está lista Y NO acknowledged
-        const todaMesaListaNoAck = comandas.every(c => {
-          const pedidos = c.pedidos || [];
-          const todosListos = pedidos.length > 0 && pedidos.every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado));
-          const esAcknowledged = comandasAcknowledged.has(c.id);
-          return !todosListos || esAcknowledged; // Si está listo pero acknowledged, no cuenta como "pendiente"
-        });
         
         const todaMesaLista = comandas.every(c => 
           (c.pedidos || []).length > 0 && 
           (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
         );
         
-        // Verificar si TODAS las comandas están acknowledged
-        const todasAcknowledged = comandas.every(c => comandasAcknowledged.has(c.id));
+        // Verificar si TODAS las comandas ya fueron entregadas
+        const todasEntregadas = comandas.every(c => isComandaEntregada(c));
         
-        if (todaMesaLista && !todasAcknowledged) return 1; // Todas las comandas listas pero NO todas acknowledged - máxima prioridad
+        if (todaMesaLista && !todasEntregadas) return 1; // Todas las comandas listas pero NO todas entregadas - máxima prioridad
         
-        // Verificar si alguna comanda está completa y NO acknowledged
-        const algunaComandaCompletaNoAck = comandas.some(c => {
+        // Verificar si alguna comanda está completa y NO entregada
+        const algunaComandaCompletaNoEntregada = comandas.some(c => {
           const pedidos = c.pedidos || [];
           const todosListos = pedidos.length > 0 && pedidos.every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado));
-          const esAcknowledged = comandasAcknowledged.has(c.id);
-          return todosListos && !esAcknowledged;
+          return todosListos && !isComandaEntregada(c);
         });
-        if (algunaComandaCompletaNoAck) return 2; // Alguna comanda lista sin acknowledge - segunda prioridad
+        if (algunaComandaCompletaNoEntregada) return 2; // Alguna comanda lista sin entregar - segunda prioridad
         
         // Verificar si algún pedido está listo
         const algunPedidoListo = comandas.some(c => 
@@ -395,8 +454,8 @@ export default function MeseroView() {
             (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
           );
           
-          // Verificar si TODAS las comandas están acknowledged
-          const todasComandasAcknowledged = tieneComandas && comandas.every(c => comandasAcknowledged.has(c.id));
+          // Verificar si TODAS las comandas están entregadas
+          const todasComandasEntregadas = tieneComandas && comandas.every(c => isComandaEntregada(c));
 
           // Mesas SIN comandas - layout simple horizontal
           if (!tieneComandas) {
@@ -435,9 +494,9 @@ export default function MeseroView() {
             <div 
               key={mesa.id}
               className={`relative flex rounded-lg overflow-hidden shadow-md transition-all duration-200 ${
-                todaMesaLista && !todasComandasAcknowledged
+                todaMesaLista && !todasComandasEntregadas
                   ? 'ring-4 ring-green-500 animate-pulse' 
-                  : todaMesaLista && todasComandasAcknowledged
+                  : todaMesaLista && todasComandasEntregadas
                     ? 'ring-4 ring-green-500'
                     : darkMode 
                       ? 'border border-gray-700' 
@@ -483,7 +542,7 @@ export default function MeseroView() {
                 } ${
                   todaMesaLista && !darkMode ? '' : ''
                 } hover:bg-opacity-80 transition-all duration-500 ${
-                  todaMesaLista && !todasComandasAcknowledged ? 'animate-pulse' : ''
+                  todaMesaLista && !todasComandasEntregadas ? 'animate-pulse' : ''
                 }`}
               >
                 <div className="text-center">
@@ -501,7 +560,7 @@ export default function MeseroView() {
                     const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
                       ['listo', 'entregado', 'cancelado'].includes(p.estado)
                     );
-                    const esAcknowledged = comandasAcknowledged.has(comanda.id);
+                    const esEntregada = isComandaEntregada(comanda);
                     
                     // Calcular tiempo de forma dinámica
                     let tiempoMin = 0;
@@ -535,16 +594,16 @@ export default function MeseroView() {
                           className={`relative flex-shrink-0 w-12 h-16 rounded-r-full flex flex-col items-center justify-center text-xs font-bold ${
                             darkMode
                               ? todosPedidosListos
-                                ? `bg-gray-900 border-2 border-green-500 text-white ${!esAcknowledged ? 'animate-pulse' : ''}`
+                                ? `bg-gray-900 border-2 border-green-500 text-white ${!esEntregada ? 'animate-pulse' : ''}`
                                 : 'bg-gray-900 border-2 border-gray-600 text-gray-300'
                               : todosPedidosListos 
-                                ? `bg-green-500 text-white ${!esAcknowledged ? 'animate-pulse' : ''}` 
+                                ? `bg-green-500 text-white ${!esEntregada ? 'animate-pulse' : ''}` 
                                 : 'bg-blue-500 text-white'
                           } hover:scale-105 transition-all duration-500 shadow-md border-l-0`}
                           style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
                         >
-                          {/* Manito señalando cuando está lista y no acknowledged */}
-                          {todosPedidosListos && !esAcknowledged && (
+                          {/* Manito señalando cuando está lista y no entregada */}
+                          {todosPedidosListos && !esEntregada && (
                             <div className="absolute -bottom-1 -right-1 animate-bounce">
                               <div className="text-2xl">{darkMode ? '👆🏽' : '👆'}</div>
                             </div>
@@ -553,8 +612,8 @@ export default function MeseroView() {
                           <span className={`text-xs font-bold ${colorTiempo}`}>{tiempoMin}m</span>
                         </button>
                         
-                        {/* Check verde para comandas acknowledged */}
-                        {todosPedidosListos && esAcknowledged && (
+                        {/* Check verde para comandas entregadas */}
+                        {todosPedidosListos && esEntregada && (
                           <div className="absolute bottom-1 right-1 flex items-center justify-center w-6 h-6 bg-green-500 rounded-full border-2 border-white shadow-lg animate-fadeIn">
                             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -574,7 +633,7 @@ export default function MeseroView() {
                                 key={pedido.id}
                                 className={`inline-flex flex-col px-2 py-1 rounded text-xs border transition-all duration-500 ${
                                   estaListo 
-                                    ? `bg-green-100 border-green-500 ${!esAcknowledged ? 'animate-pulse' : ''}` 
+                                    ? `bg-green-100 border-green-500 ${!esEntregada ? 'animate-pulse' : ''}` 
                                     : darkMode
                                       ? 'bg-gray-800 border-gray-600 text-gray-300'
                                       : 'bg-gray-50 border-gray-300'
@@ -629,9 +688,9 @@ export default function MeseroView() {
       />
       
       {/* Controles superiores */}
-      <div className="flex justify-between items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2 gap-2">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2 gap-3">
         {/* Toggle de Vista */}
-        <div className={`flex gap-2 rounded-lg p-1 shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className={`flex gap-2 rounded-lg p-1 shadow-sm border w-full sm:w-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <button
             onClick={() => setVistaMode('cuadro')}
             className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -669,7 +728,7 @@ export default function MeseroView() {
         </div>
 
         {/* Controles derechos: Dark Mode + Asignar */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
           {/* Toggle Dark Mode */}
           <button
             onClick={() => setDarkMode(!darkMode)}
@@ -721,6 +780,17 @@ export default function MeseroView() {
           </label>
         </div>
       </div>
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-3">
+        <div className={`grid grid-cols-2 sm:flex gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <div className={`rounded-xl px-3 py-2 text-sm shadow-sm ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
+            {mesasVisibles.length} mesa{mesasVisibles.length === 1 ? '' : 's'} visibles
+          </div>
+          <div className={`rounded-xl px-3 py-2 text-sm shadow-sm ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
+            {mesasVisibles.filter((mesa) => (mesa.comandas || []).length > 0).length} ocupada{mesasVisibles.filter((mesa) => (mesa.comandas || []).length > 0).length === 1 ? '' : 's'}
+          </div>
+        </div>
+      </div>
       
       {/* Leyenda de estados */}
       <div className={`px-3 py-2 border-b ${darkMode ? 'bg-gray-800/50 backdrop-blur-sm border-gray-700' : 'bg-white/50 backdrop-blur-sm border-gray-200'}`}>
@@ -755,14 +825,10 @@ export default function MeseroView() {
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5">
-              {mesas
-                .filter(m => {
-                  if (showUnassigned) return !assignedMesas.has(m.id);
-                  return assignedMesas.size === 0 ? true : assignedMesas.has(m.id);
-                })
-                .map((mesa) => {
+              {mesasVisibles.map((mesa) => {
                 const estado = getEstadoMesa(mesa);
                 const colorClass = getColorMesa(estado);
+                const notasMesa = obtenerNotasMesa(mesa);
                 
                 return (
                   <button
@@ -801,6 +867,18 @@ export default function MeseroView() {
                           }`}>{mesa.comandas.length} {mesa.comandas.length > 1 ? 'comandas' : 'comanda'}</span>
                         </div>
                       )}
+                      {notasMesa.length > 0 && (
+                        <div className="mt-2 flex items-center justify-center">
+                          <span
+                            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-semibold ${
+                              darkMode ? 'bg-yellow-900/30 text-yellow-200' : 'bg-amber-50 text-amber-800'
+                            }`}
+                            title={notasMesa.length === 1 ? 'Hay una nota en esta mesa' : `Hay ${notasMesa.length} notas en esta mesa`}
+                          >
+                            📝
+                          </span>
+                        </div>
+                      )}
                       <p className={`text-[9px] mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
                         {mesa.capacidad}p
                       </p>
@@ -832,6 +910,7 @@ export default function MeseroView() {
       {showMesaConComandaModal && selectedMesa && (
         <MesaConComandaModal
           mesa={selectedMesa}
+          isMobile={isMobileLayout}
           darkMode={darkMode}
           onContinuar={(comandaId) => {
             console.log('onContinuar recibió:', comandaId, 'tipo:', typeof comandaId);

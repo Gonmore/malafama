@@ -1,10 +1,14 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import UserDropdown from './UserDropdown';
 
 export default function Navbar({ roleLabel = null, pedidosCount = null, onReporteDia = null, darkMode = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
+  const searchParams = new URLSearchParams(location.search);
+  const isPreview = searchParams.get('preview') === '1';
+  const previewLocalId = searchParams.get('localId');
 
   const handleLogout = () => {
     logout();
@@ -28,6 +32,14 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
 
   const handleHomeClick = () => {
     navigate(getHomeRoute());
+  };
+
+  const handleBackToAdmin = () => {
+    if (previewLocalId) {
+      navigate(`/admin/local/${encodeURIComponent(previewLocalId)}`);
+      return;
+    }
+    navigate('/admin');
   };
 
   return (
@@ -96,6 +108,15 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
 
           {/* Info Usuario y UserDropdown */}
           <div className="flex items-center gap-3">
+            {isPreview && (
+              <button
+                onClick={handleBackToAdmin}
+                className="px-3 py-2 rounded-lg border transition-colors bg-white/10 text-white border-white/20 hover:bg-white/20"
+              >
+                Volver al admin
+              </button>
+            )}
+
             {/* Mostrar botón Asignar Mesas visible en la barra para meseros */}
             {user?.tipo === 'atencion' && (
               <button

@@ -2,6 +2,7 @@ const { Producto, Proveedor } = require('../models');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
+const { resolveOperationalProductType } = require('../utils/productRouting');
 
 // Listar todos los productos
 const getAllProductos = async (req, res) => {
@@ -170,6 +171,8 @@ const createProducto = async (req, res) => {
       }
     }
 
+    const resolvedTipo = resolveOperationalProductType({ nombre, categoria, tipo });
+
     const producto = await Producto.create({
       nombre,
       descripcion,
@@ -178,7 +181,7 @@ const createProducto = async (req, res) => {
       costo,
       proveedorId,
       categoria,
-      tipo: tipo || 'otros',
+      tipo: resolvedTipo,
       localId: targetLocalId
     });
 
@@ -221,6 +224,7 @@ const createMultipleProductos = async (req, res) => {
     const defaultLocalId = req.user?.localId || req.body.localId || null;
     const productosNormalizados = productos.map((p) => ({
       ...p,
+      tipo: resolveOperationalProductType(p),
       localId: p.localId || defaultLocalId
     }));
 
@@ -289,6 +293,10 @@ const updateProducto = async (req, res) => {
       }
     }
 
+    const nextNombre = nombre || producto.nombre;
+    const nextCategoria = categoria !== undefined ? categoria : producto.categoria;
+    const nextTipo = tipo !== undefined ? tipo : producto.tipo;
+
     await producto.update({
       nombre: nombre || producto.nombre,
       descripcion: descripcion !== undefined ? descripcion : producto.descripcion,
@@ -298,7 +306,7 @@ const updateProducto = async (req, res) => {
       proveedorId: proveedorId !== undefined ? proveedorId : producto.proveedorId,
       categoria: categoria !== undefined ? categoria : producto.categoria,
       activo: activo !== undefined ? activo : producto.activo,
-      tipo: tipo !== undefined ? tipo : producto.tipo
+      tipo: resolveOperationalProductType({ nombre: nextNombre, categoria: nextCategoria, tipo: nextTipo })
     });
 
     const productoActualizado = await Producto.findByPk(id, {

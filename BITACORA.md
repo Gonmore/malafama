@@ -1,6 +1,6 @@
 # Bitácora del Proyecto MalaFama - Sistema de Gestión de Pedidos para Restaurante
 
-**Última actualización:** 27 de Febrero 2026
+**Última actualización:** 23 de Marzo 2026
 
 ## 📋 Descripción del Proyecto
 
@@ -13,6 +13,33 @@ Sistema completo de gestión de pedidos para restaurantes que incluye:
 ---
 
 ## 🆕 ÚLTIMAS ACTUALIZACIONES
+
+### Sesión del 23 de Marzo 2026 - Paridad operativa web para mesero, cocina y bar
+
+#### ✅ Cambios principales (frontend web)
+- En Mesero se reemplazó el acknowledgment local por entrega persistida de comanda contra backend.
+- El flujo móvil web de Mesero ahora abre directo la única comanda disponible y usa modales full-screen en pantallas chicas.
+- Se agregó soporte visible de notas por pedido en Mesero, incluyendo edición previa al envío y lectura dentro de "Pedidos actuales".
+- En la grilla de Mesero, las mesas con notas ahora muestran indicador visual sin duplicar texto innecesario.
+- Cocina y Bar incorporaron filtro por producto persistido por usuario, aplicado tanto en cola como en recientes.
+- Cocina y Bar ahora mantienen el pedido marcado como listo en estado transitorio gris antes de moverlo automáticamente a recientes.
+- En vistas compactas y agrupadas de Cocina y Bar se agregó lectura de notas bajo demanda mediante modal.
+- Las vistas operativas abiertas en modo preview desde Admin ahora muestran "Volver al admin" y respetan el local seleccionado.
+
+#### ✅ Cambios principales (backend)
+- Se endureció el scope por local al crear comandas y agregar pedidos, validando que los productos pertenezcan al local operativo.
+- Se normalizó el uso de `localId` efectivo en comandas históricas y en consultas operativas de pedidos.
+- Se agregó resolución operativa de tipo de producto por nombre/categoría para enrutar correctamente cocina vs bar cuando `tipo` viene mal cargado.
+- Se corrigió el orden de rutas de Express para evitar que `/:id` capture rutas específicas como `/mesa/:mesaId` y `/comanda/:comandaId`.
+
+#### ✅ Documentación y seguimiento
+- Se creó `docs/PARIDAD_WEB_MOBILE_OPERATIVA.md` como matriz de paridad y backlog técnico ejecutable.
+- El avance quedó distribuido en cuatro fases: entrega persistida de mesero, UX móvil web, filtros de producto y ajustes finos de vistas operativas.
+
+#### ✅ Validaciones realizadas
+- Preview de Admin validado con recepción correcta en Cocina/Bar según local y tipo operativo.
+- Notas persistidas validadas en backend y visibles en Cocina/Bar.
+- Frontend reiniciado en Docker para asegurar que la UI cargue la versión actual del flujo de notas.
 
 ### Sesión del 27 de Febrero 2026 - CRUD de Proveedores, alta desde Productos, Scraping con progreso y navegación "Volver al local"
 

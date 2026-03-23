@@ -1,6 +1,19 @@
 const { Pedido, Producto, Comanda, Mesa, Usuario } = require('../models');
 const { col, Op } = require('sequelize');
 const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
+const { resolveOperationalProductType } = require('../utils/productRouting');
+
+function matchesLocalFilter(value, localFilter) {
+  if (!localFilter) return true;
+  if (!value) return false;
+  if (typeof localFilter === 'string') {
+    return String(value) === String(localFilter);
+  }
+  if (localFilter?.[Op.in]) {
+    return localFilter[Op.in].map(String).includes(String(value));
+  }
+  return false;
+}
 
 // Obtener el socket.io instance
 let io;
@@ -303,12 +316,9 @@ const getPedidosPendientesCocina = async (req, res) => {
     }
 
     const whereProducto = {};
-    if (tipo) {
-      whereProducto.tipo = tipo;
-    }
     if (localFilter) whereProducto.localId = localFilter;
 
-    const pedidos = await Pedido.findAll({
+    const pedidosRaw = await Pedido.findAll({
       where: {
         estado: estados
       },
@@ -321,7 +331,7 @@ const getPedidosPendientesCocina = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
-          where: { estado: 'abierta', ...(localFilter ? { localId: localFilter } : {}) },
+          where: { estado: 'abierta' },
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }
@@ -329,6 +339,20 @@ const getPedidosPendientesCocina = async (req, res) => {
         }
       ],
       order: [[col('Pedido.created_at'), 'ASC']]
+    });
+
+    const pedidos = pedidosRaw.filter((pedido) => {
+      const operationalType = resolveOperationalProductType(pedido.producto);
+      const effectiveLocalId = pedido.comanda?.localId || pedido.comanda?.mesa?.localId || null;
+
+      if (tipo && operationalType !== tipo) return false;
+      if (!matchesLocalFilter(effectiveLocalId, localFilter)) return false;
+
+      if (!pedido.comanda?.localId && effectiveLocalId && pedido.comanda?.id) {
+        Comanda.update({ localId: effectiveLocalId }, { where: { id: pedido.comanda.id } }).catch(() => null);
+      }
+
+      return true;
     });
 
     res.json({
@@ -369,12 +393,9 @@ const getPedidosRecientes = async (req, res) => {
     }
 
     const whereProducto = {};
-    if (tipo) {
-      whereProducto.tipo = tipo;
-    }
     if (localFilter) whereProducto.localId = localFilter;
 
-    const pedidos = await Pedido.findAll({
+    const pedidosRaw = await Pedido.findAll({
       where: {
         estado: ['listo', 'entregado'],
         listoAt: {
@@ -390,7 +411,6 @@ const getPedidosRecientes = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
-          where: localFilter ? { localId: localFilter } : undefined,
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }
@@ -398,6 +418,20 @@ const getPedidosRecientes = async (req, res) => {
         }
       ],
       order: [[col('Pedido.listo_at'), 'DESC']]
+    });
+
+    const pedidos = pedidosRaw.filter((pedido) => {
+      const operationalType = resolveOperationalProductType(pedido.producto);
+      const effectiveLocalId = pedido.comanda?.localId || pedido.comanda?.mesa?.localId || null;
+
+      if (tipo && operationalType !== tipo) return false;
+      if (!matchesLocalFilter(effectiveLocalId, localFilter)) return false;
+
+      if (!pedido.comanda?.localId && effectiveLocalId && pedido.comanda?.id) {
+        Comanda.update({ localId: effectiveLocalId }, { where: { id: pedido.comanda.id } }).catch(() => null);
+      }
+
+      return true;
     });
 
     res.json({

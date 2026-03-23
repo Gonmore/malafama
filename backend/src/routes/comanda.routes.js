@@ -9,11 +9,11 @@ router.get('/', authenticate, comandaController.getAllComandas);
 // Obtener comandas abiertas
 router.get('/abiertas', authenticate, comandaController.getAllComandasAbiertas);
 
-// Obtener comanda por ID
-router.get('/:id', authenticate, comandaController.getComandaById);
-
 // Obtener comandas por mesa
 router.get('/mesa/:mesaId', authenticate, comandaController.getComandasByMesa);
+
+// Obtener comanda por ID
+router.get('/:id', authenticate, comandaController.getComandaById);
 
 // Crear comanda (admin y atención)
 router.post('/', authenticate, authorize('admin', 'atencion'), comandaController.createComanda);

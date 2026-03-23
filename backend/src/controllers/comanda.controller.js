@@ -1,6 +1,8 @@
 const { Comanda, Pedido, Producto, Mesa, Usuario } = require('../models');
 const { sequelize } = require('../config/database');
 const { Op, col } = require('sequelize');
+const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
+const { resolveOperationalProductType } = require('../utils/productRouting');
 
 // Obtener el socket.io instance
 let io;
@@ -22,6 +24,15 @@ const createComanda = async (req, res) => {
         success: false,
         message: 'Mesa no encontrada o inactiva'
       });
+    }
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = mesa.localId || req.user.localId || null;
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
     // Verificar que no haya comanda abierta en la mesa
@@ -48,7 +59,7 @@ const createComanda = async (req, res) => {
       comanda = await Comanda.create({
         mesaId,
         usuarioAtencionId,
-        localId: req.user.localId,
+        localId: targetLocalId,
         observaciones,
         estado: 'abierta'
       }, { transaction: t });
@@ -58,6 +69,11 @@ const createComanda = async (req, res) => {
         for (const p of pedidos) {
           const producto = await Producto.findByPk(p.productoId, { transaction: t });
           if (!producto) continue;
+          if (targetLocalId && producto.localId && String(producto.localId) !== String(targetLocalId)) {
+            const err = new Error('El producto no pertenece al local seleccionado');
+            err.status = 400;
+            throw err;
+          }
 
           const pedido = await Pedido.create({
             comandaId: comanda.id,
@@ -74,6 +90,13 @@ const createComanda = async (req, res) => {
       }
     });
 
+    if (targetLocalId) {
+      const persistedComanda = await Comanda.findByPk(comanda.id, { attributes: ['id', 'localId'] });
+      if (persistedComanda && String(persistedComanda.localId || '') !== String(targetLocalId)) {
+        await persistedComanda.update({ localId: targetLocalId });
+      }
+    }
+
     // Obtener la comanda completa con sus relaciones
     const comandaCompleta = await Comanda.findByPk(comanda.id, {
       include: [
@@ -89,8 +112,8 @@ const createComanda = async (req, res) => {
 
     // Notificar a cocina y bar según el tipo de producto mediante Socket.io
     if (io && pedidosCreados.length > 0) {
-      const pedidosComida = pedidosCreados.filter(p => p.producto.tipo === 'comida');
-      const pedidosBebida = pedidosCreados.filter(p => p.producto.tipo === 'bebida');
+      const pedidosComida = pedidosCreados.filter(p => resolveOperationalProductType(p.producto) === 'comida');
+      const pedidosBebida = pedidosCreados.filter(p => resolveOperationalProductType(p.producto) === 'bebida');
 
       if (pedidosComida.length > 0) {
         // Emit both specific and generic events for backward compatibility
@@ -122,7 +145,7 @@ const createComanda = async (req, res) => {
         });
 
         // Emit only to this local's cocina room
-        const cocinaRoom = `cocina:${req.user.localId}`;
+        const cocinaRoom = `cocina:${targetLocalId}`;
         io.to(cocinaRoom).emit('nueva-comanda', {
           comandaId: comanda.id,
           mesaId: mesa.id,
@@ -173,7 +196,7 @@ const createComanda = async (req, res) => {
         });
 
         // Emit only to this local's bar room
-        const barRoom = `bar:${req.user.localId}`;
+        const barRoom = `bar:${targetLocalId}`;
         io.to(barRoom).emit('nueva-comanda', {
           comandaId: comanda.id,
           mesaId: mesa.id,
@@ -197,7 +220,7 @@ const createComanda = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en createComanda:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       message: 'Error al crear comanda',
       error: error.message
@@ -211,7 +234,9 @@ const addPedidosToComanda = async (req, res) => {
     const { id } = req.params;
     const { pedidos } = req.body;
 
-    const comanda = await Comanda.findByPk(id);
+    const comanda = await Comanda.findByPk(id, {
+      include: [{ model: Mesa, as: 'mesa' }]
+    });
 
     if (!comanda) {
       return res.status(404).json({
@@ -234,12 +259,32 @@ const addPedidosToComanda = async (req, res) => {
       });
     }
 
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = comanda.localId || comanda.mesa?.localId || null;
+
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
+    if (!comanda.localId && targetLocalId) {
+      await comanda.update({ localId: targetLocalId });
+    } else if (targetLocalId && String(comanda.localId || '') !== String(targetLocalId)) {
+      await comanda.update({ localId: targetLocalId });
+    }
+
     // Crear los nuevos pedidos con información del producto (en transacción)
     const pedidosCreados = [];
     await sequelize.transaction(async (t) => {
       for (const p of pedidos) {
-        const producto = await Producto.findByPk(p.productoId);
+        const producto = await Producto.findByPk(p.productoId, { transaction: t });
         if (!producto) continue;
+        if (targetLocalId && producto.localId && String(producto.localId) !== String(targetLocalId)) {
+          const err = new Error('El producto no pertenece al local de la comanda');
+          err.status = 400;
+          throw err;
+        }
 
         const pedido = await Pedido.create({
           comandaId: comanda.id,
@@ -270,8 +315,9 @@ const addPedidosToComanda = async (req, res) => {
 
     // Notificar a cocina y bar según el tipo de producto
     if (io) {
-      const pedidosComida = pedidosCreados.filter(p => p.producto.tipo === 'comida');
-      const pedidosBebida = pedidosCreados.filter(p => p.producto.tipo === 'bebida');
+      const emitLocalId = comandaActualizada.localId || comandaActualizada.mesa?.localId || targetLocalId;
+      const pedidosComida = pedidosCreados.filter(p => resolveOperationalProductType(p.producto) === 'comida');
+      const pedidosBebida = pedidosCreados.filter(p => resolveOperationalProductType(p.producto) === 'bebida');
 
       if (pedidosComida.length > 0) {
         io.to('cocina').emit('nuevo-pedido-cocina', {
@@ -288,7 +334,7 @@ const addPedidosToComanda = async (req, res) => {
         });
         // Emit per-local cookie
         try {
-          const room = `cocina:${req.user.localId}`;
+          const room = `cocina:${emitLocalId}`;
           io.to(room).emit('nuevo-pedido-cocina', {
             comandaId: comanda.id,
             mesaId: comandaActualizada.mesa.id,
@@ -333,7 +379,7 @@ const addPedidosToComanda = async (req, res) => {
           mensaje: `${pedidosBebida.length} nuevo(s) pedido(s) de bebida - Mesa ${comandaActualizada.mesa.numero}`
         });
         try {
-          const room = `bar:${req.user.localId}`;
+          const room = `bar:${emitLocalId}`;
           io.to(room).emit('nuevo-pedido-bar', {
             comandaId: comanda.id,
             mesaId: comandaActualizada.mesa.id,
@@ -360,7 +406,7 @@ const addPedidosToComanda = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en addPedidosToComanda:', error);
-    res.status(500).json({
+    res.status(error.status || 500).json({
       success: false,
       message: 'Error al agregar pedidos',
       error: error.message

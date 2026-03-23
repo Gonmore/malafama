@@ -1,14 +1,20 @@
 import { useState } from 'react';
 
-export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, onClose, darkMode = false }) {
+export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, onClose, darkMode = false, isMobile = false }) {
   const [comandaSeleccionada, setComandaSeleccionada] = useState(mesa?.comandas?.[0]?.id || null);
+
+  const obtenerNotasComanda = (comanda) => {
+    return (comanda?.pedidos || [])
+      .map((pedido) => String(pedido?.notas || '').trim())
+      .filter(Boolean);
+  };
 
   // Debug: ver qué datos llegan
   console.log('MesaConComandaModal - mesa.comandas:', mesa?.comandas);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className={`rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-lg p-6 border-2 ${
+      <div className={`${isMobile ? 'h-[100dvh] rounded-none pt-8' : 'rounded-t-3xl sm:rounded-3xl'} shadow-2xl w-full sm:max-w-lg p-6 border-2 overflow-y-auto ${
         darkMode ? 'bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-orange-200'
       }`}>
         
@@ -26,7 +32,7 @@ export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, o
         </div>
 
         {/* Botones de acción */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 sticky top-0 z-10">
           <button
             className="px-6 py-5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold shadow-lg hover:scale-[1.02] transition-transform text-lg"
             onClick={() => onContinuar(comandaSeleccionada)}
@@ -63,6 +69,7 @@ export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, o
                   return fechaA - fechaB;
                 })
                 .map((c, index) => {
+                  const notasComanda = obtenerNotasComanda(c);
                   // Intentar múltiples campos de fecha
                   const fechaRaw = c.createdAt || c.created_at || c.fecha;
                   const fechaComanda = fechaRaw ? new Date(fechaRaw) : null;
@@ -84,7 +91,7 @@ export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, o
                       key={c.id}
                       className={`p-3 rounded-lg border-2 text-sm font-medium transition text-left ${
                         comandaSeleccionada === c.id 
-                          ? 'border-orange-500 bg-orange-100' 
+                          ? darkMode ? 'border-orange-400 bg-orange-950/40' : 'border-orange-500 bg-orange-100' 
                           : darkMode 
                             ? 'border-gray-700 bg-gray-800 hover:border-orange-400 hover:bg-gray-700'
                             : 'border-gray-200 bg-white hover:border-orange-400 hover:bg-orange-50'
@@ -114,6 +121,22 @@ export default function MesaConComandaModal({ mesa, onContinuar, onCrearNueva, o
                           comandaSeleccionada === c.id ? 'text-gray-600' : darkMode ? 'text-gray-400' : 'text-gray-600'
                         }`}>
                           {c.pedidos.length} pedido{c.pedidos.length > 1 ? 's' : ''}
+                        </div>
+                      )}
+                      <div className={`text-[11px] mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {(c.pedidos || []).slice(0, 3).map((pedido) => pedido.producto?.nombre || pedido.productoNombre || pedido.nombre).filter(Boolean).join(', ') || 'Sin productos cargados'}
+                      </div>
+                      {notasComanda.length > 0 && (
+                        <div className={`mt-2 rounded-lg px-2 py-1 text-[11px] ${
+                          darkMode ? 'bg-yellow-900/30 text-yellow-200' : 'bg-amber-50 text-amber-800'
+                        }`}>
+                          <div className="font-semibold uppercase tracking-wide text-[10px]">Nota</div>
+                          <p className="line-clamp-2">{notasComanda[0]}</p>
+                          {notasComanda.length > 1 && (
+                            <p className={`mt-1 text-[10px] ${darkMode ? 'text-yellow-300/80' : 'text-amber-700/80'}`}>
+                              +{notasComanda.length - 1} nota{notasComanda.length - 1 === 1 ? '' : 's'}
+                            </p>
+                          )}
                         </div>
                       )}
                     </button>

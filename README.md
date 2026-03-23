@@ -28,8 +28,17 @@ MalaFama es una solución integral que digitaliza y optimiza el flujo de trabajo
 - ✅ **Control de costos** y cálculo de márgenes automático
  - ✅ **Frontend: Reportes Admin (UI & UX mejorado)** — Nueva experiencia premium en `Reportes` (admin): tres tipos de reportes (Ejecutivo, Detallado, Comparativo), gráficos mejorados con gradientes, animaciones, y tarjetas KPI. Añadido botón "Generar Reporte" para control manual, modal de selección de local cuando el admin tiene múltiples locales, y visualización de moneda por local (p.ej. "Bs"). La interfaz también soporta gestión de programaciones (schedules): listar, ejecutar ahora y eliminar.
 - ✅ **Gestión completa de comandas** con estados
+- ✅ **Operación web alineada con mobile** para Mesero, Cocina y Bar en entrega, filtros y notas operativas
 - 🔄 **Sistema de pedidos** con actualización en tiempo real
 - ⏳ App móvil (estructura básica creada)
+
+## 🆕 Actualizaciones Operativas Recientes
+
+- **Mesero web con entrega persistida**: la entrega de comandas ya no depende de estado local de la pantalla; ahora se persiste en backend.
+- **Preview operativo desde Admin**: las vistas de Mesero, Cocina y Bar abiertas en preview respetan el `localId` seleccionado y ofrecen retorno directo al admin.
+- **Filtros por producto en Cocina y Bar web**: se guardan por usuario y aplican en cola, recientes y vistas agrupadas.
+- **Notas operativas mejoradas**: Mesero permite cargar y revisar notas por pedido; Cocina y Bar las consultan mejor en modos compactos y agrupados.
+- **Transición visual de `listo` a recientes**: los pedidos pasan primero por un estado transitorio visible antes de salir de la cola.
 
 ## 🎯 Flujo de Trabajo
 

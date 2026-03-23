@@ -9,11 +9,11 @@ router.get('/cocina/pendientes', authenticate, authorize('admin', 'cocina', 'bar
 // Obtener pedidos recientes (listos/entregados últimos 5 min)
 router.get('/cocina/recientes', authenticate, authorize('admin', 'cocina', 'bar'), pedidoController.getPedidosRecientes);
 
-// Obtener pedido por ID
-router.get('/:id', authenticate, pedidoController.getPedidoById);
-
 // Obtener pedidos por comanda
 router.get('/comanda/:comandaId', authenticate, pedidoController.getPedidosByComanda);
+
+// Obtener pedido por ID
+router.get('/:id', authenticate, pedidoController.getPedidoById);
 
 // Actualizar estado de pedido
 router.put('/:id/estado', authenticate, authorize('admin', 'cocina', 'bar'), pedidoController.updateEstadoPedido);
