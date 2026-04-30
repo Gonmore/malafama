@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import userService from '../../services/userService';
@@ -217,19 +217,21 @@ export default function UsuariosManagement() {
 
   const getTipoBadge = (tipo) => {
     const badges = {
-      admin: 'bg-red-100 text-red-800',
-      atencion: 'bg-blue-100 text-blue-800',
-      cocina: 'bg-green-100 text-green-800',
-      bar: 'bg-orange-100 text-orange-800',
-      proveedor: 'bg-purple-100 text-purple-800'
+      admin: 'bg-red-900/30 text-red-800',
+      atencion: 'bg-blue-900/30 text-blue-800',
+      supervisor: 'bg-cyan-900/30 text-cyan-800',
+      cocina: 'bg-green-900/30 text-green-800',
+      bar: 'bg-orange-900/30 text-orange-800',
+      proveedor: 'bg-purple-900/30 text-purple-800'
     };
-    return badges[tipo] || 'bg-gray-100 text-gray-800';
+    return badges[tipo] || 'bg-slate-800 text-slate-200';
   };
 
   const getTipoLabel = (tipo) => {
     const labels = {
       admin: 'Administrador',
       atencion: 'Mesero',
+      supervisor: 'Supervisor',
       cocina: 'Cocina',
       bar: 'Bar',
       proveedor: 'Proveedor'
@@ -239,16 +241,16 @@ export default function UsuariosManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <LoadingSpinner text="Cargando usuarios..." />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-slate-800 shadow-sm border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -261,8 +263,8 @@ export default function UsuariosManagement() {
                 </svg>
                 Volver al local
               </button>
-              <h1 className="text-3xl font-bold text-gray-900">👥 Gestión de Usuarios</h1>
-              <p className="text-gray-600 mt-1">Administra meseros, cocina y usuarios del sistema</p>
+              <h1 className="text-3xl font-bold text-slate-100">👥 Gestión de Usuarios</h1>
+              <p className="text-slate-400 mt-1">Administra meseros, cocina y usuarios del sistema</p>
             </div>
             <button
               onClick={openNewModal}
@@ -280,16 +282,16 @@ export default function UsuariosManagement() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-4 mb-6">
           <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-gray-700">Filtrar por tipo:</label>
+            <label className="text-sm font-medium text-slate-300">Filtrar por tipo:</label>
             <div className="flex gap-2">
               <button
                 onClick={() => setFiltroTipo('todos')}
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filtroTipo === 'todos'
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}
               >
                 Todos ({usuarios.length})
@@ -299,17 +301,27 @@ export default function UsuariosManagement() {
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filtroTipo === 'atencion'
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}
               >
                 Meseros ({usuarios.filter(u => u.tipo === 'atencion').length})
+              </button>
+              <button
+                onClick={() => setFiltroTipo('supervisor')}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  filtroTipo === 'supervisor'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                Supervisores ({usuarios.filter(u => u.tipo === 'supervisor').length})
               </button>
               <button
                 onClick={() => setFiltroTipo('cocina')}
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filtroTipo === 'cocina'
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}
               >
                 Cocina ({usuarios.filter(u => u.tipo === 'cocina').length})
@@ -319,7 +331,7 @@ export default function UsuariosManagement() {
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filtroTipo === 'bar'
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}
               >
                 Bar ({usuarios.filter(u => u.tipo === 'bar').length})
@@ -329,7 +341,7 @@ export default function UsuariosManagement() {
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filtroTipo === 'admin'
                     ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}
               >
                 Admins ({usuarios.filter(u => u.tipo === 'admin').length})
@@ -339,38 +351,38 @@ export default function UsuariosManagement() {
         </div>
 
         {/* Users Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 overflow-hidden">
           <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-slate-700">
+            <thead className="bg-slate-900">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Usuario
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Tipo
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Password
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Local
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                   Estado
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50">
+                <th className="px-6 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider sticky right-0 bg-slate-900">
                   Acciones
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-slate-800 divide-y divide-slate-700">
               {usuariosFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
                     No hay usuarios para mostrar
                   </td>
                 </tr>
@@ -378,19 +390,19 @@ export default function UsuariosManagement() {
                 usuariosFiltrados.map((usuario) => {
                   const localUsuario = locales.find(l => l.id === usuario.localId);
                   return (
-                  <tr key={usuario.id} className="hover:bg-gray-50">
+                  <tr key={usuario.id} className="hover:bg-slate-900">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
                           {usuario.nombre?.charAt(0).toUpperCase()}
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{usuario.nombre}</div>
+                          <div className="text-sm font-medium text-slate-100">{usuario.nombre}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{usuario.email}</div>
+                      <div className="text-sm text-slate-100">{usuario.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getTipoBadge(usuario.tipo)}`}>
@@ -400,41 +412,41 @@ export default function UsuariosManagement() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       {usuario.passwordDefault ? (
                         <div className="flex items-center gap-2">
-                          <code className="px-2 py-1 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded text-xs font-mono">
+                          <code className="px-2 py-1 bg-yellow-900/20 text-yellow-800 border border-yellow-200 rounded text-xs font-mono">
                             {usuario.passwordDefault}
                           </code>
-                          <span className="text-xs text-gray-500" title="Password por defecto">
+                          <span className="text-xs text-slate-400" title="Password por defecto">
                             ⚠️
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400">●●●●●●</span>
+                        <span className="text-xs text-slate-500">●●●●●●</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {localUsuario ? (
-                        <div className="text-sm text-gray-900">
+                        <div className="text-sm text-slate-100">
                           <span className="font-medium">{localUsuario.nombre}</span>
-                          <p className="text-xs text-gray-500">{localUsuario.direccion}</p>
+                          <p className="text-xs text-slate-400">{localUsuario.direccion}</p>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400 italic">Sin local asignado</span>
+                        <span className="text-xs text-slate-500 italic">Sin local asignado</span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         usuario.activo 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
+                          ? 'bg-green-900/30 text-green-800' 
+                          : 'bg-red-900/30 text-red-800'
                       }`}>
                         {usuario.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap sticky right-0 bg-white">
+                    <td className="px-6 py-4 whitespace-nowrap sticky right-0 bg-slate-800">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => openEditModal(usuario)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-2 text-blue-600 hover:bg-blue-900/20 rounded-lg transition-colors"
                           title="Editar usuario"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -443,7 +455,7 @@ export default function UsuariosManagement() {
                         </button>
                         <button
                           onClick={() => openPasswordModal(usuario)}
-                          className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          className="p-2 text-purple-600 hover:bg-purple-900/20 rounded-lg transition-colors"
                           title="Cambiar contraseña"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -464,8 +476,8 @@ export default function UsuariosManagement() {
                           onClick={() => handleActivarDesactivar(usuario)}
                           className={`p-2 rounded-lg transition-colors ${
                             usuario.activo 
-                              ? 'text-orange-600 hover:bg-orange-50' 
-                              : 'text-green-600 hover:bg-green-50'
+                              ? 'text-orange-600 hover:bg-orange-900/20' 
+                              : 'text-green-600 hover:bg-green-900/20'
                           }`}
                           title={usuario.activo ? 'Desactivar usuario' : 'Activar usuario'}
                         >
@@ -479,7 +491,7 @@ export default function UsuariosManagement() {
                         </button>
                         <button
                           onClick={() => handleEliminar(usuario)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-2 text-red-600 hover:bg-red-900/20 rounded-lg transition-colors"
                           title="Eliminar usuario"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -501,64 +513,65 @@ export default function UsuariosManagement() {
       {/* Modal Crear/Editar Usuario */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          <div className="bg-slate-800 rounded-lg max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-slate-100 mb-4">
               {usuarioSeleccionado ? 'Editar Usuario' : 'Nuevo Usuario'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Nombre *
                 </label>
                 <input
                   type="text"
                   value={formData.nombre}
                   onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Email *
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Tipo de Usuario *
                 </label>
                 <select
                   value={formData.tipo}
                   onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 >
                   <option value="atencion">Mesero</option>
+                  <option value="supervisor">Supervisor</option>
                   <option value="cocina">Cocina</option>
                   <option value="bar">Bar</option>
                   <option value="admin">Administrador</option>
                 </select>
               </div>
 
-              {/* Selector de Local - Solo para meseros, cocina y bar */}
-              {(formData.tipo === 'atencion' || formData.tipo === 'cocina' || formData.tipo === 'bar') && (
+              {/* Selector de Local - Solo para personal operativo */}
+              {(formData.tipo === 'atencion' || formData.tipo === 'supervisor' || formData.tipo === 'cocina' || formData.tipo === 'bar') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Local * <span className="text-xs text-gray-500">(requerido para meseros, cocina y bar)</span>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
+                    Local * <span className="text-xs text-slate-400">(requerido para meseros, supervisores, cocina y bar)</span>
                   </label>
                   <select
                     value={formData.localId}
                     onChange={(e) => setFormData({ ...formData, localId: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   >
                     <option value="">Seleccionar local...</option>
@@ -578,18 +591,18 @@ export default function UsuariosManagement() {
 
               {!usuarioSeleccionado && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">
                     Contraseña (opcional - por defecto: password123)
                   </label>
                   <input
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="password123"
                     minLength={6}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Deja vacío para usar: password123</p>
+                  <p className="text-xs text-slate-400 mt-1">Deja vacío para usar: password123</p>
                 </div>
               )}
 
@@ -600,7 +613,7 @@ export default function UsuariosManagement() {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900"
                 >
                   Cancelar
                 </button>
@@ -619,37 +632,37 @@ export default function UsuariosManagement() {
       {/* Modal Cambiar Contraseña */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          <div className="bg-slate-800 rounded-lg max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-slate-100 mb-4">
               Cambiar Contraseña
             </h2>
-            <p className="text-gray-600 mb-4">
+            <p className="text-slate-400 mb-4">
               Usuario: <strong>{usuarioSeleccionado?.nombre}</strong>
             </p>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Nueva Contraseña *
                 </label>
                 <input
                   type="password"
                   value={passwordData.nuevaPassword}
                   onChange={(e) => setPasswordData({ ...passwordData, nuevaPassword: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                   minLength={6}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Confirmar Contraseña *
                 </label>
                 <input
                   type="password"
                   value={passwordData.confirmarPassword}
                   onChange={(e) => setPasswordData({ ...passwordData, confirmarPassword: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                   minLength={6}
                 />
@@ -662,7 +675,7 @@ export default function UsuariosManagement() {
                     setShowPasswordModal(false);
                     setPasswordData({ nuevaPassword: '', confirmarPassword: '' });
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900"
                 >
                   Cancelar
                 </button>

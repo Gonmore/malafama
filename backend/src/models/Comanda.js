@@ -52,6 +52,16 @@ const Comanda = sequelize.define('Comanda', {
     field: 'local_id',
     comment: 'Local al que pertenece la comanda'
   },
+  eventoId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'evento_id',
+    references: {
+      model: 'eventos_comanda',
+      key: 'id'
+    },
+    comment: 'Evento/show al que pertenece la comanda operativa'
+  },
   formaPago: {
     type: DataTypes.STRING(20),
     allowNull: true,

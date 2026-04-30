@@ -16,10 +16,10 @@ router.get('/mesa/:mesaId', authenticate, comandaController.getComandasByMesa);
 router.get('/:id', authenticate, comandaController.getComandaById);
 
 // Crear comanda (admin y atención)
-router.post('/', authenticate, authorize('admin', 'atencion'), comandaController.createComanda);
+router.post('/', authenticate, authorize('admin', 'atencion', 'supervisor'), comandaController.createComanda);
 
 // Agregar un solo pedido (alias para compatibilidad)
-router.post('/pedido', authenticate, authorize('admin', 'atencion'), async (req, res, next) => {
+router.post('/pedido', authenticate, authorize('admin', 'atencion', 'supervisor'), async (req, res, next) => {
   // Convertir formato single pedido a array de pedidos
   const { comandaId, productoId, cantidad, notas } = req.body;
   req.params.id = comandaId;
@@ -28,12 +28,12 @@ router.post('/pedido', authenticate, authorize('admin', 'atencion'), async (req,
 });
 
 // Agregar pedidos a comanda existente
-router.post('/:id/pedidos', authenticate, authorize('admin', 'atencion'), comandaController.addPedidosToComanda);
+router.post('/:id/pedidos', authenticate, authorize('admin', 'atencion', 'supervisor'), comandaController.addPedidosToComanda);
 
 // Cerrar comanda (admin y atención)
-router.put('/:id/cerrar', authenticate, authorize('admin', 'atencion'), comandaController.cerrarComanda);
+router.put('/:id/cerrar', authenticate, authorize('admin', 'atencion', 'supervisor'), comandaController.cerrarComanda);
 
 // Marcar comanda como entregada (admin/atencion)
-router.put('/:id/entregar', authenticate, authorize('admin', 'atencion'), comandaController.marcarComandaEntregada);
+router.put('/:id/entregar', authenticate, authorize('admin', 'atencion', 'supervisor'), comandaController.marcarComandaEntregada);
 
 module.exports = router;

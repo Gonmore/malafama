@@ -3,9 +3,11 @@ let io;
 // Almacenar usuarios conectados por tipo
 const connectedUsers = {
   atencion: new Map(),
+  supervisor: new Map(),
   cocina: new Map(),
   admin: new Map(),
-  proveedor: new Map()
+  proveedor: new Map(),
+  mesero: new Map()
 };
 
 const initializeSocket = (socketIo) => {
@@ -19,6 +21,16 @@ const initializeSocket = (socketIo) => {
       if (connectedUsers[userType]) {
         connectedUsers[userType].set(userId, socket.id);
         console.log(`Usuario ${userId} (${userType}) registrado con socket ${socket.id}`);
+      }
+      // Meseros se unen a su sala personal para recibir alertas dirigidas
+      if (userType === 'atencion' || userType === 'mesero') {
+        socket.join(`mesero:${userId}`);
+      }
+      if (userType === 'admin') {
+        socket.join('admin');
+      }
+      if (userType === 'supervisor') {
+        socket.join('supervisor');
       }
     });
 
@@ -109,12 +121,24 @@ const broadcast = (event, data) => {
   io.emit(event, data);
 };
 
+// Emitir evento a un mesero específico
+const notifyMesero = (userId, event, data) => {
+  if (!io) return;
+  const socketId = connectedUsers.atencion.get(userId) || connectedUsers.mesero.get(userId);
+  if (socketId) {
+    io.to(socketId).emit(event, data);
+  }
+  // Also use the personal room as fallback
+  io.to(`mesero:${userId}`).emit(event, data);
+};
+
 module.exports = {
   initializeSocket,
   notifyCocina,
   notifyAtencion,
   notifyAdmin,
   notifyProveedor,
+  notifyMesero,
   broadcast,
   getConnectedUsers: () => connectedUsers
 };

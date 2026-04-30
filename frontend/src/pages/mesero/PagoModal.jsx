@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 
@@ -110,7 +110,7 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] flex flex-col">
+      <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] flex flex-col">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 flex items-center justify-between shadow-lg flex-shrink-0 rounded-t-3xl sm:rounded-t-3xl">
@@ -139,48 +139,48 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
 
           {/* Métodos de pago */}
           <div className="mb-6">
-            <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Método de pago</h3>
+            <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-gray-200' : 'text-slate-200'}`}>Método de pago</h3>
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <button
                 onClick={() => setMetodoPago('efectivo')}
                 className={`p-3 sm:p-5 rounded-xl border-2 transition-all ${
                   metodoPago === 'efectivo'
-                    ? 'border-green-500 bg-green-50 shadow-lg'
+                    ? 'border-green-500 bg-green-900/20 shadow-lg'
                     : darkMode 
                       ? 'border-gray-700 bg-gray-800 hover:border-green-300' 
-                      : 'border-gray-200 bg-white hover:border-green-300'
+                      : 'border-slate-700 bg-slate-800 hover:border-green-300'
                 }`}
               >
                 <div className="text-2xl sm:text-4xl mb-1 sm:mb-2">💵</div>
-                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'efectivo' ? 'text-gray-800' : darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Efectivo</div>
+                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'efectivo' ? 'text-slate-200' : darkMode ? 'text-gray-200' : 'text-slate-200'}`}>Efectivo</div>
               </button>
 
               <button
                 onClick={() => setMetodoPago('qr')}
                 className={`p-3 sm:p-5 rounded-xl border-2 transition-all ${
                   metodoPago === 'qr'
-                    ? 'border-blue-500 bg-blue-50 shadow-lg'
+                    ? 'border-blue-500 bg-blue-900/20 shadow-lg'
                     : darkMode 
-                      ? 'border-gray-700 bg-gray-800 hover:border-blue-300' 
-                      : 'border-gray-200 bg-white hover:border-blue-300'
+                      ? 'border-gray-700 bg-gray-800 hover:border-indigo-500' 
+                      : 'border-slate-700 bg-slate-800 hover:border-indigo-500'
                 }`}
               >
                 <div className="text-2xl sm:text-4xl mb-1 sm:mb-2">📱</div>
-                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'qr' ? 'text-gray-800' : darkMode ? 'text-gray-200' : 'text-gray-800'}`}>QR</div>
+                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'qr' ? 'text-slate-200' : darkMode ? 'text-gray-200' : 'text-slate-200'}`}>QR</div>
               </button>
 
               <button
                 onClick={() => setMetodoPago('mixto')}
                 className={`p-3 sm:p-5 rounded-xl border-2 transition-all ${
                   metodoPago === 'mixto'
-                    ? 'border-purple-500 bg-purple-50 shadow-lg'
+                    ? 'border-purple-500 bg-purple-900/20 shadow-lg'
                     : darkMode 
                       ? 'border-gray-700 bg-gray-800 hover:border-purple-300' 
-                      : 'border-gray-200 bg-white hover:border-purple-300'
+                      : 'border-slate-700 bg-slate-800 hover:border-purple-300'
                 }`}
               >
                 <div className="text-2xl sm:text-4xl mb-1 sm:mb-2">💳</div>
-                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'mixto' ? 'text-gray-800' : darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Mixto</div>
+                <div className={`font-bold text-xs sm:text-base ${metodoPago === 'mixto' ? 'text-slate-200' : darkMode ? 'text-gray-200' : 'text-slate-200'}`}>Mixto</div>
               </button>
             </div>
           </div>
@@ -188,9 +188,9 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
           {/* Opciones según método de pago */}
           {metodoPago === 'mixto' && (
             <div className={`mb-6 p-4 rounded-xl border ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-purple-50 border-purple-200'
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-purple-900/20 border-purple-200'
             }`}>
-              <label className={`block text-sm font-bold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              <label className={`block text-sm font-bold mb-2 ${darkMode ? 'text-gray-200' : 'text-slate-300'}`}>
                 Monto en efectivo ({user?.local?.moneda || 'Bs'})
               </label>
               <input
@@ -199,13 +199,13 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
                 value={montoEfectivo}
                 onChange={(e) => setMontoEfectivo(e.target.value)}
                 className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold ${
-                  darkMode ? 'bg-gray-900 border-gray-600 text-gray-100' : 'border-purple-300 bg-white text-gray-900'
+                  darkMode ? 'bg-gray-900 border-gray-600 text-gray-100' : 'border-purple-300 bg-slate-800 text-slate-100'
                 }`}
                 placeholder="0.00"
               />
               {montoEfectivo && parseFloat(montoEfectivo) > 0 && parseFloat(montoEfectivo) < totalGeneral && (
                 <div className={`mt-3 p-3 rounded-lg ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Monto por QR:</p>
+                  <p className={`text-sm ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Monto por QR:</p>
                   <p className="text-2xl font-bold text-purple-600">
                     {user?.local?.moneda || 'Bs'} {montoQr}
                   </p>
@@ -217,7 +217,7 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
           {/* Comprobante (QR o Mixto) */}
           {(metodoPago === 'qr' || metodoPago === 'mixto') && (
             <div className="mb-6">
-              <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Comprobante de pago</h3>
+              <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-gray-200' : 'text-slate-200'}`}>Comprobante de pago</h3>
               
               {!previewImagen && !mostrarCamara && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -230,7 +230,7 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className={`px-4 py-4 border-2 rounded-xl font-semibold transition ${
-                      darkMode ? 'border-gray-600 text-gray-200 hover:border-blue-400' : 'border-gray-300 text-gray-800 hover:border-blue-400'
+                      darkMode ? 'border-gray-600 text-gray-200 hover:border-blue-400' : 'border-slate-600 text-slate-200 hover:border-blue-400'
                     }`}
                   >
                     📂 Subir archivo
@@ -264,7 +264,7 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
                     <button
                       onClick={cerrarCamara}
                       className={`px-4 py-3 border-2 rounded-xl font-semibold ${
-                        darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-700'
+                        darkMode ? 'border-gray-600 text-gray-300' : 'border-slate-600 text-slate-300'
                       }`}
                     >
                       Cancelar
@@ -292,11 +292,11 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
         </div>
 
         {/* Footer */}
-        <div className={`px-6 py-4 flex gap-3 border-t flex-shrink-0 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`px-6 py-4 flex gap-3 border-t flex-shrink-0 ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-slate-900 border-slate-700'}`}>
           <button
             onClick={onClose}
             className={`flex-1 px-4 py-3 border-2 rounded-xl font-semibold ${
-              darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-100'
+              darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-slate-600 text-slate-300 hover:bg-slate-800'
             }`}
           >
             Cancelar
@@ -307,7 +307,7 @@ export default function PagoModal({ comanda, totalGeneral, onClose, onPagoConfir
             className={`flex-1 px-4 py-3 rounded-xl font-bold text-white ${
               metodoPago
                 ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg'
-                : 'bg-gray-300 cursor-not-allowed'
+                : 'bg-slate-600 cursor-not-allowed'
             }`}
           >
             ✅ Confirmar Pago

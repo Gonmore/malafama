@@ -76,6 +76,25 @@ async function getAppliedSet() {
   }
 }
 
+async function baselineExistingSchemaIfNeeded(applied, files) {
+  const hasUsuarios = await tableExists('usuarios');
+  const hasMesas = await tableExists('mesas');
+  const hasComandas = await tableExists('comandas');
+  if (!hasUsuarios || !hasMesas || !hasComandas) return applied;
+
+  const baselineBefore = process.env.MIGRATION_BASELINE_BEFORE || '20260429000000';
+  const baselineFiles = files.filter((filename) => filename < baselineBefore && !applied.has(filename));
+  if (baselineFiles.length === 0) return applied;
+
+  console.log(`[migrations] Existing schema detected; baselining ${baselineFiles.length} migration(s) before ${baselineBefore}`);
+  for (const filename of baselineFiles) {
+    await recordApplied(filename);
+    applied.add(filename);
+  }
+
+  return applied;
+}
+
 function splitSqlStatements(sql) {
   // NOTE: This assumes migrations are simple DDL/DML without function bodies containing semicolons.
   return sql
@@ -126,13 +145,14 @@ async function run() {
 
   await bootstrapSchemaIfNeeded();
   await ensureMigrationsTable();
-  const applied = await getAppliedSet();
-
   const files = listMigrationFiles(MIGRATIONS_DIR);
   if (files.length === 0) {
     console.log('[migrations] No migration files found; skipping');
     return;
   }
+
+  let applied = await getAppliedSet();
+  applied = await baselineExistingSchemaIfNeeded(applied, files);
 
   let appliedCount = 0;
 

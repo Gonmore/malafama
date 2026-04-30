@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocalStore } from '../../store/localStore';
 import { useAuthStore } from '../../store/authStore';
@@ -95,11 +95,11 @@ export default function MesasManagement() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(effectiveLocalId ? `/admin/local/${effectiveLocalId}` : '/admin')}
-            className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center"
             title="Volver al local"
             aria-label="Volver al local"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
@@ -135,22 +135,22 @@ export default function MesasManagement() {
           <div className="card">
           <h3 className="text-lg font-semibold mb-2">Mesas</h3>
             {mesas.length === 0 ? (
-              <p className="text-gray-500">No hay mesas configuradas</p>
+              <p className="text-slate-400">No hay mesas configuradas</p>
             ) : (
               <div className="grid grid-cols-1 gap-3">
                 {mesas.map(m => (
-                  <article key={m.id} className="bg-white rounded-lg shadow-sm border p-3 flex items-center justify-between">
+                  <article key={m.id} className="bg-slate-800 rounded-lg shadow-sm border p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xl font-bold text-gray-700 flex-shrink-0">{m.numero}</div>
+                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-xl font-bold text-slate-300 flex-shrink-0">{m.numero}</div>
                       <div className="min-w-0">
                         <div className="font-semibold truncate">{m.nombre || `Mesa ${m.numero}`}</div>
-                        <div className="text-xs text-gray-400 truncate">{m.ubicacion || 'General'} • Cap: {m.capacidad || 1}</div>
+                        <div className="text-xs text-slate-500 truncate">{m.ubicacion || 'General'} • Cap: {m.capacidad || 1}</div>
                         {/* inline summary if available */}
                         {ventasPorMesa?.ventas && (
                           (() => {
                             const s = ventasPorMesa.ventas.find(v => v.mesa_id === m.id || v.mesa_numero === m.numero);
                             return s ? (
-                              <div className="text-xs text-gray-600 mt-1">{s.total_comandas} cmd • {moneda} {parseFloat(s.total_vendido || 0).toFixed(2)}</div>
+                              <div className="text-xs text-slate-400 mt-1">{s.total_comandas} cmd • {moneda} {parseFloat(s.total_vendido || 0).toFixed(2)}</div>
                             ) : null;
                           })()
                         )}
@@ -159,7 +159,7 @@ export default function MesasManagement() {
 
                     <div className="flex items-center gap-2 ml-3">
                       <button
-                        className="p-2 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        className="p-2 rounded-md bg-blue-900/20 text-blue-700 hover:bg-blue-900/30"
                         onClick={() => { setSelected(m); }}
                         title="Editar"
                         aria-label="Editar mesa"
@@ -171,14 +171,14 @@ export default function MesasManagement() {
                       </button>
 
                       <button
-                        className="px-3 py-1 rounded-md bg-orange-50 text-orange-700 text-sm hover:bg-orange-100"
+                        className="px-3 py-1 rounded-md bg-orange-900/20 text-orange-700 text-sm hover:bg-orange-900/30"
                         onClick={() => handleAumentar(m)}
                         title="Aumentar capacidad"
                         aria-label="Aumentar capacidad"
                       >+1</button>
 
                       <button
-                        className="p-2 rounded-md bg-red-50 text-red-700 hover:bg-red-100"
+                        className="p-2 rounded-md bg-red-900/20 text-red-700 hover:bg-red-900/30"
                         onClick={() => handleEliminar(m.id)}
                         title="Eliminar"
                         aria-label="Eliminar mesa"
@@ -192,7 +192,7 @@ export default function MesasManagement() {
                         </svg>
                       </button>
                       <button
-                        className="p-2 rounded-md bg-green-50 text-green-700 hover:bg-green-100"
+                        className="p-2 rounded-md bg-green-900/20 text-green-700 hover:bg-green-900/30"
                         onClick={async () => {
                           // Show movement (ventas) for this mesa
                           setMovementMesa(m);
@@ -241,7 +241,7 @@ export default function MesasManagement() {
               {ventasPorMesa.ventas.slice(0,3).map(v => (
                 <button
                   key={v.mesa_id}
-                  className="p-3 bg-white rounded-lg border hover:shadow cursor-pointer text-left flex items-center justify-between"
+                  className="p-3 bg-slate-800 rounded-lg border hover:shadow cursor-pointer text-left flex items-center justify-between"
                   onClick={async () => {
                     // reuse movement logic: open modal for this mesa
                     const mesaId = v.mesa_id;
@@ -269,17 +269,17 @@ export default function MesasManagement() {
                 >
                   <div className="min-w-0">
                     <div className="font-semibold truncate">{v.mesa_nombre || `Mesa ${v.mesa_numero}`}</div>
-                    <div className="text-xs text-gray-400">#{v.mesa_numero} • {v.total_comandas} comandas</div>
+                    <div className="text-xs text-slate-500">#{v.mesa_numero} • {v.total_comandas} comandas</div>
                   </div>
                   <div className="text-right ml-3">
                     <div className="font-bold text-lg">{moneda} {parseFloat(v.total_vendido || 0).toFixed(2)}</div>
-                    <div className="text-xs text-gray-400">{v.ultima_comanda ? new Date(v.ultima_comanda).toLocaleString() : '-'}</div>
+                    <div className="text-xs text-slate-500">{v.ultima_comanda ? new Date(v.ultima_comanda).toLocaleString() : '-'}</div>
                   </div>
                 </button>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500">No hay datos para el período seleccionado.</p>
+            <p className="text-slate-400">No hay datos para el período seleccionado.</p>
           )}
         </div>
       </div>
@@ -288,10 +288,10 @@ export default function MesasManagement() {
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowAdd(false)} />
-          <div className="w-full sm:w-[520px] bg-white rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-gray-200 z-10">
+          <div className="w-full sm:w-[520px] bg-slate-800 rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-slate-700 z-10">
             <div className="flex justify-between items-center mb-3">
               <h4 className="text-lg font-semibold">Agregar Mesa</h4>
-              <button className="text-gray-400 hover:text-gray-700" onClick={() => setShowAdd(false)} aria-label="Cerrar">✕</button>
+              <button className="text-slate-500 hover:text-slate-300" onClick={() => setShowAdd(false)} aria-label="Cerrar">✕</button>
             </div>
 
             <AddForm onClose={() => { setShowAdd(false); }} onAdded={async () => { setShowAdd(false); await loadMesas(); }} />
@@ -303,10 +303,10 @@ export default function MesasManagement() {
       {selected && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} />
-          <div className="w-full sm:w-[520px] bg-white rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-gray-200 z-10">
+          <div className="w-full sm:w-[520px] bg-slate-800 rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-slate-700 z-10">
             <div className="flex justify-between items-center mb-3">
               <h4 className="text-lg font-semibold">Editar Mesa</h4>
-              <button className="text-gray-400 hover:text-gray-700" onClick={() => setSelected(null)} aria-label="Cerrar">✕</button>
+              <button className="text-slate-500 hover:text-slate-300" onClick={() => setSelected(null)} aria-label="Cerrar">✕</button>
             </div>
 
             <EditForm
@@ -355,16 +355,16 @@ function EditForm({ mesa, onClose, onSaved }) {
   return (
     <div>
       <div className="space-y-3">
-        <label className="text-xs text-gray-600">Nombre</label>
+        <label className="text-xs text-slate-400">Nombre</label>
         <input className="input w-full" value={nombre} onChange={e => setNombre(e.target.value)} />
 
-        <label className="text-xs text-gray-600">Número</label>
+        <label className="text-xs text-slate-400">Número</label>
         <input className="input w-full" value={numero} onChange={e => setNumero(e.target.value)} />
 
-        <label className="text-xs text-gray-600">Ubicación</label>
+        <label className="text-xs text-slate-400">Ubicación</label>
         <input className="input w-full" value={ubicacion} onChange={e => setUbicacion(e.target.value)} />
 
-        <label className="text-xs text-gray-600">Capacidad</label>
+        <label className="text-xs text-slate-400">Capacidad</label>
         <input type="number" min={1} className="input w-full" value={capacidad} onChange={e => setCapacidad(parseInt(e.target.value||1))} />
 
         <div className="flex items-center justify-end gap-2 mt-2">
@@ -401,16 +401,16 @@ function AddForm({ onClose, onAdded }) {
   return (
     <div>
       <div className="space-y-3">
-        <label className="text-xs text-gray-600">Nombre</label>
+        <label className="text-xs text-slate-400">Nombre</label>
         <input className="input w-full" value={nombre} onChange={e => setNombre(e.target.value)} />
 
-        <label className="text-xs text-gray-600">Número</label>
+        <label className="text-xs text-slate-400">Número</label>
         <input className="input w-full" value={numero} onChange={e => setNumero(e.target.value)} type="number" />
 
-        <label className="text-xs text-gray-600">Ubicación</label>
+        <label className="text-xs text-slate-400">Ubicación</label>
         <input className="input w-full" value={ubicacion} onChange={e => setUbicacion(e.target.value)} />
 
-        <label className="text-xs text-gray-600">Capacidad</label>
+        <label className="text-xs text-slate-400">Capacidad</label>
         <input type="number" min={1} className="input w-full" value={capacidad} onChange={e => setCapacidad(parseInt(e.target.value||1))} />
 
         <div className="flex items-center justify-end gap-2 mt-2">
@@ -430,22 +430,22 @@ function MovementModal({ mesa, summary, comandas, moneda, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="w-full sm:w-[520px] bg-white rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-gray-200 z-10">
+      <div className="w-full sm:w-[520px] bg-slate-800 rounded-t-xl sm:rounded-xl p-4 sm:p-6 border-t sm:border sm:border-slate-700 z-10">
         <div className="flex justify-between items-center mb-3">
           <h4 className="text-lg font-semibold">Movimiento — {mesa.nombre || `Mesa ${mesa.numero}`}</h4>
-          <button className="text-gray-400 hover:text-gray-700" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="text-slate-500 hover:text-slate-300" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
 
         {/* Summary / totals */}
-        <div className="mb-3 p-3 bg-gray-50 rounded border">
+        <div className="mb-3 p-3 bg-slate-900 rounded border">
           <div className="flex justify-between items-center">
             <div>
               <div className="font-semibold">Resumen</div>
-              <div className="text-xs text-gray-400">Periodo seleccionado</div>
+              <div className="text-xs text-slate-500">Periodo seleccionado</div>
             </div>
             <div className="text-right">
               <div className="text-lg font-bold">{moneda} {((summary && parseFloat(summary.total_vendido)) || totalFromComandas || 0).toFixed(2)}</div>
-              <div className="text-xs text-gray-500">{(summary && summary.total_comandas) || comandasCount} comandas</div>
+              <div className="text-xs text-slate-400">{(summary && summary.total_comandas) || comandasCount} comandas</div>
             </div>
           </div>
         </div>
@@ -453,21 +453,21 @@ function MovementModal({ mesa, summary, comandas, moneda, onClose }) {
         {comandas && comandas.length > 0 ? (
           <div className="space-y-3">
             {comandas.map(c => (
-              <div key={c.id || c.comanda_id} className="p-3 bg-gray-50 rounded border">
+              <div key={c.id || c.comanda_id} className="p-3 bg-slate-900 rounded border">
                 <div className="flex justify-between items-start">
                   <div className="min-w-0">
                     <div className="font-semibold">Comanda #{c.id || c.comanda_id}</div>
-                    <div className="text-xs text-gray-400">{new Date(c.createdAt || c.fecha || c.fecha_creada || c.created_at).toLocaleString()}</div>
-                    <div className="text-xs text-gray-500 mt-2">Mesero: {c.usuarioAtencion?.nombre || (c.usuario_atencion && c.usuario_atencion.nombre) || '-'}</div>
+                    <div className="text-xs text-slate-500">{new Date(c.createdAt || c.fecha || c.fecha_creada || c.created_at).toLocaleString()}</div>
+                    <div className="text-xs text-slate-400 mt-2">Mesero: {c.usuarioAtencion?.nombre || (c.usuario_atencion && c.usuario_atencion.nombre) || '-'}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-lg">{moneda} {(parseFloat(c.total) || parseFloat(c.totalGeneral) || 0).toFixed(2)}</div>
-                    <div className="text-xs text-gray-400">Estado: {c.estado}</div>
+                    <div className="text-xs text-slate-500">Estado: {c.estado}</div>
                   </div>
                 </div>
 
                 {c.pedidos && c.pedidos.length > 0 && (
-                  <div className="mt-2 text-xs text-gray-600 space-y-1">
+                  <div className="mt-2 text-xs text-slate-400 space-y-1">
                     {c.pedidos.map(p => (
                       <div key={p.id || p.pedido_id} className="flex justify-between">
                         <div>{p.cantidad} x {p.producto?.nombre || p.producto_nombre}</div>
@@ -480,7 +480,7 @@ function MovementModal({ mesa, summary, comandas, moneda, onClose }) {
             ))}
           </div>
         ) : (
-          <p className="text-gray-500">No hay movimiento para este periodo</p>
+          <p className="text-slate-400">No hay movimiento para este periodo</p>
         )}
       </div>
     </div>

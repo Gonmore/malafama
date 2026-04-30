@@ -19,6 +19,18 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // Force fresh GET responses to avoid 304/no-body issues in dashboard views.
+    if ((config.method || '').toLowerCase() === 'get') {
+      const cacheBuster = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      config.params = {
+        ...(config.params || {}),
+        __t: cacheBuster
+      }
+      config.headers['Cache-Control'] = 'no-cache'
+      config.headers.Pragma = 'no-cache'
+    }
+
     return config
   },
   (error) => {

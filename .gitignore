@@ -1,43 +1,93 @@
-# Dependencies
+# =========================
+# DEPENDENCIES
+# =========================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-lock.yaml
 
-# Environment variables
+# =========================
+# ENV VARIABLES (CRÍTICO)
+# =========================
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
+# Firebase / secrets
+secrets/
+*-service-account*.json
+firebase-service-account*.json
+
+# =========================
+# DOCKER
+# =========================
+docker-data/
+*.tar
+*.gz
+
+# =========================
+# DATABASE / BACKUPS
+# =========================
+*.sql
+*.dump
+*.backup
+malafama_local.backup
+
+# =========================
 # OS
+# =========================
 .DS_Store
 Thumbs.db
 
+# =========================
 # IDEs
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Logs
+# =========================
+# LOGS
+# =========================
 logs/
 *.log
 
-# Build outputs
+# =========================
+# BUILD OUTPUTS
+# =========================
 dist/
 build/
+.next/
+.out/
 .expo/
 .expo-shared/
 
-# Uploads
+# =========================
+# UPLOADS
+# =========================
 uploads/*
 !uploads/.gitkeep
 
-# Testing
+# =========================
+# TESTING
+# =========================
 coverage/
 
-# Misc
+# =========================
+# CACHE / TEMP
+# =========================
 .cache/
 temp/
 tmp/
+
+# =========================
+# MISC
+# =========================
+*.pid
+*.seed
+*.pid.lock

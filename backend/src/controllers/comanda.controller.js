@@ -1,4 +1,4 @@
-const { Comanda, Pedido, Producto, Mesa, Usuario } = require('../models');
+const { Comanda, Pedido, Producto, Mesa, Usuario, EventoComanda, AlertaMesero } = require('../models');
 const { sequelize } = require('../config/database');
 const { Op, col } = require('sequelize');
 const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
@@ -10,10 +10,17 @@ const setSocketIO = (socketIO) => {
   io = socketIO;
 };
 
+function buildEventMismatchResponse(res) {
+  return res.status(400).json({
+    success: false,
+    message: 'La comanda no pertenece al evento seleccionado'
+  });
+}
+
 // Crear comanda
 const createComanda = async (req, res) => {
   try {
-    const { mesaId, observaciones, pedidos, forzar } = req.body;
+    const { mesaId, observaciones, pedidos, forzar, eventoId } = req.body;
     // El usuarioAtencionId viene del usuario autenticado
     const usuarioAtencionId = req.user.id;
 
@@ -35,11 +42,21 @@ const createComanda = async (req, res) => {
       return res.status(e.status || 403).json({ success: false, message: e.message });
     }
 
-    // Verificar que no haya comanda abierta en la mesa
+    let evento = null;
+    if (eventoId) {
+      evento = await EventoComanda.findByPk(eventoId);
+      if (!evento) {
+        return res.status(404).json({ success: false, message: 'Evento no encontrado' });
+      }
+    }
+
+    // Verificar que no haya comanda abierta en la mesa para el mismo alcance operativo.
+    // Las comandas históricas sin evento no bloquean un show seleccionado.
     const comandaAbierta = await Comanda.findOne({
       where: {
         mesaId,
-        estado: 'abierta'
+        estado: 'abierta',
+        ...(eventoId ? { eventoId } : { eventoId: null })
       }
     });
 
@@ -60,6 +77,7 @@ const createComanda = async (req, res) => {
         mesaId,
         usuarioAtencionId,
         localId: targetLocalId,
+        eventoId: evento?.id || eventoId || null,
         observaciones,
         estado: 'abierta'
       }, { transaction: t });
@@ -100,6 +118,7 @@ const createComanda = async (req, res) => {
     // Obtener la comanda completa con sus relaciones
     const comandaCompleta = await Comanda.findByPk(comanda.id, {
       include: [
+        { model: EventoComanda, as: 'evento' },
         { model: Mesa, as: 'mesa' },
         { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
         {
@@ -232,7 +251,7 @@ const createComanda = async (req, res) => {
 const addPedidosToComanda = async (req, res) => {
   try {
     const { id } = req.params;
-    const { pedidos } = req.body;
+    const { pedidos, eventoId } = req.body;
 
     const comanda = await Comanda.findByPk(id, {
       include: [{ model: Mesa, as: 'mesa' }]
@@ -250,6 +269,10 @@ const addPedidosToComanda = async (req, res) => {
         success: false,
         message: 'No se pueden agregar pedidos a una comanda cerrada'
       });
+    }
+
+    if (eventoId && String(comanda.eventoId || '') !== String(eventoId)) {
+      return buildEventMismatchResponse(res);
     }
 
     if (!pedidos || pedidos.length === 0) {
@@ -277,6 +300,10 @@ const addPedidosToComanda = async (req, res) => {
     // Crear los nuevos pedidos con información del producto (en transacción)
     const pedidosCreados = [];
     await sequelize.transaction(async (t) => {
+      if (comanda.entregado) {
+        await comanda.update({ entregado: false }, { transaction: t });
+      }
+
       for (const p of pedidos) {
         const producto = await Producto.findByPk(p.productoId, { transaction: t });
         if (!producto) continue;
@@ -303,6 +330,7 @@ const addPedidosToComanda = async (req, res) => {
     // Obtener comanda actualizada
     const comandaActualizada = await Comanda.findByPk(id, {
       include: [
+        { model: EventoComanda, as: 'evento' },
         { model: Mesa, as: 'mesa' },
         { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
         {
@@ -312,6 +340,23 @@ const addPedidosToComanda = async (req, res) => {
         }
       ]
     });
+
+    // Si se agregan pedidos, cualquier alerta "listo" previa de esta comanda queda inválida.
+    const alertasListoActivas = await AlertaMesero.findAll({
+      where: {
+        tipo: 'listo',
+        comandaId: comanda.id,
+        estado: 'activa'
+      }
+    });
+    if (alertasListoActivas.length > 0) {
+      await Promise.all(alertasListoActivas.map((alerta) => alerta.update({ estado: 'resuelta', resolvedAt: new Date() })));
+      if (io) {
+        alertasListoActivas.forEach((alerta) => {
+          io.emit('alerta:resuelta', { id: alerta.id, tipo: alerta.tipo, mesaId: alerta.mesaId });
+        });
+      }
+    }
 
     // Notificar a cocina y bar según el tipo de producto
     if (io) {
@@ -550,14 +595,16 @@ const getAllComandasAbiertas = async (req, res) => {
 const getComandasByMesa = async (req, res) => {
   try {
     const { mesaId } = req.params;
-    const { estado, limit = 10 } = req.query;
+    const { estado, limit = 10, eventoId } = req.query;
 
     const where = { mesaId };
     if (estado) where.estado = estado;
+    if (eventoId) where.eventoId = eventoId;
 
     const comandas = await Comanda.findAll({
       where,
       include: [
+        { model: EventoComanda, as: 'evento' },
         { model: Mesa, as: 'mesa' },
         { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
         {
@@ -591,6 +638,7 @@ const getComandaById = async (req, res) => {
 
     const comanda = await Comanda.findByPk(id, {
       include: [
+        { model: EventoComanda, as: 'evento' },
         { model: Mesa, as: 'mesa' },
         { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
         {
@@ -625,11 +673,12 @@ const getComandaById = async (req, res) => {
 // Obtener comandas (con filtros)
 const getAllComandas = async (req, res) => {
   try {
-    const { estado, usuarioAtencionId, fecha, limit = 50 } = req.query;
+    const { estado, usuarioAtencionId, fecha, limit = 50, eventoId } = req.query;
 
     const where = {};
     if (estado) where.estado = estado;
     if (usuarioAtencionId) where.usuarioAtencionId = usuarioAtencionId;
+    if (eventoId) where.eventoId = eventoId;
     
     if (fecha) {
       const fechaInicio = new Date(fecha);
@@ -645,6 +694,7 @@ const getAllComandas = async (req, res) => {
     const comandas = await Comanda.findAll({
       where,
       include: [
+        { model: EventoComanda, as: 'evento' },
         { model: Mesa, as: 'mesa' },
         { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre', 'email'] },
         {
@@ -691,11 +741,25 @@ const marcarComandaEntregada = async (req, res) => {
     // marcar entregado true (permite que siga 'abierta')
     await comanda.update({ entregado: true });
 
+    const alertasListoActivas = await AlertaMesero.findAll({
+      where: {
+        tipo: 'listo',
+        comandaId: comanda.id,
+        estado: 'activa'
+      }
+    });
+    if (alertasListoActivas.length > 0) {
+      await Promise.all(alertasListoActivas.map((alerta) => alerta.update({ estado: 'resuelta', resolvedAt: new Date() })));
+    }
+
     // Emitir evento a atención para actualizar interfaces
     if (io) {
       io.to('atencion').emit('comanda-entregada', { comandaId: comanda.id, mesaId: comanda.mesaId, mesa: comanda.mesa?.numero });
       const atencionRoom = `atencion:${comanda.localId || ''}`;
       io.to(atencionRoom).emit('comanda-entregada', { comandaId: comanda.id, mesaId: comanda.mesaId, mesa: comanda.mesa?.numero });
+      alertasListoActivas.forEach((alerta) => {
+        io.emit('alerta:resuelta', { id: alerta.id, tipo: alerta.tipo, mesaId: alerta.mesaId });
+      });
     }
 
     res.json({ success: true, message: 'Comanda marcada como entregada', data: comanda });

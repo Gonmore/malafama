@@ -1,5 +1,8 @@
 node_modules/
 .env
+secrets/
+*-service-account*.json
+firebase-service-account*.json
 .DS_Store
 uploads/*
 !uploads/.gitkeep

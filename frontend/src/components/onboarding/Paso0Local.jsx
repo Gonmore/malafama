@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 
 const Paso0Local = ({ onCompletar, datosIniciales }) => {
   const [formData, setFormData] = useState({
@@ -178,13 +178,13 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
   return (
     <div>
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-900/30 rounded-full mb-4">
           <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
           </svg>
         </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Crear tu Local</h2>
-        <p className="text-gray-600">
+        <h2 className="text-3xl font-bold text-slate-100 mb-2">Crear tu Local</h2>
+        <p className="text-slate-400">
           Comienza configurando la información básica de tu restaurante
         </p>
       </div>
@@ -192,7 +192,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Nombre del Local */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Nombre del Local *
           </label>
           <input
@@ -202,7 +202,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             onChange={handleChange}
             placeholder="Ej: La Terraza del Centro"
             className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.nombre ? 'border-red-500' : 'border-gray-300'
+              errors.nombre ? 'border-red-500' : 'border-slate-600'
             }`}
             required
           />
@@ -213,17 +213,17 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
 
         {/* Moneda */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Moneda del Local *
           </label>
-          <p className="text-xs text-gray-500 mb-2">
+          <p className="text-xs text-slate-400 mb-2">
             Esta moneda se usará en todos los precios y costos del sistema
           </p>
           <select
             name="moneda"
             value={formData.moneda}
             onChange={handleChange}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             required
           >
             {monedas.map(m => (
@@ -236,7 +236,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
 
         {/* Descripción */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Descripción (opcional)
           </label>
           <textarea
@@ -245,16 +245,16 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             onChange={handleChange}
             placeholder="Describe tu local..."
             rows={3}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
         {/* Logo */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Logo del Local (opcional)
           </label>
-          <p className="text-xs text-gray-500 mb-2">
+          <p className="text-xs text-slate-400 mb-2">
             Este logo aparecerá en las interfaces de meseros y cocina. Se redimensionará automáticamente a 48x48px.
           </p>
           
@@ -264,7 +264,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
                 <img
                   src={logoPreview}
                   alt="Logo preview"
-                  className="w-24 h-24 object-contain border-2 border-gray-300 rounded-lg bg-white p-2"
+                  className="w-24 h-24 object-contain border-2 border-slate-600 rounded-lg bg-slate-800 p-2"
                 />
                 <button
                   type="button"
@@ -275,7 +275,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
                 </button>
               </div>
               <div className="flex-1">
-                <p className="text-sm text-gray-600">✅ Logo optimizado (48x48px PNG)</p>
+                <p className="text-sm text-slate-400">✅ Logo optimizado (48x48px PNG)</p>
                 <button
                   type="button"
                   onClick={() => document.getElementById('logo-input').click()}
@@ -287,7 +287,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
               </div>
             </div>
           ) : procesandoLogo ? (
-            <div className="flex items-center justify-center w-full h-32 border-2 border-blue-300 border-dashed rounded-lg bg-blue-50">
+            <div className="flex items-center justify-center w-full h-32 border-2 border-blue-300 border-dashed rounded-lg bg-blue-900/20">
               <div className="text-center">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
                 <p className="text-sm text-blue-600 font-medium">Procesando imagen...</p>
@@ -298,17 +298,17 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             <div className="flex items-center justify-center w-full">
               <label
                 htmlFor="logo-input"
-                className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+                className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-900 hover:bg-slate-800"
               >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10 mb-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <p className="mb-2 text-sm text-gray-500">
+                  <p className="mb-2 text-sm text-slate-400">
                     <span className="font-semibold">Haz clic para subir</span> o arrastra
                   </p>
-                  <p className="text-xs text-gray-500">PNG, JPG, GIF (max. 5MB)</p>
-                  <p className="text-xs text-gray-400 mt-1">Se redimensionará a 48x48px</p>
+                  <p className="text-xs text-slate-400">PNG, JPG, GIF (max. 5MB)</p>
+                  <p className="text-xs text-slate-500 mt-1">Se redimensionará a 48x48px</p>
                 </div>
               </label>
             </div>
@@ -327,7 +327,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
 
         {/* Dirección */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Dirección (opcional)
           </label>
           <input
@@ -336,13 +336,13 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             value={formData.direccion}
             onChange={handleChange}
             placeholder="Ej: Av. Principal 123, Centro"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
         {/* Teléfono */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Teléfono (opcional)
           </label>
           <input
@@ -351,13 +351,13 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             value={formData.telefono}
             onChange={handleChange}
             placeholder="Ej: +54 11 1234-5678"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
         {/* Email */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Email (opcional)
           </label>
           <input
@@ -367,7 +367,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
             onChange={handleChange}
             placeholder="contacto@tulocal.com"
             className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.email ? 'border-red-500' : 'border-gray-300'
+              errors.email ? 'border-red-500' : 'border-slate-600'
             }`}
           />
           {errors.email && (
@@ -376,7 +376,7 @@ const Paso0Local = ({ onCompletar, datosIniciales }) => {
         </div>
 
         {/* Preview */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-blue-900/20 border border-blue-200 rounded-lg p-4">
           <h3 className="font-semibold text-blue-900 mb-2">📋 Resumen</h3>
           <ul className="text-sm text-blue-800 space-y-1">
             <li>• Local: <strong>{formData.nombre || '(sin nombre)'}</strong></li>

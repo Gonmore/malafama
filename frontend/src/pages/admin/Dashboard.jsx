@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { reporteService } from '../../services/reporteService';
 import { mesaService } from '../../services/mesaService';
 import { productoService } from '../../services/productoService';
@@ -58,7 +58,7 @@ export default function AdminDashboard() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-gray-900">Panel de Administración</h2>
+        <h2 className="text-3xl font-bold text-slate-100">Panel de Administración</h2>
         <button 
           onClick={loadDashboardData}
           className="btn-secondary"
@@ -94,24 +94,24 @@ export default function AdminDashboard() {
         <div className="card">
           <h3 className="text-xl font-semibold mb-4">Estadísticas del Día</h3>
           <div className="space-y-3">
-            <div className="flex justify-between p-3 bg-gray-50 rounded">
-              <span className="text-gray-600">Comandas del día:</span>
+            <div className="flex justify-between p-3 bg-slate-900 rounded">
+              <span className="text-slate-400">Comandas del día:</span>
               <span className="font-semibold">{dashboard?.ventasHoy?.total_comandas || 0}</span>
             </div>
-            <div className="flex justify-between p-3 bg-gray-50 rounded">
-              <span className="text-gray-600">Pedidos del día:</span>
+            <div className="flex justify-between p-3 bg-slate-900 rounded">
+              <span className="text-slate-400">Pedidos del día:</span>
               <span className="font-semibold">{dashboard?.ventasHoy?.total_pedidos || 0}</span>
             </div>
-            <div className="flex justify-between p-3 bg-gray-50 rounded">
-              <span className="text-gray-600">Ticket promedio:</span>
+            <div className="flex justify-between p-3 bg-slate-900 rounded">
+              <span className="text-slate-400">Ticket promedio:</span>
               <span className="font-semibold">
                 ${dashboard?.ventasHoy?.total_comandas > 0 
                   ? (dashboard.ventasHoy.total_ventas / dashboard.ventasHoy.total_comandas).toFixed(2)
                   : '0.00'}
               </span>
             </div>
-            <div className="flex justify-between p-3 bg-red-50 rounded">
-              <span className="text-gray-600">Pagos pendientes:</span>
+            <div className="flex justify-between p-3 bg-red-900/20 rounded">
+              <span className="text-slate-400">Pagos pendientes:</span>
               <span className="font-semibold text-red-600">
                 ${parseFloat(dashboard?.pagosPendientes || 0).toFixed(2)}
               </span>
@@ -133,7 +133,7 @@ export default function AdminDashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-4">No hay datos disponibles</p>
+            <p className="text-slate-400 text-center py-4">No hay datos disponibles</p>
           )}
         </div>
       </div>
@@ -142,7 +142,7 @@ export default function AdminDashboard() {
         <div className="card mt-6">
           <h3 className="text-xl font-semibold mb-4">Estado de Mesas</h3>
           <div className="flex items-center space-x-4">
-            <div className="flex-1 bg-gray-200 rounded-full h-4">
+            <div className="flex-1 bg-slate-700 rounded-full h-4">
               <div 
                 className="bg-orange-500 h-4 rounded-full transition-all duration-300"
                 style={{ width: `${ocupacion.porcentajeOcupacion}%` }}
@@ -152,15 +152,15 @@ export default function AdminDashboard() {
           </div>
           <div className="grid grid-cols-3 gap-4 mt-4">
             <div className="text-center">
-              <p className="text-sm text-gray-600">Total</p>
+              <p className="text-sm text-slate-400">Total</p>
               <p className="text-2xl font-bold">{ocupacion.totalMesas}</p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Ocupadas</p>
+              <p className="text-sm text-slate-400">Ocupadas</p>
               <p className="text-2xl font-bold text-orange-600">{ocupacion.mesasOcupadas}</p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Disponibles</p>
+              <p className="text-sm text-slate-400">Disponibles</p>
               <p className="text-2xl font-bold text-green-600">{ocupacion.mesasDisponibles}</p>
             </div>
           </div>
@@ -172,15 +172,15 @@ export default function AdminDashboard() {
 
 function StatCard({ title, value, color }) {
   const colorClasses = {
-    green: 'bg-green-100 text-green-800',
-    blue: 'bg-blue-100 text-blue-800',
-    purple: 'bg-purple-100 text-purple-800',
-    orange: 'bg-orange-100 text-orange-800'
+    green: 'bg-green-900/30 text-green-800',
+    blue: 'bg-blue-900/30 text-blue-800',
+    purple: 'bg-purple-900/30 text-purple-800',
+    orange: 'bg-orange-900/30 text-orange-800'
   }
 
   return (
     <div className="card">
-      <p className="text-sm text-gray-600 mb-2">{title}</p>
+      <p className="text-sm text-slate-400 mb-2">{title}</p>
       <p className={`text-3xl font-bold ${colorClasses[color]}`}>{value}</p>
     </div>
   )
@@ -190,8 +190,8 @@ function ProductItem({ name, sales, revenue }) {
   return (
     <div className="flex justify-between items-center py-2 border-b">
       <div>
-        <span className="text-gray-700 font-medium">{name}</span>
-        <p className="text-sm text-gray-500">${parseFloat(revenue).toFixed(2)} generados</p>
+        <span className="text-slate-300 font-medium">{name}</span>
+        <p className="text-sm text-slate-400">${parseFloat(revenue).toFixed(2)} generados</p>
       </div>
       <span className="font-semibold text-primary-600">{sales} vendidos</span>
     </div>

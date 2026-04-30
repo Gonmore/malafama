@@ -1,31 +1,31 @@
-import React from 'react';
+﻿import React from 'react';
 import { AlertCircle, CheckCircle, XCircle, Info } from 'lucide-react';
 
 const Alert = ({ type = 'info', message, onClose }) => {
   const config = {
     info: {
-      bgColor: 'bg-blue-50',
+      bgColor: 'bg-blue-900/20',
       borderColor: 'border-blue-200',
       textColor: 'text-blue-800',
       icon: Info,
       iconColor: 'text-blue-400'
     },
     success: {
-      bgColor: 'bg-green-50',
+      bgColor: 'bg-green-900/20',
       borderColor: 'border-green-200',
       textColor: 'text-green-800',
       icon: CheckCircle,
       iconColor: 'text-green-400'
     },
     warning: {
-      bgColor: 'bg-yellow-50',
+      bgColor: 'bg-yellow-900/20',
       borderColor: 'border-yellow-200',
       textColor: 'text-yellow-800',
       icon: AlertCircle,
       iconColor: 'text-yellow-400'
     },
     error: {
-      bgColor: 'bg-red-50',
+      bgColor: 'bg-red-900/20',
       borderColor: 'border-red-200',
       textColor: 'text-red-800',
       icon: XCircle,

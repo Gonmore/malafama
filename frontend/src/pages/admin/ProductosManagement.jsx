@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import { useLocalStore } from '../../store/localStore';
@@ -15,11 +16,19 @@ export default function ProductosManagement() {
   const { localActivo } = useLocalStore();
   const effectiveLocalId = localActivo?.id || user?.localId || null;
   const previewJobTimerRef = useRef(null);
+  const loadedForLocalRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [productos, setProductos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [proveedorModalOpen, setProveedorModalOpen] = useState(false);
   const [editingProveedor, setEditingProveedor] = useState(null);
+  const [categoriaModalOpen, setCategoriaModalOpen] = useState(false);
+  const [categoriaModalMode, setCategoriaModalMode] = useState('edit');
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
+  const [categoriaNombre, setCategoriaNombre] = useState('');
+  const [categoriaSaving, setCategoriaSaving] = useState(false);
+  const [pendingCategoriaTarget, setPendingCategoriaTarget] = useState(null);
+  const [categoriasGuardadas, setCategoriasGuardadas] = useState([]);
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
   const [filtroTipo, setFiltroTipo] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
@@ -53,14 +62,41 @@ export default function ProductosManagement() {
 
   const moneda = localActivo?.moneda || user?.local?.moneda || 'Bs';
 
-  const categorias = ['Platos', 'Bebidas', 'Postres', 'Snacks', 'Cervezas'];
+  const categoriasBase = ['Platos', 'Bebidas', 'Postres', 'Snacks', 'Cervezas'];
   const tipos = [
     { value: 'comida', label: '🍽️ Comida' },
     { value: 'bebida', label: '🍹 Bebida' },
     { value: 'otros', label: '📦 Otros' }
   ];
 
+  const categoriaStats = useMemo(() => {
+    const stats = new Map();
+    categoriasGuardadas.forEach((categoria) => {
+      const nombre = String(categoria.nombre || '').trim();
+      if (!nombre) return;
+      stats.set(nombre, categoria.cantidad || 0);
+    });
+    productos.forEach((producto) => {
+      const nombre = String(producto.categoria || '').trim();
+      if (!nombre) return;
+      if (!stats.has(nombre)) {
+        stats.set(nombre, 0);
+      }
+    });
+    return Array.from(stats.entries())
+      .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [categoriasGuardadas, productos]);
+
+  const categorias = useMemo(() => {
+    const nombres = new Set(categoriasBase);
+    categoriaStats.forEach((cat) => nombres.add(cat.nombre));
+    return Array.from(nombres).sort((a, b) => a.localeCompare(b));
+  }, [categoriaStats]);
+
   useEffect(() => {
+    if (loadedForLocalRef.current === effectiveLocalId) return;
+    loadedForLocalRef.current = effectiveLocalId;
     cargarDatos();
   }, [effectiveLocalId]);
 
@@ -73,26 +109,52 @@ export default function ProductosManagement() {
     };
   }, []);
 
+  const extractList = (payload) => {
+    if (!payload) return null;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (Array.isArray(payload.productos)) return payload.productos;
+    if (Array.isArray(payload.proveedores)) return payload.proveedores;
+    return [];
+  };
+
   const cargarDatos = async () => {
+    if (!effectiveLocalId) {
+      setProductos([]);
+      setProveedores([]);
+      setCategoriasGuardadas([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     try {
-      setLoading(true);
-
-      if (!effectiveLocalId) {
-        setProductos([]);
-        setProveedores([]);
-        return;
-      }
-
-      const [responseProd, responseProv] = await Promise.all([
+      const [resProd, resProv, resCat] = await Promise.allSettled([
         productoService.getAll({ localId: effectiveLocalId }),
-        proveedorService.getAll({ localId: effectiveLocalId })
+        proveedorService.getAll({ localId: effectiveLocalId }),
+        productoService.getCategorias({ localId: effectiveLocalId })
       ]);
 
-      setProductos(responseProd.data?.productos || responseProd.data || []);
-      setProveedores(responseProv.data?.proveedores || responseProv.data || []);
-    } catch (error) {
-      console.error('Error al cargar datos:', error);
-      toast.error('Error al cargar productos');
+      if (resProd.status === 'fulfilled') {
+        setProductos(extractList(resProd.value) || []);
+      } else {
+        const status = resProd.reason?.response?.status;
+        if (status !== 401) toast.error('Error al cargar productos');
+        console.error('Error al cargar productos:', resProd.reason);
+      }
+
+      if (resProv.status === 'fulfilled') {
+        setProveedores(extractList(resProv.value) || []);
+      } else {
+        console.error('Error al cargar proveedores:', resProv.reason);
+      }
+
+      if (resCat.status === 'fulfilled') {
+        setCategoriasGuardadas(extractList(resCat.value) || []);
+      } else {
+        console.error('Error al cargar categorías:', resCat.reason);
+        setCategoriasGuardadas([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -110,6 +172,101 @@ export default function ProductosManagement() {
       console.error('Error al cargar proveedores:', err);
       setProveedores([]);
     }
+  };
+
+  const openCategoriaModal = (categoria) => {
+    setCategoriaModalMode('edit');
+    setCategoriaSeleccionada(categoria);
+    setCategoriaNombre(categoria);
+    setPendingCategoriaTarget(null);
+    setCategoriaModalOpen(true);
+  };
+
+  const openNuevaCategoriaModal = (target = null) => {
+    setCategoriaModalMode('create');
+    setCategoriaSeleccionada('');
+    setCategoriaNombre('');
+    setPendingCategoriaTarget(target);
+    setCategoriaModalOpen(true);
+  };
+
+  const closeCategoriaModal = () => {
+    setCategoriaModalOpen(false);
+    setCategoriaModalMode('edit');
+    setCategoriaSeleccionada('');
+    setCategoriaNombre('');
+    setPendingCategoriaTarget(null);
+  };
+
+  const handleGuardarCategoria = async (e) => {
+    e.preventDefault();
+    const nombre = categoriaNombre.trim();
+
+    if (!nombre) {
+      toast.error('Ingresa un nombre de categoría');
+      return;
+    }
+
+    if (categoriaModalMode === 'edit' && nombre === categoriaSeleccionada) {
+      closeCategoriaModal();
+      return;
+    }
+
+    try {
+      setCategoriaSaving(true);
+
+      if (categoriaModalMode === 'create') {
+        await productoService.createCategoria(nombre, effectiveLocalId);
+
+        if (pendingCategoriaTarget?.type === 'form') {
+          setFormData((prev) => ({ ...prev, categoria: nombre }));
+        }
+
+        if (pendingCategoriaTarget?.type === 'inline' && pendingCategoriaTarget.producto) {
+          const producto = pendingCategoriaTarget.producto;
+          await productoService.update(producto.id, {
+            ...producto,
+            categoria: nombre
+          });
+          setProductos((prev) => prev.map((p) => (
+            p.id === producto.id ? { ...p, categoria: nombre } : p
+          )));
+          cancelEdit();
+        }
+
+        toast.success('Categoría creada');
+      } else {
+        await productoService.renameCategoria(categoriaSeleccionada, nombre, effectiveLocalId);
+        toast.success('Categoría actualizada');
+        if (filtroCategoria === categoriaSeleccionada) {
+          setFiltroCategoria(nombre);
+        }
+      }
+
+      closeCategoriaModal();
+      await cargarDatos();
+    } catch (err) {
+      console.error('Error al actualizar categoría:', err);
+      toast.error(err?.response?.data?.message || 'Error al guardar categoría');
+    } finally {
+      setCategoriaSaving(false);
+    }
+  };
+
+  const handleCategoriaFormChange = (value) => {
+    if (value === '__add__') {
+      openNuevaCategoriaModal({ type: 'form' });
+      return;
+    }
+    setFormData({ ...formData, categoria: value });
+  };
+
+  const handleCategoriaInlineChange = (producto, value) => {
+    if (value === '__add__') {
+      openNuevaCategoriaModal({ type: 'inline', producto });
+      return;
+    }
+    setEditingValue(value);
   };
 
   const detectarTipoPorCategoria = (categoria) => {
@@ -296,8 +453,8 @@ export default function ProductosManagement() {
 
     try {
       await productoService.delete(producto.id);
+      setProductos((prev) => prev.filter((p) => p.id !== producto.id));
       toast.success('Producto eliminado');
-      cargarDatos();
     } catch (error) {
       console.error('Error al eliminar:', error);
       toast.error('Error al eliminar producto');
@@ -347,9 +504,9 @@ export default function ProductosManagement() {
 
   const getTipoBadge = (tipo) => {
     const badges = {
-      comida: { bg: 'bg-blue-100', text: 'text-blue-800', icon: '🍽️' },
-      bebida: { bg: 'bg-green-100', text: 'text-green-800', icon: '🍹' },
-      otros: { bg: 'bg-gray-100', text: 'text-gray-800', icon: '📦' }
+      comida: { bg: 'bg-blue-900/30', text: 'text-blue-800', icon: '🍽️' },
+      bebida: { bg: 'bg-green-900/30', text: 'text-green-800', icon: '🍹' },
+      otros: { bg: 'bg-slate-800', text: 'text-slate-200', icon: '📦' }
     };
     return badges[tipo] || badges.otros;
   };
@@ -372,13 +529,14 @@ export default function ProductosManagement() {
   };
 
   const saveEdit = async (producto) => {
-    if (!editingValue || editingValue === producto[editingField]) {
+    const normalizedValue = editingField === 'categoria' ? editingValue.trim() : editingValue;
+    if ((editingField !== 'categoria' && !editingValue) || normalizedValue === (producto[editingField] || '')) {
       cancelEdit();
       return;
     }
 
     try {
-      let value = editingValue;
+      let value = normalizedValue;
       
       // Parsear números si es precio o costo
       if (editingField === 'precio' || editingField === 'costo') {
@@ -417,16 +575,16 @@ export default function ProductosManagement() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <LoadingSpinner text="Cargando productos..." />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-slate-800 shadow-sm border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -439,13 +597,13 @@ export default function ProductosManagement() {
                 </svg>
                 Volver al local
               </button>
-              <h1 className="text-3xl font-bold text-gray-900">🍽️ Gestión de Productos</h1>
-              <p className="text-gray-600 mt-1">Administra tu menú y precios</p>
+              <h1 className="text-3xl font-bold text-slate-100">🍽️ Gestión de Productos</h1>
+              <p className="text-slate-400 mt-1">Administra tu menú y precios</p>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowScraping((v) => !v)}
-                className="px-4 py-3 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                className="px-4 py-3 bg-slate-800 border border-slate-600 text-slate-200 rounded-lg hover:bg-slate-900 transition-colors font-medium"
               >
                 Importar por scraping
               </button>
@@ -465,17 +623,17 @@ export default function ProductosManagement() {
 
       {showScraping && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-[260px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">URL del menú</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">URL del menú</label>
                 <input
                   value={scrapingUrl}
                   onChange={(e) => setScrapingUrl(e.target.value)}
                   placeholder="https://malafamacomedia.com/menu/"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  className="w-full border border-slate-600 bg-slate-700 text-slate-100 placeholder-slate-400 rounded-lg px-3 py-2"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-400 mt-1">
                   Importa productos al local activo. Costo se setea en 0 para editar después.
                 </p>
               </div>
@@ -499,18 +657,18 @@ export default function ProductosManagement() {
 
             {(scrapingLoading || scrapingImporting) && (
               <div className="mt-4">
-                <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
+                <div className="flex items-center justify-between text-sm text-slate-300 mb-1">
                   <span>{scrapingProgress.message || (scrapingImporting ? 'Importando...' : 'Procesando...')}</span>
                   <span className="font-medium">{scrapingProgress.percent}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-slate-700 rounded-full h-2">
                   <div
                     className="bg-blue-600 h-2 rounded-full transition-all"
                     style={{ width: `${Math.max(0, Math.min(100, scrapingProgress.percent))}%` }}
                   />
                 </div>
                 {(scrapingProgress.productsFound || 0) > 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p className="text-xs text-slate-400 mt-2">
                     Productos encontrados/importados: {scrapingProgress.productsFound}
                   </p>
                 )}
@@ -519,31 +677,31 @@ export default function ProductosManagement() {
 
             {scrapingTotal > 0 && (
               <div className="mt-4">
-                <p className="text-sm text-gray-700 mb-2">
+                <p className="text-sm text-slate-300 mb-2">
                   Encontrados: <span className="font-semibold">{scrapingTotal}</span>
                 </p>
-                <div className="max-h-64 overflow-auto border border-gray-200 rounded-lg">
+                <div className="max-h-64 overflow-auto border border-slate-700 rounded-lg">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-slate-900">
                       <tr>
-                        <th className="text-left px-3 py-2 text-gray-600 font-medium">Producto</th>
-                        <th className="text-left px-3 py-2 text-gray-600 font-medium">Categoría</th>
-                        <th className="text-right px-3 py-2 text-gray-600 font-medium">Precio</th>
+                        <th className="text-left px-3 py-2 text-slate-400 font-medium">Producto</th>
+                        <th className="text-left px-3 py-2 text-slate-400 font-medium">Categoría</th>
+                        <th className="text-right px-3 py-2 text-slate-400 font-medium">Precio</th>
                       </tr>
                     </thead>
                     <tbody>
                       {scrapingPreview.slice(0, 100).map((p, idx) => (
                         <tr key={`${p.nombre}-${idx}`} className="border-t">
-                          <td className="px-3 py-2 text-gray-800">{p.nombre}</td>
-                          <td className="px-3 py-2 text-gray-600">{p.categoria || 'Otros'}</td>
-                          <td className="px-3 py-2 text-right text-gray-800">{p.precio}</td>
+                          <td className="px-3 py-2 text-slate-200">{p.nombre}</td>
+                          <td className="px-3 py-2 text-slate-400">{p.categoria || 'Otros'}</td>
+                          <td className="px-3 py-2 text-right text-slate-200">{p.precio}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 {scrapingPreview.length > 100 && (
-                  <p className="text-xs text-gray-500 mt-2">Mostrando 100 de {scrapingPreview.length} en preview</p>
+                  <p className="text-xs text-slate-400 mt-2">Mostrando 100 de {scrapingPreview.length} en preview</p>
                 )}
               </div>
             )}
@@ -553,25 +711,31 @@ export default function ProductosManagement() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <datalist id="categorias-productos">
+          {categorias.map(cat => (
+            <option key={cat} value={cat} />
+          ))}
+        </datalist>
+
         {/* Filtros */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-4 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Buscar</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Buscar</label>
               <input
                 type="text"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 placeholder="Buscar por nombre..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 placeholder-slate-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Categoría</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Categoría</label>
               <select
                 value={filtroCategoria}
                 onChange={(e) => setFiltroCategoria(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="todas">Todas</option>
                 {categorias.map(cat => (
@@ -580,11 +744,11 @@ export default function ProductosManagement() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Tipo</label>
               <select
                 value={filtroTipo}
                 onChange={(e) => setFiltroTipo(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="todos">Todos</option>
                 {tipos.map(tipo => (
@@ -595,24 +759,62 @@ export default function ProductosManagement() {
           </div>
         </div>
 
+        {/* Categorias */}
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-4 mb-6">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-100">Categorías</h2>
+              <p className="text-sm text-slate-400">Crea o renombra categorías para usarlas en productos.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openNuevaCategoriaModal()}
+              className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+            >
+              Nueva categoría
+            </button>
+          </div>
+          {categoriaStats.length === 0 ? (
+            <p className="text-sm text-slate-400">Aún no hay categorías asignadas.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {categoriaStats.map((cat) => (
+                <button
+                  key={cat.nombre}
+                  type="button"
+                  onClick={() => openCategoriaModal(cat.nombre)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700"
+                  title="Editar categoría"
+                >
+                  <span>{cat.nombre}</span>
+                  <span className="text-xs text-slate-400">({cat.cantidad})</span>
+                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Total Productos</p>
-            <p className="text-2xl font-bold text-gray-900">{productos.length}</p>
+          <div className="bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700">
+            <p className="text-sm text-slate-400">Total Productos</p>
+            <p className="text-2xl font-bold text-slate-100">{productos.length}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Activos</p>
+          <div className="bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700">
+            <p className="text-sm text-slate-400">Activos</p>
             <p className="text-2xl font-bold text-green-600">{productos.filter(p => p.activo).length}</p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Precio Promedio</p>
+          <div className="bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700">
+            <p className="text-sm text-slate-400">Precio Promedio</p>
             <p className="text-2xl font-bold text-blue-600">
               {moneda} {(productos.reduce((sum, p) => sum + parseFloat(p.precio), 0) / productos.length || 0).toFixed(2)}
             </p>
           </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Margen Promedio</p>
+          <div className="bg-slate-800 p-4 rounded-lg shadow-sm border border-slate-700">
+            <p className="text-sm text-slate-400">Margen Promedio</p>
             <p className="text-2xl font-bold text-purple-600">
               {(productos.reduce((sum, p) => sum + parseFloat(calcularMargen(p.precio, p.costo)), 0) / productos.length || 0).toFixed(1)}%
             </p>
@@ -620,26 +822,26 @@ export default function ProductosManagement() {
         </div>
 
         {/* Tabla de Productos */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 overflow-hidden">
           {/* Vista Desktop */}
           <div className="hidden lg:block overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-slate-700">
+              <thead className="bg-slate-900">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Costo</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Margen</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proveedor</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Producto</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Tipo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Categoría</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Precio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Costo</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Margen</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Proveedor</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-slate-800 divide-y divide-slate-700">
                 {productosFiltrados.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan="8" className="px-6 py-12 text-center text-slate-400">
                       No hay productos para mostrar
                     </td>
                   </tr>
@@ -650,7 +852,7 @@ export default function ProductosManagement() {
                     const isEditing = editingId === producto.id;
                     
                     return (
-                      <tr key={producto.id} className="hover:bg-gray-50">
+                      <tr key={producto.id} className="hover:bg-slate-900">
                         {/* Nombre - Editable */}
                         <td className="px-6 py-4">
                           {isEditing && editingField === 'nombre' ? (
@@ -661,16 +863,16 @@ export default function ProductosManagement() {
                               onKeyDown={(e) => handleKeyDown(e, producto)}
                               onBlur={() => saveEdit(producto)}
                               autoFocus
-                              className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                              className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                             />
                           ) : (
                             <div 
-                              className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                              className="cursor-pointer hover:bg-slate-800 px-2 py-1 rounded"
                               onClick={() => startEdit(producto.id, 'nombre', producto.nombre)}
                             >
-                              <div className="text-sm font-medium text-gray-900">{producto.nombre}</div>
+                              <div className="text-sm font-medium text-slate-100">{producto.nombre}</div>
                               {producto.descripcion && (
-                                <div className="text-sm text-gray-500 truncate max-w-xs">{producto.descripcion}</div>
+                                <div className="text-sm text-slate-400 truncate max-w-xs">{producto.descripcion}</div>
                               )}
                             </div>
                           )}
@@ -684,7 +886,7 @@ export default function ProductosManagement() {
                               onChange={(e) => setEditingValue(e.target.value)}
                               onBlur={() => saveEdit(producto)}
                               autoFocus
-                              className="px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                              className="px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                             >
                               {tipos.map(t => (
                                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -705,19 +907,20 @@ export default function ProductosManagement() {
                           {isEditing && editingField === 'categoria' ? (
                             <select
                               value={editingValue}
-                              onChange={(e) => setEditingValue(e.target.value)}
+                              onChange={(e) => handleCategoriaInlineChange(producto, e.target.value)}
                               onBlur={() => saveEdit(producto)}
                               autoFocus
-                              className="px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                              className="px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                             >
-                              <option value="">-</option>
+                              <option value="">Sin categoría</option>
                               {categorias.map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                               ))}
+                              <option value="__add__">+ Agregar categoría</option>
                             </select>
                           ) : (
                             <div 
-                              className="text-sm text-gray-900 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                              className="text-sm text-slate-100 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded"
                               onClick={() => startEdit(producto.id, 'categoria', producto.categoria || '')}
                             >
                               {producto.categoria || '-'}
@@ -736,11 +939,11 @@ export default function ProductosManagement() {
                               onKeyDown={(e) => handleKeyDown(e, producto)}
                               onBlur={() => saveEdit(producto)}
                               autoFocus
-                              className="w-20 px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                              className="w-20 px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                             />
                           ) : (
                             <div 
-                              className="text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                              className="text-sm font-semibold text-slate-100 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded"
                               onClick={() => startEdit(producto.id, 'precio', producto.precio)}
                             >
                               {moneda} {producto.precio}
@@ -759,11 +962,11 @@ export default function ProductosManagement() {
                               onKeyDown={(e) => handleKeyDown(e, producto)}
                               onBlur={() => saveEdit(producto)}
                               autoFocus
-                              className="w-20 px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                              className="w-20 px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                             />
                           ) : (
                             <div 
-                              className="text-sm text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                              className="text-sm text-slate-400 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded"
                               onClick={() => startEdit(producto.id, 'costo', producto.costo)}
                             >
                               {moneda} {producto.costo}
@@ -777,7 +980,7 @@ export default function ProductosManagement() {
                           </span>
                         </td>
 
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
                           {producto.proveedor?.nombre || '-'}
                         </td>
 
@@ -837,9 +1040,9 @@ export default function ProductosManagement() {
           </div>
 
           {/* Vista Mobile - Cards */}
-          <div className="lg:hidden divide-y divide-gray-200">
+          <div className="lg:hidden divide-y divide-slate-700">
             {productosFiltrados.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
+              <div className="p-6 text-center text-slate-400">
                 No hay productos para mostrar
               </div>
             ) : (
@@ -849,7 +1052,7 @@ export default function ProductosManagement() {
                 const isEditing = editingId === producto.id;
 
                 return (
-                  <div key={producto.id} className="p-4 hover:bg-gray-50">
+                  <div key={producto.id} className="p-4 hover:bg-slate-900">
                     {/* Header con nombre y acciones */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
@@ -861,21 +1064,21 @@ export default function ProductosManagement() {
                             onKeyDown={(e) => handleKeyDown(e, producto)}
                             onBlur={() => saveEdit(producto)}
                             autoFocus
-                            className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500 text-base font-semibold"
+                            className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500 text-base font-semibold"
                           />
                         ) : (
                           <div 
-                            className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded -ml-2"
+                            className="cursor-pointer hover:bg-slate-800 px-2 py-1 rounded -ml-2"
                             onClick={() => startEdit(producto.id, 'nombre', producto.nombre)}
                           >
-                            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                            <h3 className="font-semibold text-slate-100 flex items-center gap-2">
                               {producto.nombre}
                               <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                               </svg>
                             </h3>
                             {producto.descripcion && (
-                              <p className="text-sm text-gray-500 mt-1">{producto.descripcion}</p>
+                              <p className="text-sm text-slate-400 mt-1">{producto.descripcion}</p>
                             )}
                           </div>
                         )}
@@ -885,7 +1088,7 @@ export default function ProductosManagement() {
                           <>
                             <button
                               onClick={() => saveEdit(producto)}
-                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                              className="p-2 text-green-600 hover:bg-green-900/20 rounded-lg"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -893,7 +1096,7 @@ export default function ProductosManagement() {
                             </button>
                             <button
                               onClick={cancelEdit}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              className="p-2 text-red-600 hover:bg-red-900/20 rounded-lg"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -904,7 +1107,7 @@ export default function ProductosManagement() {
                           <>
                             <button
                               onClick={() => openEditModal(producto)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                              className="p-2 text-blue-600 hover:bg-blue-900/20 rounded-lg"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -912,7 +1115,7 @@ export default function ProductosManagement() {
                             </button>
                             <button
                               onClick={() => handleEliminar(producto)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              className="p-2 text-red-600 hover:bg-red-900/20 rounded-lg"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -927,14 +1130,14 @@ export default function ProductosManagement() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       {/* Tipo */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Tipo</label>
+                        <label className="text-xs text-slate-400 block mb-1">Tipo</label>
                         {isEditing && editingField === 'tipo' ? (
                           <select
                             value={editingValue}
                             onChange={(e) => setEditingValue(e.target.value)}
                             onBlur={() => saveEdit(producto)}
                             autoFocus
-                            className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                           >
                             {tipos.map(t => (
                               <option key={t.value} value={t.value}>{t.label}</option>
@@ -952,23 +1155,24 @@ export default function ProductosManagement() {
 
                       {/* Categoría */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Categoría</label>
+                        <label className="text-xs text-slate-400 block mb-1">Categoría</label>
                         {isEditing && editingField === 'categoria' ? (
                           <select
                             value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
+                            onChange={(e) => handleCategoriaInlineChange(producto, e.target.value)}
                             onBlur={() => saveEdit(producto)}
                             autoFocus
-                            className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                           >
-                            <option value="">-</option>
+                            <option value="">Sin categoría</option>
                             {categorias.map(cat => (
                               <option key={cat} value={cat}>{cat}</option>
                             ))}
+                            <option value="__add__">+ Agregar categoría</option>
                           </select>
                         ) : (
                           <div 
-                            className="text-gray-900 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded -ml-2 flex items-center gap-1"
+                            className="text-slate-100 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded -ml-2 flex items-center gap-1"
                             onClick={() => startEdit(producto.id, 'categoria', producto.categoria || '')}
                           >
                             {producto.categoria || '-'}
@@ -981,7 +1185,7 @@ export default function ProductosManagement() {
 
                       {/* Precio */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Precio</label>
+                        <label className="text-xs text-slate-400 block mb-1">Precio</label>
                         {isEditing && editingField === 'precio' ? (
                           <input
                             type="number"
@@ -991,11 +1195,11 @@ export default function ProductosManagement() {
                             onKeyDown={(e) => handleKeyDown(e, producto)}
                             onBlur={() => saveEdit(producto)}
                             autoFocus
-                            className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                           />
                         ) : (
                           <div 
-                            className="font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded -ml-2 flex items-center gap-1"
+                            className="font-semibold text-slate-100 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded -ml-2 flex items-center gap-1"
                             onClick={() => startEdit(producto.id, 'precio', producto.precio)}
                           >
                             {moneda} {producto.precio}
@@ -1008,7 +1212,7 @@ export default function ProductosManagement() {
 
                       {/* Costo */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Costo</label>
+                        <label className="text-xs text-slate-400 block mb-1">Costo</label>
                         {isEditing && editingField === 'costo' ? (
                           <input
                             type="number"
@@ -1018,11 +1222,11 @@ export default function ProductosManagement() {
                             onKeyDown={(e) => handleKeyDown(e, producto)}
                             onBlur={() => saveEdit(producto)}
                             autoFocus
-                            className="w-full px-2 py-1 border border-blue-500 rounded focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-2 py-1 border border-blue-500 bg-slate-700 text-slate-100 rounded focus:ring-2 focus:ring-blue-500"
                           />
                         ) : (
                           <div 
-                            className="text-gray-600 cursor-pointer hover:bg-gray-100 px-2 py-1 rounded -ml-2 flex items-center gap-1"
+                            className="text-slate-400 cursor-pointer hover:bg-slate-800 px-2 py-1 rounded -ml-2 flex items-center gap-1"
                             onClick={() => startEdit(producto.id, 'costo', producto.costo)}
                           >
                             {moneda} {producto.costo}
@@ -1035,7 +1239,7 @@ export default function ProductosManagement() {
 
                       {/* Margen */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Margen</label>
+                        <label className="text-xs text-slate-400 block mb-1">Margen</label>
                         <span className={`text-sm font-bold ${margen > 50 ? 'text-green-600' : margen > 30 ? 'text-blue-600' : 'text-orange-600'}`}>
                           {margen}%
                         </span>
@@ -1043,14 +1247,14 @@ export default function ProductosManagement() {
 
                       {/* Proveedor */}
                       <div>
-                        <label className="text-xs text-gray-500 block mb-1">Proveedor</label>
-                        <span className="text-gray-600">{producto.proveedor?.nombre || '-'}</span>
+                        <label className="text-xs text-slate-400 block mb-1">Proveedor</label>
+                        <span className="text-slate-400">{producto.proveedor?.nombre || '-'}</span>
                       </div>
                     </div>
 
                     {/* Hint de edición */}
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 text-center flex items-center justify-center gap-1">
+                    <div className="mt-3 pt-3 border-t border-slate-700">
+                      <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
@@ -1068,77 +1272,78 @@ export default function ProductosManagement() {
       {/* Modal Crear/Editar */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          <div className="bg-slate-800 rounded-lg max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold text-slate-100 mb-4">
               {productoSeleccionado ? 'Editar Producto' : 'Nuevo Producto'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Nombre *</label>
                   <input
                     type="text"
                     value={formData.nombre}
                     onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 placeholder-slate-400 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Descripción</label>
                   <textarea
                     value={formData.descripcion}
                     onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 placeholder-slate-400 rounded-lg focus:ring-2 focus:ring-blue-500"
                     rows={2}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Precio *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.precio}
                     onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Costo *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Costo *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.costo}
                     onChange={(e) => setFormData({ ...formData, costo: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Categoría</label>
                   <select
                     value={formData.categoria}
-                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => handleCategoriaFormChange(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Seleccionar...</option>
+                    <option value="">Sin categoría</option>
                     {categorias.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
+                    <option value="__add__">+ Agregar categoría</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Tipo *</label>
                   <select
                     value={formData.tipo}
                     onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
                     required
                   >
                     {tipos.map(tipo => (
@@ -1148,7 +1353,7 @@ export default function ProductosManagement() {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Proveedor</label>
                   <select
                     value={formData.proveedorId}
                     onChange={(e) => {
@@ -1160,7 +1365,7 @@ export default function ProductosManagement() {
                       }
                       setFormData({ ...formData, proveedorId: value });
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Sin proveedor</option>
                     {proveedores.map(prov => (
@@ -1171,8 +1376,8 @@ export default function ProductosManagement() {
                 </div>
 
                 {formData.precio && formData.costo && (
-                  <div className="col-span-2 p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-gray-600">Margen de ganancia:</p>
+                  <div className="col-span-2 p-4 bg-blue-900/20 rounded-lg">
+                    <p className="text-sm text-slate-400">Margen de ganancia:</p>
                     <p className="text-2xl font-bold text-blue-600">
                       {calcularMargen(formData.precio, formData.costo)}%
                     </p>
@@ -1187,7 +1392,7 @@ export default function ProductosManagement() {
                     setShowModal(false);
                     resetForm();
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900"
                 >
                   Cancelar
                 </button>
@@ -1196,6 +1401,53 @@ export default function ProductosManagement() {
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   {productoSeleccionado ? 'Actualizar' : 'Crear'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {categoriaModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-slate-100 mb-4">
+              {categoriaModalMode === 'create' ? 'Nueva Categoría' : 'Editar Categoría'}
+            </h2>
+            <form onSubmit={handleGuardarCategoria} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Nombre</label>
+                <input
+                  type="text"
+                  value={categoriaNombre}
+                  onChange={(e) => setCategoriaNombre(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                  maxLength={100}
+                  required
+                />
+                <p className="text-xs text-slate-400 mt-2">
+                  {categoriaModalMode === 'create'
+                    ? 'Quedará disponible en los dropdowns de productos.'
+                    : `Se actualizarán todos los productos con la categoría "${categoriaSeleccionada}".`}
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeCategoriaModal}
+                  className="flex-1 px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900"
+                  disabled={categoriaSaving}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  disabled={categoriaSaving}
+                >
+                  {categoriaSaving ? 'Guardando...' : (categoriaModalMode === 'create' ? 'Crear' : 'Actualizar')}
                 </button>
               </div>
             </form>
@@ -1218,3 +1470,4 @@ export default function ProductosManagement() {
     </div>
   );
 }
+

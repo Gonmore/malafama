@@ -1,13 +1,37 @@
-const { Mesa, Comanda } = require('../models');
+const { Mesa, Comanda, Producto } = require('../models');
 const { MesaAsignada, Usuario } = require('../models');
 const { sequelize } = require('../config/database');
 const { Op } = require('sequelize');
 const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
+function getStartOfToday() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function buildComandasActivasWhere(eventoId = null) {
+  const where = {
+    [Op.or]: [
+      { estado: 'abierta' },
+      {
+        estado: 'cerrada',
+        entregado: true,
+        cerradaAt: {
+          [Op.gte]: getStartOfToday()
+        }
+      }
+    ]
+  };
+
+  if (eventoId) where.eventoId = eventoId;
+  return where;
+}
+
 // Listar todas las mesas
 const getAllMesas = async (req, res) => {
   try {
-    const { activo, disponible, localId } = req.query;
+    const { activo, disponible, localId, eventoId } = req.query;
     
     const where = {};
     if (activo !== undefined) where.activo = activo === 'true';
@@ -26,7 +50,7 @@ const getAllMesas = async (req, res) => {
         {
           model: Comanda,
           as: 'comandas',
-          where: { estado: 'abierta' },
+          where: buildComandasActivasWhere(eventoId),
           required: false,
           include: [{
             association: 'pedidos',
@@ -86,6 +110,7 @@ const getAllMesas = async (req, res) => {
 const getMesaById = async (req, res) => {
   try {
     const { id } = req.params;
+    const { eventoId } = req.query;
 
     const allowedLocalIds = await resolveAllowedLocalIds(req);
 
@@ -94,9 +119,12 @@ const getMesaById = async (req, res) => {
         {
           model: Comanda,
           as: 'comandas',
-          where: { estado: 'abierta' },
+          where: buildComandasActivasWhere(eventoId),
           required: false,
-          include: ['pedidos']
+          include: [{
+            association: 'pedidos',
+            include: [{ model: Producto, as: 'producto' }]
+          }]
         },
         {
           model: Usuario,

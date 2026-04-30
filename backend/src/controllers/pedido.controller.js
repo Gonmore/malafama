@@ -1,4 +1,4 @@
-const { Pedido, Producto, Comanda, Mesa, Usuario } = require('../models');
+const { Pedido, Producto, Comanda, Mesa, Usuario, AlertaMesero, AsignacionMesaEvento, EventoComanda } = require('../models');
 const { col, Op } = require('sequelize');
 const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 const { resolveOperationalProductType } = require('../utils/productRouting');
@@ -20,6 +20,114 @@ let io;
 const setSocketIO = (socketIO) => {
   io = socketIO;
 };
+
+async function getActiveEventoForLocal(localId) {
+  const { getActiveCutoffDate } = require('../services/firebaseSync.service');
+  const cutoff = getActiveCutoffDate().toISOString().split('T')[0];
+  const where = {
+    fecha: { [Op.gte]: cutoff },
+    estado: 'activo'
+  };
+  if (localId) {
+    where[Op.or] = [{ localId }, { localId: null }];
+  }
+  return EventoComanda.findOne({
+    where: {
+      ...where
+    },
+    order: [
+      ['fecha', 'ASC'],
+      ['horaInicio', 'ASC']
+    ]
+  });
+}
+
+async function resolvePedidosEventoId(explicitEventoId, localFilter) {
+  if (explicitEventoId) return explicitEventoId;
+  if (typeof localFilter === 'string') {
+    const evento = await getActiveEventoForLocal(localFilter);
+    return evento?.id || null;
+  }
+  return null;
+}
+
+async function syncReadyAlertForPedido(pedido) {
+  if (!pedido?.comanda?.mesa?.id) return null;
+
+  const pedidosComanda = await Pedido.findAll({
+    where: { comandaId: pedido.comanda.id },
+    attributes: ['estado']
+  });
+  const pedidosActivos = pedidosComanda.filter((p) => p.estado !== 'cancelado');
+  const todosActivosListos = pedidosActivos.length > 0 && pedidosActivos.every(
+    (p) => p.estado === 'listo' || p.estado === 'entregado'
+  );
+
+  if (!todosActivosListos || pedido.comanda.entregado) {
+    const alertasActivas = await AlertaMesero.findAll({
+      where: {
+        tipo: 'listo',
+        comandaId: pedido.comanda.id,
+        estado: 'activa'
+      }
+    });
+
+    if (alertasActivas.length > 0) {
+      await Promise.all(alertasActivas.map((alerta) => alerta.update({ estado: 'resuelta', resolvedAt: new Date() })));
+      if (io) {
+        alertasActivas.forEach((alerta) => {
+          io.emit('alerta:resuelta', { id: alerta.id, tipo: alerta.tipo, mesaId: alerta.mesaId });
+        });
+      }
+    }
+    return null;
+  }
+
+  const localId = pedido.comanda.localId || pedido.comanda.mesa.localId || null;
+  const evento = pedido.comanda.eventoId
+    ? await EventoComanda.findByPk(pedido.comanda.eventoId)
+    : await getActiveEventoForLocal(localId);
+  const mesaId = pedido.comanda.mesa.id;
+  const asig = evento
+    ? await AsignacionMesaEvento.findOne({ where: { eventoId: evento.id, mesaId } })
+    : null;
+
+  const [alerta, created] = await AlertaMesero.findOrCreate({
+    where: {
+      tipo: 'listo',
+      mesaId,
+      comandaId: pedido.comanda.id,
+      estado: 'activa'
+    },
+    defaults: {
+      meseroId: asig?.meseroId || pedido.comanda.usuarioAtencionId || null,
+      eventoId: evento?.id || null,
+      localId,
+    }
+  });
+
+  if (io && created) {
+    const payload = {
+      id: alerta.id,
+      tipo: alerta.tipo,
+      mesaId: alerta.mesaId,
+      meseroId: alerta.meseroId,
+      eventoId: alerta.eventoId,
+      comandaId: alerta.comandaId,
+      estado: alerta.estado,
+      createdAt: alerta.createdAt,
+      mesa: {
+        id: mesaId,
+        numero: pedido.comanda.mesa.numero,
+        nombre: pedido.comanda.mesa.nombre
+      }
+    };
+    if (alerta.meseroId) io.to(`mesero:${alerta.meseroId}`).emit('alerta:nueva', payload);
+    io.to('admin').emit('alerta:nueva', payload);
+  }
+
+  return alerta;
+}
 
 // Actualizar estado de pedido
 const updateEstadoPedido = async (req, res) => {
@@ -68,6 +176,10 @@ const updateEstadoPedido = async (req, res) => {
 
     const estadoAnterior = pedido.estado;
     await pedido.update({ estado });
+
+    syncReadyAlertForPedido(pedido).catch((err) => {
+      console.error('[pedido] sync ready alert error:', err.message || err);
+    });
 
     // Notificar cambios importantes (emitir update para cualquier cambio de estado)
     if (io) {
@@ -119,8 +231,9 @@ const updateEstadoPedido = async (req, res) => {
       where: { comandaId: pedido.comandaId }
     });
 
-    const todosPedidosListos = pedidosComanda.every(
-      p => p.estado === 'listo' || p.estado === 'entregado' || p.estado === 'cancelado'
+    const pedidosActivosComanda = pedidosComanda.filter((p) => p.estado !== 'cancelado');
+    const todosPedidosListos = pedidosActivosComanda.length > 0 && pedidosActivosComanda.every(
+      (p) => p.estado === 'listo' || p.estado === 'entregado'
     );
 
     if (todosPedidosListos && io) {
@@ -195,6 +308,10 @@ const marcarPedidoListo = async (req, res) => {
     await pedido.update({ 
       estado: 'listo',
       listoAt: new Date()
+    });
+
+    syncReadyAlertForPedido(pedido).catch((err) => {
+      console.error('[pedido] sync ready alert error:', err.message || err);
     });
 
     // Notificar a atención / emitir actualización genérica
@@ -295,7 +412,7 @@ const getPedidosByComanda = async (req, res) => {
 // Obtener pedidos pendientes para cocina
 const getPedidosPendientesCocina = async (req, res) => {
   try {
-    const { estado = 'pendiente,en_preparacion', tipo, localId } = req.query;
+    const { estado = 'pendiente,en_preparacion', tipo, localId, eventoId } = req.query;
     const estados = estado.split(',');
 
     const allowedLocalIds = await resolveAllowedLocalIds(req);
@@ -317,6 +434,7 @@ const getPedidosPendientesCocina = async (req, res) => {
 
     const whereProducto = {};
     if (localFilter) whereProducto.localId = localFilter;
+    const targetEventoId = await resolvePedidosEventoId(eventoId, localFilter);
 
     const pedidosRaw = await Pedido.findAll({
       where: {
@@ -331,7 +449,10 @@ const getPedidosPendientesCocina = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
-          where: { estado: 'abierta' },
+          where: {
+            estado: 'abierta',
+            ...(targetEventoId ? { eventoId: targetEventoId } : {})
+          },
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }
@@ -372,7 +493,7 @@ const getPedidosPendientesCocina = async (req, res) => {
 // Obtener pedidos listos/entregados recientes (últimos 5 minutos)
 const getPedidosRecientes = async (req, res) => {
   try {
-    const { tipo, localId } = req.query;
+    const { tipo, localId, eventoId } = req.query;
     const hace5Min = new Date(Date.now() - 5 * 60 * 1000);
 
     const allowedLocalIds = await resolveAllowedLocalIds(req);
@@ -394,6 +515,7 @@ const getPedidosRecientes = async (req, res) => {
 
     const whereProducto = {};
     if (localFilter) whereProducto.localId = localFilter;
+    const targetEventoId = await resolvePedidosEventoId(eventoId, localFilter);
 
     const pedidosRaw = await Pedido.findAll({
       where: {
@@ -411,6 +533,9 @@ const getPedidosRecientes = async (req, res) => {
         {
           model: Comanda,
           as: 'comanda',
+          where: {
+            ...(targetEventoId ? { eventoId: targetEventoId } : {})
+          },
           include: [
             { model: Mesa, as: 'mesa' },
             { model: Usuario, as: 'usuarioAtencion', attributes: ['id', 'nombre'] }

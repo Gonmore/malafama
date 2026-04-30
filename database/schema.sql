@@ -14,7 +14,7 @@ CREATE TABLE usuarios (
     nombre VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('admin', 'atencion', 'cocina', 'proveedor')),
+    tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('admin', 'atencion', 'supervisor', 'cocina', 'bar', 'proveedor', 'platform_admin')),
     activo BOOLEAN DEFAULT true,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

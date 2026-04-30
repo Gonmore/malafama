@@ -14,6 +14,7 @@ import ProveedoresManagement from './pages/admin/ProveedoresManagement'
 import MesasManagement from './pages/admin/MesasManagement'
 import AdminDashboardOld from './pages/admin/Dashboard'
 import MeseroView from './pages/mesero/MeseroView'
+import SupervisorView from './pages/supervisor/SupervisorView'
 import CocinaView from './pages/cocina/CocinaView'
 import BarView from './pages/bar/BarView'
 import AtencionDashboard from './pages/atencion/Dashboard'
@@ -30,6 +31,7 @@ function redirectPathForUser(user) {
   if (user.tipo === 'platform_admin') return '/platform-admin'
   if (user.tipo === 'admin') return '/admin'
   if (user.tipo === 'atencion') return '/mesero'
+  if (user.tipo === 'supervisor') return '/supervisor'
   if (user.tipo === 'cocina') return '/cocina'
   if (user.tipo === 'bar') return '/bar'
   if (user.tipo === 'proveedor') return '/proveedor'
@@ -47,8 +49,30 @@ function HomeRedirect() {
 function App() {
   return (
     <Router>
-      <Toaster position="top-right" />
-      <div className="min-h-screen pb-10">
+      <AppChrome />
+    </Router>
+  )
+}
+
+function AppChrome() {
+  return (
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'rgba(15, 23, 42, 0.92)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(71, 85, 105, 0.5)',
+            borderRadius: '12px'
+          }
+        }}
+      />
+      <div className="page-shell pb-10 relative overflow-x-hidden">
+        <div className="ambient-blob bg-indigo-600 w-[22rem] h-[22rem] -top-32 -left-24" />
+        <div className="ambient-blob bg-purple-600 w-[26rem] h-[26rem] top-16 right-[-8rem]" />
+        <div className="ambient-blob bg-blue-600 w-[22rem] h-[22rem] bottom-[-6rem] left-[35%]" />
+        <div className="relative z-10">
         <Routes>
         <Route path="/login" element={<Login />} />
 
@@ -117,6 +141,12 @@ function App() {
             <MeseroView />
           </ProtectedRoute>
         } />
+
+        <Route path="/supervisor" element={
+          <ProtectedRoute role="supervisor">
+            <SupervisorView />
+          </ProtectedRoute>
+        } />
         
         <Route path="/cocina" element={
           <ProtectedRoute role="cocina">
@@ -164,9 +194,10 @@ function App() {
         
         <Route path="/" element={<HomeRedirect />} />
         </Routes>
+        </div>
       </div>
       <Footer />
-    </Router>
+    </>
   )
 }
 
@@ -180,6 +211,8 @@ function ProtectedRoute({ children, role, requireOnboarding = true }) {
 
   const redirectForTipo = (tipo) => {
     if (tipo === 'platform_admin') return '/platform-admin'
+    if (tipo === 'atencion') return '/mesero'
+    if (tipo === 'supervisor') return '/supervisor'
     return `/${tipo}`
   }
 

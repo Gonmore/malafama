@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { mesaService } from '../../services/mesaService';
 import { comandaService } from '../../services/comandaService';
 import { productoService } from '../../services/productoService';
@@ -170,7 +170,7 @@ export default function AtencionDashboard() {
 
   return (
     <div>
-      <h2 className="text-3xl font-bold text-gray-900 mb-6">Panel de Atención al Cliente</h2>
+      <h2 className="text-3xl font-bold text-slate-100 mb-6">Panel de Atención al Cliente</h2>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Selección de mesa */}
@@ -211,7 +211,7 @@ export default function AtencionDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-center py-8">
+                  <p className="text-slate-400 text-center py-8">
                     No hay productos en el pedido
                   </p>
                 )}
@@ -252,7 +252,7 @@ export default function AtencionDashboard() {
               </div>
             </>
           ) : (
-            <p className="text-gray-500 text-center py-8">
+            <p className="text-slate-400 text-center py-8">
               Selecciona una mesa para comenzar un pedido
             </p>
           )}
@@ -265,7 +265,7 @@ export default function AtencionDashboard() {
         {comandasAbiertas.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-slate-900">
                 <tr>
                   <th className="px-4 py-2 text-left">Mesa</th>
                   <th className="px-4 py-2 text-left">Hora</th>
@@ -302,7 +302,7 @@ export default function AtencionDashboard() {
             </table>
           </div>
         ) : (
-          <p className="text-gray-500 text-center py-4">No tienes comandas abiertas</p>
+          <p className="text-slate-400 text-center py-4">No tienes comandas abiertas</p>
         )}
       </div>
 
@@ -337,8 +337,8 @@ function MesaButton({ mesa, onClick, selected }) {
         selected 
           ? 'bg-primary-100 border-primary-500 text-primary-800'
           : disponible
-            ? 'bg-green-100 text-green-800 hover:bg-green-200 border-green-300'
-            : 'bg-red-100 text-red-800 cursor-not-allowed border-red-300'
+            ? 'bg-green-900/30 text-green-800 hover:bg-green-200 border-green-300'
+            : 'bg-red-900/30 text-red-800 cursor-not-allowed border-red-300'
       }`}
       disabled={!disponible}
     >
@@ -360,14 +360,14 @@ function PedidoItem({ item, onUpdateCantidad, onEliminar }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => onUpdateCantidad(item.productoId, -1)}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="p-1 hover:bg-slate-800 rounded"
           >
             <Minus className="w-4 h-4" />
           </button>
           <span className="w-8 text-center font-semibold">{item.cantidad}</span>
           <button
             onClick={() => onUpdateCantidad(item.productoId, 1)}
-            className="p-1 hover:bg-gray-100 rounded"
+            className="p-1 hover:bg-slate-800 rounded"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -377,7 +377,7 @@ function PedidoItem({ item, onUpdateCantidad, onEliminar }) {
         </span>
         <button
           onClick={() => onEliminar(item.productoId)}
-          className="p-1 hover:bg-red-100 text-red-600 rounded"
+          className="p-1 hover:bg-red-900/30 text-red-600 rounded"
         >
           <X className="w-4 h-4" />
         </button>

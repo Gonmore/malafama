@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import localService from '../../services/localService';
@@ -97,8 +97,8 @@ export default function ProveedoresManagement() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b border-gray-200">
+    <div className="min-h-screen bg-slate-900">
+      <header className="bg-slate-800 shadow-sm border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -111,8 +111,8 @@ export default function ProveedoresManagement() {
                 </svg>
                 Volver al local
               </button>
-              <h1 className="text-3xl font-bold text-gray-900">📦 Proveedores</h1>
-              <p className="text-gray-600 mt-1">Administra proveedores del local</p>
+              <h1 className="text-3xl font-bold text-slate-100">📦 Proveedores</h1>
+              <p className="text-slate-400 mt-1">Administra proveedores del local</p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ export default function ProveedoresManagement() {
                 <select
                   value={localId || ''}
                   onChange={(e) => setLocalId(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                  className="px-3 py-2 rounded-lg border border-slate-600 bg-slate-800"
                 >
                   {locales.map((l) => (
                     <option key={l.id} value={l.id}>
@@ -142,35 +142,35 @@ export default function ProveedoresManagement() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 overflow-hidden">
           {loading ? (
-            <div className="p-6 text-center text-gray-500">Cargando...</div>
+            <div className="p-6 text-center text-slate-400">Cargando...</div>
           ) : proveedores.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">No hay proveedores para este local</div>
+            <div className="p-6 text-center text-slate-400">No hay proveedores para este local</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-slate-700">
+                <thead className="bg-slate-900">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contacto</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Teléfono</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Nombre</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Contacto</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Teléfono</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Email</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-slate-800 divide-y divide-slate-700">
                   {proveedores.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-3 font-medium text-gray-900">{p.nombre}</td>
-                      <td className="px-6 py-3 text-gray-700">{p.contacto || '—'}</td>
-                      <td className="px-6 py-3 text-gray-700">{p.telefono || '—'}</td>
-                      <td className="px-6 py-3 text-gray-700">{p.email || '—'}</td>
+                    <tr key={p.id} className="hover:bg-slate-900">
+                      <td className="px-6 py-3 font-medium text-slate-100">{p.nombre}</td>
+                      <td className="px-6 py-3 text-slate-300">{p.contacto || '—'}</td>
+                      <td className="px-6 py-3 text-slate-300">{p.telefono || '—'}</td>
+                      <td className="px-6 py-3 text-slate-300">{p.email || '—'}</td>
                       <td className="px-6 py-3">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleEditar(p)}
-                            className="px-3 py-1 rounded bg-gray-100 text-sm hover:bg-gray-200"
+                            className="px-3 py-1 rounded bg-slate-800 text-sm hover:bg-slate-700"
                           >
                             Editar
                           </button>

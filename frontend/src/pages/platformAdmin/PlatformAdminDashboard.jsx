@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { platformAdminService } from '../../services/platformAdminService'
 
@@ -189,21 +189,21 @@ export default function PlatformAdminDashboard() {
     <div className="max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Platform Admin</h1>
-          <p className="text-gray-600">Crear tenants de la plataforma</p>
+          <h1 className="text-3xl font-bold text-slate-100">Platform Admin</h1>
+          <p className="text-slate-400">Crear tenants de la plataforma</p>
         </div>
       </div>
 
       <div className="card mb-6">
         <h2 className="text-lg font-semibold mb-2">Tenant de referencia</h2>
         {referencia ? (
-          <div className="text-sm text-gray-700 space-y-1">
+          <div className="text-sm text-slate-300 space-y-1">
             <div><span className="font-medium">Nombre:</span> {referencia.nombre}</div>
             <div><span className="font-medium">Plan default:</span> {referencia.planDefault}</div>
             <div><span className="font-medium">Moneda default:</span> {referencia.monedaDefault}</div>
           </div>
         ) : (
-          <div className="text-sm text-gray-600">(No disponible)</div>
+          <div className="text-sm text-slate-400">(No disponible)</div>
         )}
       </div>
 
@@ -231,12 +231,12 @@ export default function PlatformAdminDashboard() {
         </div>
 
         {tenants.length === 0 ? (
-          <div className="text-sm text-gray-600">No hay tenants todavía.</div>
+          <div className="text-sm text-slate-400">No hay tenants todavía.</div>
         ) : (
           <div className="overflow-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-600">
+                <tr className="text-left text-slate-400">
                   <th className="py-2 pr-4">Tenant</th>
                   <th className="py-2 pr-4">Admin</th>
                   <th className="py-2 pr-4">Suscripción</th>
@@ -248,11 +248,11 @@ export default function PlatformAdminDashboard() {
               <tbody>
                 {tenants.map((t) => (
                   <tr key={t.id} className="border-t">
-                    <td className="py-2 pr-4 font-medium text-gray-900">{t.nombre}</td>
-                    <td className="py-2 pr-4 text-gray-700">{t.adminUsuario?.email || '-'}</td>
-                    <td className="py-2 pr-4 text-gray-700">{t.suscripcionHasta ? new Date(t.suscripcionHasta).toLocaleDateString() : '-'}</td>
-                    <td className="py-2 pr-4 text-gray-700">{t.maxLocales}</td>
-                    <td className="py-2 pr-4 text-gray-700">{t.activo ? 'Sí' : 'No'}</td>
+                    <td className="py-2 pr-4 font-medium text-slate-100">{t.nombre}</td>
+                    <td className="py-2 pr-4 text-slate-300">{t.adminUsuario?.email || '-'}</td>
+                    <td className="py-2 pr-4 text-slate-300">{t.suscripcionHasta ? new Date(t.suscripcionHasta).toLocaleDateString() : '-'}</td>
+                    <td className="py-2 pr-4 text-slate-300">{t.maxLocales}</td>
+                    <td className="py-2 pr-4 text-slate-300">{t.activo ? 'Sí' : 'No'}</td>
                     <td className="py-2">
                       <div className="flex items-center gap-2">
                         <button className="btn-secondary" onClick={() => selectTenant(t.id)}>
@@ -288,7 +288,7 @@ export default function PlatformAdminDashboard() {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Nombre del tenant</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Nombre del tenant</label>
               <input
                 className="input-field"
                 value={edit.tenantNombre}
@@ -298,7 +298,7 @@ export default function PlatformAdminDashboard() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Suscripción hasta</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Suscripción hasta</label>
                 <input
                   className="input-field"
                   type="date"
@@ -307,7 +307,7 @@ export default function PlatformAdminDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Máx. locales</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Máx. locales</label>
                 <input
                   className="input-field"
                   type="number"
@@ -325,12 +325,12 @@ export default function PlatformAdminDashboard() {
                 checked={edit.activo}
                 onChange={(e) => setEdit((p) => ({ ...p, activo: e.target.checked }))}
               />
-              <label htmlFor="tenant-activo" className="text-sm text-gray-700">Tenant activo</label>
+              <label htmlFor="tenant-activo" className="text-sm text-slate-300">Tenant activo</label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nombre admin</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Nombre admin</label>
                 <input
                   className="input-field"
                   value={edit.adminNombre}
@@ -338,7 +338,7 @@ export default function PlatformAdminDashboard() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email admin</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Email admin</label>
                 <input
                   className="input-field"
                   type="email"
@@ -349,7 +349,7 @@ export default function PlatformAdminDashboard() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Reset password admin (opcional)</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Reset password admin (opcional)</label>
               <input
                 className="input-field"
                 type="text"
@@ -376,33 +376,33 @@ export default function PlatformAdminDashboard() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Nombre del tenant</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Nombre del tenant</label>
               <input className="input-field" value={tenantNombre} onChange={(e) => setTenantNombre(e.target.value)} required />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nombre admin del tenant</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Nombre admin del tenant</label>
                 <input className="input-field" value={adminNombre} onChange={(e) => setAdminNombre(e.target.value)} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email admin del tenant</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Email admin del tenant</label>
                 <input className="input-field" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} required />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password admin del tenant (opcional)</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Password admin del tenant (opcional)</label>
               <input className="input-field" type="text" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Si lo dejas vacío, se genera automáticamente" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Suscripción (días)</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Suscripción (días)</label>
                 <input className="input-field" type="number" min="1" value={suscripcionDias} onChange={(e) => setSuscripcionDias(e.target.value)} required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Máx. locales</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Máx. locales</label>
                 <input className="input-field" type="number" min="1" value={maxLocales} onChange={(e) => setMaxLocales(e.target.value)} required />
               </div>
             </div>
@@ -416,7 +416,7 @@ export default function PlatformAdminDashboard() {
       {resultado && (
         <div className="card mt-6">
           <h2 className="text-lg font-semibold mb-2">Resultado</h2>
-          <div className="text-sm text-gray-800 space-y-1">
+          <div className="text-sm text-slate-200 space-y-1">
             <div><span className="font-medium">Tenant ID:</span> {resultado.tenant?.id}</div>
             <div><span className="font-medium">Admin email:</span> {resultado.admin?.email}</div>
             <div><span className="font-medium">Admin password:</span> {resultado.admin?.password}</div>

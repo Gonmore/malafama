@@ -488,7 +488,7 @@ Cerrar comanda y generar total (Admin/Atención)
 ### PUT `/comandas/:id/entregar`
 Marcar comanda como entregada (Admin/Atención)
 
-Se usa en Mesero web y mobile para persistir la entrega real de la comanda.
+Se usa en Mesero web para persistir la entrega real de la comanda.
 
 **Response:**
 ```json

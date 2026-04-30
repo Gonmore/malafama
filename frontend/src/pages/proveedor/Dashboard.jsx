@@ -1,7 +1,7 @@
-export default function ProveedorDashboard() {
+﻿export default function ProveedorDashboard() {
   return (
     <div>
-      <h2 className="text-3xl font-bold text-gray-900 mb-6">Panel de Proveedor</h2>
+      <h2 className="text-3xl font-bold text-slate-100 mb-6">Panel de Proveedor</h2>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard title="Ventas del Mes" value="$2,450.00" color="green" />
@@ -36,7 +36,7 @@ export default function ProveedorDashboard() {
           <button className="btn-secondary">Semanal</button>
           <button className="btn-secondary">Mensual</button>
         </div>
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-slate-400">
           Gráfica de ventas (por implementar)
         </div>
       </div>
@@ -53,7 +53,7 @@ function StatCard({ title, value, color }) {
 
   return (
     <div className="card">
-      <p className="text-sm text-gray-600 mb-2">{title}</p>
+      <p className="text-sm text-slate-400 mb-2">{title}</p>
       <p className={`text-3xl font-bold ${colorClasses[color]}`}>{value}</p>
     </div>
   )
@@ -63,8 +63,8 @@ function ProductoProveedor({ nombre, ventas, monto }) {
   return (
     <div className="flex justify-between items-center py-3 border-b">
       <div>
-        <p className="font-medium text-gray-900">{nombre}</p>
-        <p className="text-sm text-gray-600">{ventas}</p>
+        <p className="font-medium text-slate-100">{nombre}</p>
+        <p className="text-sm text-slate-400">{ventas}</p>
       </div>
       <span className="font-semibold text-primary-600">{monto}</span>
     </div>
@@ -75,11 +75,11 @@ function PagoItem({ fecha, monto, estado }) {
   return (
     <div className="flex justify-between items-center py-3 border-b">
       <div>
-        <p className="font-medium text-gray-900">{fecha}</p>
-        <p className="text-sm text-gray-600">{monto}</p>
+        <p className="font-medium text-slate-100">{fecha}</p>
+        <p className="text-sm text-slate-400">{monto}</p>
       </div>
       <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-        estado === 'Pagado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+        estado === 'Pagado' ? 'bg-green-900/30 text-green-800' : 'bg-yellow-900/30 text-yellow-800'
       }`}>
         {estado}
       </span>

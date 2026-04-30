@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useLocalStore } from '../../store/localStore';
@@ -103,13 +103,15 @@ export default function LocalDashboard() {
   const cargarLocalPorId = async (id) => {
     try {
       const response = await localService.obtenerLocalPorId(id);
-      const local = response.data?.local || response.data;
+      if (response?.status === 304) return;
+
+      const local = response?.data?.local || response?.data || response?.local || null;
       if (local) {
         setLocalActivo(local);
       }
     } catch (error) {
       console.error('Error al cargar local:', error);
-      toast.error('Error al cargar el local');
+      // Non-blocking: the dashboard can still resolve local via /locales list.
     }
   };
 
@@ -124,36 +126,55 @@ export default function LocalDashboard() {
     try {
       setLoading(true);
       
-      // Cargar datos en paralelo
+      // Cargar datos en paralelo (tolerante a fallos/transitorios)
       const [
         responseLocales,
         responseMesas,
         responseProductos,
         responseProveedores
-      ] = await Promise.all([
+      ] = await Promise.allSettled([
         localService.obtenerLocales(),
-        mesaService.getAll(),
-        productoService.getAll({ activo: true }),
-        proveedorService.getAll()
+        mesaService.getAll(localId ? { localId } : {}),
+        productoService.getAll(localId ? { activo: true, localId } : { activo: true }),
+        proveedorService.getAll(localId ? { localId } : {})
       ]);
 
-      const locales = responseLocales.data?.locales || responseLocales.data || [];
+      const getValue = (result) => (result.status === 'fulfilled' ? result.value : null);
+      const extractList = (payload, nestedKey) => {
+        if (!payload) return [];
+        if (Array.isArray(payload)) return payload;
+        if (Array.isArray(payload?.data)) return payload.data;
+        if (Array.isArray(payload?.[nestedKey])) return payload[nestedKey];
+        if (Array.isArray(payload?.data?.[nestedKey])) return payload.data[nestedKey];
+        return [];
+      };
+      const localesPayload = getValue(responseLocales);
+      const mesasPayload = getValue(responseMesas);
+      const productosPayload = getValue(responseProductos);
+      const proveedoresPayload = getValue(responseProveedores);
+
+      const localesList = localesPayload?.data?.locales || localesPayload?.locales || locales || [];
       
       // Usar el local activo para las métricas
       let local = localActivo;
       if (!local && localId) {
-        local = locales.find(l => l.id === localId);
+        local = localesList.find(l => l.id === localId);
       }
       if (!local) {
-        local = locales[0] || user?.local || null;
+        local = localesList[0] || user?.local || null;
       }
       
       // NO actualizar localActivo aquí, solo cargar stats
       // El localActivo se actualiza solo en cargarLocalPorId
       
-      const mesas = responseMesas.data?.mesas || responseMesas.data || [];
-      const productos = responseProductos.data?.productos || responseProductos.data || [];
-      const proveedores = responseProveedores.data?.proveedores || responseProveedores.data || [];
+      const mesas = extractList(mesasPayload, 'mesas');
+      const productos = extractList(productosPayload, 'productos');
+      const proveedores = extractList(proveedoresPayload, 'proveedores');
+
+      // If any list call failed transiently, keep the last valid totals instead of resetting to 0.
+      const totalMesas = mesasPayload ? mesas.length : stats.totalMesas;
+      const totalProductos = productosPayload ? productos.length : stats.totalProductos;
+      const totalProveedores = proveedoresPayload ? proveedores.length : stats.totalProveedores;
 
       // Cargar métricas en tiempo real si hay un local
       let metrics = {
@@ -167,7 +188,7 @@ export default function LocalDashboard() {
       if (local && local.id) {
         try {
           const responseMetrics = await dashboardService.getMetrics(local.id);
-          metrics = responseMetrics.data || metrics;
+          metrics = responseMetrics?.data || responseMetrics || metrics;
         } catch (error) {
           console.error('Error al cargar métricas:', error);
           // Continuar sin métricas en tiempo real
@@ -175,15 +196,17 @@ export default function LocalDashboard() {
       }
 
       setStats({
-        local,
-        totalMesas: mesas.length,
-        totalProductos: productos.length,
-        totalProveedores: proveedores.length,
+        local: local || stats.local,
+        totalMesas,
+        totalProductos,
+        totalProveedores,
         ...metrics
       });
     } catch (error) {
       console.error('Error al cargar dashboard:', error);
-      toast.error('Error al cargar información del dashboard');
+      if (error?.response?.status !== 304 && error?.code !== 'ERR_CANCELED') {
+        toast.error('Error al cargar información del dashboard');
+      }
     } finally {
       setLoading(false);
     }
@@ -227,7 +250,7 @@ export default function LocalDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <LoadingSpinner text="Cargando dashboard..." />
       </div>
     );
@@ -239,18 +262,18 @@ export default function LocalDashboard() {
     : '';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
       {/* Navbar */}
       <Navbar onReporteDia={() => setShowReportesDiarios(true)} />
 
       {/* Header Info - Mobile Optimized */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
+      <div className="bg-slate-800 border-b border-slate-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             {/* Botón Volver */}
             <button
               onClick={() => navigate('/admin')}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors"
+              className="flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -267,10 +290,10 @@ export default function LocalDashboard() {
                 />
               )}
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">
+                <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold text-slate-100 truncate">
                   {stats.local?.nombre || 'Mi Local'}
                 </h1>
-                <p className="text-xs sm:text-sm text-gray-600">Panel de Administración</p>
+                <p className="text-xs sm:text-sm text-slate-400">Panel de Administración</p>
               </div>
             </div>
             
@@ -286,7 +309,7 @@ export default function LocalDashboard() {
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Mensaje si no hay local */}
         {!stats.local && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 sm:p-6 mb-6 sm:mb-8 rounded-lg">
+          <div className="bg-yellow-900/20 border-l-4 border-yellow-400 p-4 sm:p-6 mb-6 sm:mb-8 rounded-lg">
             <div className="flex items-start">
               <div className="flex-shrink-0">
                 <svg className="h-6 w-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,90 +342,90 @@ export default function LocalDashboard() {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           {/* Mesas */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-900/30 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
-              <span className="hidden sm:inline text-sm text-gray-500">Ocupadas: {stats.mesasOcupadas}</span>
+              <span className="hidden sm:inline text-sm text-slate-400">Ocupadas: {stats.mesasOcupadas}</span>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.totalMesas}</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">Mesas <span className="sm:hidden">({stats.mesasOcupadas} ocup.)</span><span className="hidden sm:inline">totales</span></p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-100">{stats.totalMesas}</p>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">Mesas <span className="sm:hidden">({stats.mesasOcupadas} ocup.)</span><span className="hidden sm:inline">totales</span></p>
           </div>
 
           {/* Productos */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-900/30 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.totalProductos}</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">Productos<span className="hidden sm:inline"> activos</span></p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-100">{stats.totalProductos}</p>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">Productos<span className="hidden sm:inline"> activos</span></p>
           </div>
 
           {/* Proveedores */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-purple-900/30 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
             </div>
-            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.totalProveedores}</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">Proveedores</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-100">{stats.totalProveedores}</p>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">Proveedores</p>
           </div>
 
           {/* Local Status */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-4">
-              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-yellow-900/30 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
             </div>
             <p className="text-xl sm:text-3xl font-bold text-green-600">Activo</p>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">Estado<span className="hidden sm:inline"> del local</span></p>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">Estado<span className="hidden sm:inline"> del local</span></p>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6 mb-6 sm:mb-8">
-          <h2 className="text-base sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">🚀 Accesos Rápidos</h2>
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6 mb-6 sm:mb-8">
+          <h2 className="text-base sm:text-xl font-bold text-slate-100 mb-3 sm:mb-4">🚀 Accesos Rápidos</h2>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-4">
             <button
               onClick={() => navigate('/admin/productos')}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Productos</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Ver, editar y crear productos</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Productos</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Ver, editar y crear productos</p>
               </div>
             </button>
 
             <button
               onClick={() => navigate('/admin/mesas')}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Mesas</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Configurar mesas del local</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Mesas</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Configurar mesas del local</p>
               </div>
             </button>
 
@@ -414,85 +437,98 @@ export default function LocalDashboard() {
                   navigate('/admin/proveedores');
                 }
               }}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Proveedores</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Administrar proveedores</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Proveedores</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Administrar proveedores</p>
               </div>
             </button>
 
             <button
               onClick={() => navigate('/admin/usuarios')}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Usuarios</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Meseros, cocina y más</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Usuarios</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Meseros, cocina y más</p>
               </div>
             </button>
 
             <button
               onClick={() => navigate('/admin/reportes')}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Reportes</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Análisis y estadísticas</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Reportes</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Análisis y estadísticas</p>
               </div>
             </button>
 
             <a
               href={`/mesero${previewQuery}`}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <span className="text-base sm:text-xl">🧑‍🍳</span>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Mesero</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Preview del salón</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Vista Mesero</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Preview del salón</p>
               </div>
             </a>
 
             <a
               href={`/cocina${previewQuery}`}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <span className="text-base sm:text-xl">🍳</span>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Cocina</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Preview de pedidos</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Vista Cocina</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Preview de pedidos</p>
               </div>
             </a>
 
             <a
               href={`/bar${previewQuery}`}
-              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-all text-left"
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <span className="text-base sm:text-xl">🍺</span>
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-base truncate">Vista Bar</p>
-                <p className="text-xs text-gray-500 hidden sm:block">Preview de bebidas</p>
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Vista Bar</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Preview de bebidas</p>
+              </div>
+            </a>
+
+            <a
+              href={`/supervisor${previewQuery}`}
+              className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border border-slate-700 rounded-lg hover:bg-slate-900 hover:border-indigo-500 transition-all text-left"
+            >
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-cyan-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-base sm:text-xl">🧭</span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-100 text-xs sm:text-base truncate">Vista Supervisor</p>
+                <p className="text-xs text-slate-400 hidden sm:block">Preview de asignacion</p>
               </div>
             </a>
           </div>
@@ -501,8 +537,8 @@ export default function LocalDashboard() {
         {/* Métricas en Tiempo Real */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8">
           {/* Gráfica de Ventas Últimos 7 Días */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">📈 Ventas <span className="hidden sm:inline">Últimos </span>7 Días</h2>
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
+            <h2 className="text-base sm:text-xl font-bold text-slate-100 mb-3 sm:mb-4">📈 Ventas <span className="hidden sm:inline">Últimos </span>7 Días</h2>
             {stats.ventasUltimos7Dias.length > 0 ? (
               <div style={{ height: '250px' }} className="sm:h-[300px]">
                 <Line
@@ -557,13 +593,13 @@ export default function LocalDashboard() {
                 />
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8 sm:py-12 text-sm sm:text-base">No hay datos de ventas aún</p>
+              <p className="text-slate-400 text-center py-8 sm:py-12 text-sm sm:text-base">No hay datos de ventas aún</p>
             )}
           </div>
 
           {/* Productos Más Vendidos */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">🏆 Más Vendidos <span className="hidden sm:inline">(30 días)</span></h2>
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
+            <h2 className="text-base sm:text-xl font-bold text-slate-100 mb-3 sm:mb-4">🏆 Más Vendidos <span className="hidden sm:inline">(30 días)</span></h2>
             {stats.productosMasVendidos.length > 0 ? (
               <div style={{ height: '250px' }} className="sm:h-[300px]">
                 <Bar
@@ -626,7 +662,7 @@ export default function LocalDashboard() {
                 />
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8 sm:py-12 text-sm sm:text-base">No hay datos de productos vendidos aún</p>
+              <p className="text-slate-400 text-center py-8 sm:py-12 text-sm sm:text-base">No hay datos de productos vendidos aún</p>
             )}
           </div>
         </div>
@@ -657,7 +693,7 @@ export default function LocalDashboard() {
 
           <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-sm p-4 sm:p-6 text-white">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm sm:text-lg font-semibold">🪑 Ocupación</h3>
+              <h3 className="text-sm sm:text-lg font-semibold flex items-center gap-1"><img src="/mesa.png" className="inline w-5 h-5 object-contain" alt="mesa" /> Ocupación</h3>
               <svg className="w-6 h-6 sm:w-8 sm:h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
@@ -671,38 +707,38 @@ export default function LocalDashboard() {
 
         {/* Local Info */}
         {stats.local && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">📍 Información del Local</h2>
+          <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-3 sm:p-6">
+            <h2 className="text-base sm:text-xl font-bold text-slate-100 mb-3 sm:mb-4">📍 Información del Local</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <p className="text-xs sm:text-sm text-gray-500">Nombre</p>
-                <p className="font-semibold text-gray-900 text-sm sm:text-base">{stats.local.nombre}</p>
+                <p className="text-xs sm:text-sm text-slate-400">Nombre</p>
+                <p className="font-semibold text-slate-100 text-sm sm:text-base">{stats.local.nombre}</p>
               </div>
               {stats.local.direccion && (
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Dirección</p>
-                  <p className="font-semibold text-gray-900 text-sm sm:text-base">{stats.local.direccion}</p>
+                  <p className="text-xs sm:text-sm text-slate-400">Dirección</p>
+                  <p className="font-semibold text-slate-100 text-sm sm:text-base">{stats.local.direccion}</p>
                 </div>
               )}
               {stats.local.telefono && (
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Teléfono</p>
-                  <p className="font-semibold text-gray-900 text-sm sm:text-base">{stats.local.telefono}</p>
+                  <p className="text-xs sm:text-sm text-slate-400">Teléfono</p>
+                  <p className="font-semibold text-slate-100 text-sm sm:text-base">{stats.local.telefono}</p>
                 </div>
               )}
               {stats.local.email && (
                 <div>
-                  <p className="text-xs sm:text-sm text-gray-500">Email</p>
-                  <p className="font-semibold text-gray-900 text-sm sm:text-base">{stats.local.email}</p>
+                  <p className="text-xs sm:text-sm text-slate-400">Email</p>
+                  <p className="font-semibold text-slate-100 text-sm sm:text-base">{stats.local.email}</p>
                 </div>
               )}
               <div>
-                <p className="text-xs sm:text-sm text-gray-500">Moneda</p>
+                <p className="text-xs sm:text-sm text-slate-400">Moneda</p>
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-gray-900 text-sm sm:text-base">{localActivo?.moneda || stats.local?.moneda || user?.local?.moneda || 'Bs'}</p>
+                  <p className="font-semibold text-slate-100 text-sm sm:text-base">{localActivo?.moneda || stats.local?.moneda || user?.local?.moneda || 'Bs'}</p>
                   <button
                     onClick={() => setMostrarConfigMoneda(true)}
-                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium"
+                    className="px-2 py-1 text-xs bg-blue-900/30 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium"
                   >
                     Cambiar
                   </button>
@@ -720,7 +756,7 @@ export default function LocalDashboard() {
       {/* Modal de Configuración de Moneda */}
       {mostrarConfigMoneda && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-t-2xl">
               <h2 className="text-xl font-bold">💱 Configurar Moneda</h2>
               <p className="text-sm text-blue-100">Selecciona la moneda de tu local</p>
@@ -741,18 +777,18 @@ export default function LocalDashboard() {
                     onClick={() => setMonedaSeleccionada(code)}
                     className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
                       monedaSeleccionada === code
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                        ? 'border-blue-500 bg-blue-900/20 shadow-md'
+                        : 'border-slate-700 hover:border-indigo-500 hover:bg-slate-900'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">{flag}</span>
                         <div>
-                          <p className={`font-bold ${monedaSeleccionada === code ? 'text-blue-700' : 'text-gray-900'}`}>
+                          <p className={`font-bold ${monedaSeleccionada === code ? 'text-blue-700' : 'text-slate-100'}`}>
                             {code}
                           </p>
-                          <p className="text-sm text-gray-600">{name}</p>
+                          <p className="text-sm text-slate-400">{name}</p>
                         </div>
                       </div>
                       {monedaSeleccionada === code && (
@@ -769,7 +805,7 @@ export default function LocalDashboard() {
             <div className="px-6 pb-6 flex gap-3">
               <button
                 onClick={() => setMostrarConfigMoneda(false)}
-                className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl text-gray-700 font-semibold hover:bg-gray-100 transition-colors"
+                className="flex-1 px-4 py-3 border-2 border-slate-600 rounded-xl text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
               >
                 Cancelar
               </button>

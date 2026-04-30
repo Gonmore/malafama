@@ -33,13 +33,13 @@ const usuarioSchemas = {
     nombre: Joi.string().min(3).max(255).required(),
     email: Joi.string().email({ tlds: { allow: false } }).required(),
     password: Joi.string().min(6).required(),
-    tipo: Joi.string().valid('admin', 'atencion', 'cocina', 'proveedor').required()
+    tipo: Joi.string().valid('admin', 'atencion', 'supervisor', 'cocina', 'bar', 'proveedor', 'platform_admin').required()
   }),
   update: Joi.object({
     nombre: Joi.string().min(3).max(255),
     email: Joi.string().email({ tlds: { allow: false } }),
     password: Joi.string().min(6),
-    tipo: Joi.string().valid('admin', 'atencion', 'cocina', 'proveedor'),
+    tipo: Joi.string().valid('admin', 'atencion', 'supervisor', 'cocina', 'bar', 'proveedor', 'platform_admin'),
     activo: Joi.boolean()
   }),
   login: Joi.object({
@@ -57,7 +57,9 @@ const productoSchemas = {
     precio: Joi.number().min(0).required(),
     costo: Joi.number().min(0).required(),
     proveedorId: Joi.string().uuid().allow(null),
-    categoria: Joi.string().max(100).allow('', null)
+    categoria: Joi.string().max(100).allow('', null),
+    tipo: Joi.string().valid('comida', 'bebida', 'otros'),
+    localId: Joi.string().uuid().allow(null)
   }),
   update: Joi.object({
     nombre: Joi.string().min(2).max(255),
@@ -67,6 +69,7 @@ const productoSchemas = {
     costo: Joi.number().min(0),
     proveedorId: Joi.string().uuid().allow(null),
     categoria: Joi.string().max(100).allow('', null),
+    tipo: Joi.string().valid('comida', 'bebida', 'otros'),
     activo: Joi.boolean()
   })
 };

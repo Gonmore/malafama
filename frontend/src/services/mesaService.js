@@ -14,8 +14,8 @@ export const mesaService = {
   },
 
   // Obtener mesa por ID
-  getById: async (id) => {
-    const response = await api.get(`/mesas/${id}`);
+  getById: async (id, params = {}) => {
+    const response = await api.get(`/mesas/${id}`, { params });
     return response.data;
   },
 

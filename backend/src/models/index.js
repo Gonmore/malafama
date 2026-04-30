@@ -2,6 +2,7 @@ const Usuario = require('./Usuario');
 const Local = require('./Local');
 const Proveedor = require('./Proveedor');
 const Producto = require('./Producto');
+const CategoriaProducto = require('./CategoriaProducto');
 const Mesa = require('./Mesa');
 const MesaAsignada = require('./MesaAsignada');
 const Comanda = require('./Comanda');
@@ -11,6 +12,12 @@ const ReporteDiario = require('./ReporteDiario');
 const ScheduledReport = require('./ScheduledReport');
 const PagoProveedor = require('./PagoProveedor');
 const Tenant = require('./Tenant');
+// Comanda de shows / Firebase sync
+const EventoComanda = require('./EventoComanda');
+const AsientoEvento = require('./AsientoEvento');
+const AlertaMesero = require('./AlertaMesero');
+const TurnoMesero = require('./TurnoMesero');
+const AsignacionMesaEvento = require('./AsignacionMesaEvento');
 
 // Definir relaciones
 
@@ -72,6 +79,26 @@ Local.hasMany(Producto, {
 Producto.belongsTo(Local, {
   foreignKey: 'localId',
   as: 'local'
+});
+
+// Local - Categorias de productos (1:N)
+Local.hasMany(CategoriaProducto, {
+  foreignKey: 'localId',
+  as: 'categoriasProductos'
+});
+CategoriaProducto.belongsTo(Local, {
+  foreignKey: 'localId',
+  as: 'local'
+});
+
+// CategoriaProducto - Producto (1:N)
+CategoriaProducto.hasMany(Producto, {
+  foreignKey: 'categoriaId',
+  as: 'productos'
+});
+Producto.belongsTo(CategoriaProducto, {
+  foreignKey: 'categoriaId',
+  as: 'categoriaObj'
 });
 
 // Local - Comandas (1:N)
@@ -218,12 +245,38 @@ ConfiguracionRestaurante.belongsTo(Usuario, {
   as: 'admin'
 });
 
+// ── EventoComanda relationships ─────────────────────────────────────────────
+EventoComanda.hasMany(AsientoEvento, { foreignKey: 'eventoId', as: 'asientos' });
+AsientoEvento.belongsTo(EventoComanda, { foreignKey: 'eventoId', as: 'evento' });
+
+EventoComanda.hasMany(Comanda, { foreignKey: 'eventoId', as: 'comandas' });
+Comanda.belongsTo(EventoComanda, { foreignKey: 'eventoId', as: 'evento' });
+
+EventoComanda.hasMany(TurnoMesero, { foreignKey: 'eventoId', as: 'turnos' });
+TurnoMesero.belongsTo(EventoComanda, { foreignKey: 'eventoId', as: 'evento' });
+
+EventoComanda.hasMany(AsignacionMesaEvento, { foreignKey: 'eventoId', as: 'asignaciones' });
+AsignacionMesaEvento.belongsTo(EventoComanda, { foreignKey: 'eventoId', as: 'evento' });
+
+Mesa.hasMany(AsignacionMesaEvento, { foreignKey: 'mesaId', as: 'asignacionesEvento' });
+AsignacionMesaEvento.belongsTo(Mesa, { foreignKey: 'mesaId', as: 'mesa' });
+
+Mesa.hasMany(AlertaMesero, { foreignKey: 'mesaId', as: 'alertas' });
+AlertaMesero.belongsTo(Mesa, { foreignKey: 'mesaId', as: 'mesa' });
+
+Usuario.hasMany(TurnoMesero, { foreignKey: 'meseroId', as: 'turnos' });
+TurnoMesero.belongsTo(Usuario, { foreignKey: 'meseroId', as: 'mesero' });
+
+Usuario.hasMany(AsignacionMesaEvento, { foreignKey: 'meseroId', as: 'asignacionesEvento' });
+AsignacionMesaEvento.belongsTo(Usuario, { foreignKey: 'meseroId', as: 'mesero' });
+
 module.exports = {
   Usuario,
   Local,
   Tenant,
   Proveedor,
   Producto,
+  CategoriaProducto,
   Mesa,
   MesaAsignada,
   Comanda,
@@ -231,5 +284,11 @@ module.exports = {
   ConfiguracionRestaurante,
   ReporteDiario,
   ScheduledReport,
-  PagoProveedor
+  PagoProveedor,
+  // Show comanda
+  EventoComanda,
+  AsientoEvento,
+  AlertaMesero,
+  TurnoMesero,
+  AsignacionMesaEvento
 };

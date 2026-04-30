@@ -44,16 +44,24 @@ services:
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
       DB_WAIT_RETRIES: ${DB_WAIT_RETRIES:-60}
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-2}
+      FIRESTORE_COLLECTION: ${FIRESTORE_COLLECTION:-eventos_v3}
+      FIREBASE_SYNC_REFRESH_MS: ${FIREBASE_SYNC_REFRESH_MS:-60000}
+      FIREBASE_RECONCILE_MAX_LOCAL: ${FIREBASE_RECONCILE_MAX_LOCAL:-200}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/run/secrets/firebase-service-account.json}
     ports:
       - "${PORT:-5000}:${PORT:-5000}"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
+      - ./backend/package.json:/app/package.json
+      - ./backend/package-lock.json:/app/package-lock.json
+      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
       - /app/node_modules
     networks:
       - malafama-network
       - red-desarrollo
-    command: ["npm", "run", "dev"]
+    command: ["sh", "-c", "npm install && npm run db:migrate && npm run dev"]
 
   # One-shot Platform Admin bootstrap
   # - runs migrations (creates tenants table)

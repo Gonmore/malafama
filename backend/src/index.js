@@ -26,15 +26,21 @@ const onboardingRoutes = require('./routes/onboarding.routes');
 const localesRoutes = require('./routes/locales.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const platformAdminRoutes = require('./routes/platformAdmin.routes');
+const eventoRoutes = require('./routes/evento.routes');
+const alertaRoutes = require('./routes/alerta.routes');
+const asignacionRoutes = require('./routes/asignacion.routes');
 
 // Inicializar Express
 const app = express();
 const server = http.createServer(app);
+app.set('trust proxy', process.env.TRUST_PROXY || 1);
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 // Inicializar Socket.io
+const parsedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(s => s.trim());
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: parsedOrigins.length === 1 ? parsedOrigins[0] : parsedOrigins,
     methods: ['GET', 'POST']
   },
   pingTimeout: 60000,
@@ -51,28 +57,82 @@ initializeSocket(io);
 // Inicializar Socket.io en los controladores que lo necesitan
 const comandaController = require('./controllers/comanda.controller');
 const pedidoController = require('./controllers/pedido.controller');
+const alertaController = require('./controllers/alerta.controller');
+const asignacionController = require('./controllers/asignacion.controller');
 comandaController.setSocketIO(io);
 pedidoController.setSocketIO(io);
+alertaController.setSocketIO(io);
+asignacionController.setSocketIO(io);
 
 // Middlewares de seguridad
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: parsedOrigins.length === 1 ? parsedOrigins[0] : parsedOrigins,
   credentials: true
 }));
 
-// Rate limiting - configuración ajustada para uso en restaurante
-// Permite ~5000 requests por minuto (suficiente para múltiples dispositivos con polling y testing)
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minuto
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 5000, // 5000 requests por minuto
-  message: 'Demasiadas peticiones desde esta IP, por favor intente más tarde.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for Socket.io connections
-  skip: (req) => req.path.includes('/socket.io')
+const logRateLimitHit = (scope) => (req) => {
+  console.warn('Rate limit excedido:', {
+    scope,
+    method: req.method,
+    path: req.originalUrl,
+    ip: req.ip,
+    forwardedFor: req.headers['x-forwarded-for'],
+    userAgent: req.get('user-agent') || 'unknown',
+    authHeader: req.headers.authorization ? 'present' : 'missing'
+  });
+};
+
+const isSocketRequest = (req) => {
+  const url = req.originalUrl || req.path || '';
+  return url.includes('/socket.io');
+};
+
+const isAuthRequest = (req, apiVersion) => {
+  const url = req.originalUrl || req.path || '';
+  return url.includes(`/api/${apiVersion}/auth`);
+};
+
+// Rate limiting general del API. En desarrollo local se desactiva para no romper
+// vistas con polling intenso mientras se depura el sistema.
+const apiLimiter = isDevelopment
+  ? null
+  : rateLimit({
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 1 * 60 * 1000,
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 30000,
+      message: 'Demasiadas peticiones desde esta IP, por favor intente más tarde.',
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => isSocketRequest(req) || isAuthRequest(req, API_VERSION),
+      handler: (req, res, _next, options) => {
+        logRateLimitHit('api')(req);
+        res.status(options.statusCode).json({
+          success: false,
+          message: options.message
+        });
+      }
+    });
+
+// Rate limiting específico para login: protege credenciales sin bloquear por tráfico funcional del panel.
+const authLimiter = rateLimit({
+  windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS, 10) || (isDevelopment ? 1000 : 100),
+  message: 'Demasiados intentos de inicio de sesión. Intente nuevamente en unos minutos.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (req, res, _next, options) => {
+    logRateLimitHit('auth')(req);
+    res.status(options.statusCode).json({
+      success: false,
+      message: options.message
+    });
+  }
 });
-app.use('/api/', limiter);
+
+if (apiLimiter) {
+  app.use('/api/', apiLimiter);
+}
 
 // Middlewares generales
 app.use(morgan('dev'));
@@ -84,7 +144,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Rutas de API
 const API_VERSION = process.env.API_VERSION || 'v1';
-app.use(`/api/${API_VERSION}/auth`, authRoutes);
+app.use(`/api/${API_VERSION}/auth`, authLimiter, authRoutes);
 app.use(`/api/${API_VERSION}/users`, userRoutes);
 app.use(`/api/${API_VERSION}/usuarios`, userRoutes); // Alias en español
 app.use(`/api/${API_VERSION}/products`, productRoutes);
@@ -99,6 +159,9 @@ app.use(`/api/${API_VERSION}/onboarding`, onboardingRoutes);
 app.use(`/api/${API_VERSION}/locales`, localesRoutes);
 app.use(`/api/${API_VERSION}/dashboard`, dashboardRoutes);
 app.use(`/api/${API_VERSION}/platform-admin`, platformAdminRoutes);
+app.use(`/api/${API_VERSION}/eventos`, eventoRoutes);
+app.use(`/api/${API_VERSION}/alertas`, alertaRoutes);
+app.use(`/api/${API_VERSION}/asignaciones`, asignacionRoutes);
 
 // Ruta de health check
 app.get('/health', (req, res) => {
@@ -146,9 +209,12 @@ const startServer = async ({ port, startScheduler } = {}) => {
     }
     
     const effectivePort = port ?? PORT;
-    const shouldStartScheduler =
-      (startScheduler ?? process.env.NODE_ENV !== 'test') &&
-      process.env.DISABLE_SCHEDULER !== 'true';
+    const forceDisableScheduler = process.env.DISABLE_SCHEDULER === 'true';
+    const forceEnableScheduler = process.env.ENABLE_SCHEDULER === 'true';
+    const explicitStartScheduler = typeof startScheduler === 'boolean' ? startScheduler : null;
+    const defaultSchedulerState = process.env.NODE_ENV === 'production';
+    const baseSchedulerState = explicitStartScheduler ?? defaultSchedulerState;
+    const shouldStartScheduler = forceDisableScheduler ? false : (forceEnableScheduler || baseSchedulerState);
 
     // Iniciar servidor
     await new Promise((resolve) => {
@@ -162,6 +228,16 @@ const startServer = async ({ port, startScheduler } = {}) => {
       });
     });
 
+    // Start Firebase → PostgreSQL seat sync
+    try {
+      const { startFirebaseSync } = require('./services/firebaseSync.service');
+      startFirebaseSync(io).catch((err) => {
+        console.error('[Firebase] Sync startup error:', err.message || err);
+      });
+    } catch (err) {
+      console.warn('[Firebase] Could not load sync service:', err.message || err);
+    }
+
     // Start background scheduler for daily reports (6 AM run)
     if (shouldStartScheduler) {
       try {
@@ -170,6 +246,8 @@ const startServer = async ({ port, startScheduler } = {}) => {
       } catch (err) {
         console.error('No se pudo iniciar reportes.scheduler:', err.message || err);
       }
+    } else if (isDevelopment) {
+      console.log('⏸️ Reportes Scheduler deshabilitado en desarrollo');
     }
   } catch (error) {
     console.error('✗ Error al iniciar el servidor:', error);

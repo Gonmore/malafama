@@ -1,4 +1,9 @@
 process.env.NODE_ENV = 'test';
+process.env.DB_NAME = process.env.DB_NAME || 'malafama_test';
+
+if (!/test/i.test(process.env.DB_NAME || '')) {
+  throw new Error(`Unsafe DB_NAME for tests: ${process.env.DB_NAME}. Use a dedicated test database.`);
+}
 
 jest.setTimeout(30000);
 

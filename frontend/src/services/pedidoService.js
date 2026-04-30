@@ -3,9 +3,9 @@ import api from './api';
 export const pedidoService = {
   // Obtener pedidos pendientes para cocina
   // Use the canonical DB value 'en_preparacion' to filter preparing orders
-  getPendientesCocina: async (estado = 'pendiente,en_preparacion') => {
+  getPendientesCocina: async (estado = 'pendiente,en_preparacion', params = {}) => {
     const response = await api.get('/pedidos/cocina/pendientes', {
-      params: { estado }
+      params: { estado, ...params }
     });
     return response.data;
   },

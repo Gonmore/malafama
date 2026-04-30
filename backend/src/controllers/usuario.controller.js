@@ -1,6 +1,6 @@
 const { Usuario } = require('../models');
 const { Op } = require('sequelize');
-const { resolveAllowedLocalIds } = require('../utils/localScope');
+const { resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 
 function isUsuarioInScope(usuario, allowedLocalIds, currentUserId) {
   if (allowedLocalIds === null) return true;
@@ -116,7 +116,7 @@ const { saveBase64ToUploads } = require('../services/storage.service');
 
 const createUsuario = async (req, res) => {
   try {
-    const { nombre, email, password, tipo, telefono, direccion, foto } = req.body;
+    const { nombre, email, password, tipo, telefono, direccion, foto, localId: requestedLocalId } = req.body;
 
     // Verificar que el email no esté en uso
     const usuarioExistente = await Usuario.findOne({ where: { email } });
@@ -128,7 +128,7 @@ const createUsuario = async (req, res) => {
     }
 
     // Validar tipo de usuario
-    const tiposValidos = ['admin', 'atencion', 'cocina', 'bar'];
+    const tiposValidos = ['admin', 'atencion', 'supervisor', 'cocina', 'bar'];
     if (!tiposValidos.includes(tipo)) {
       return res.status(400).json({
         success: false,
@@ -137,10 +137,23 @@ const createUsuario = async (req, res) => {
       });
     }
 
-    // Para usuarios no-admin, requiere localId (se asigna el local del admin que crea)
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const tiposOperativos = ['atencion', 'supervisor', 'cocina', 'bar'];
+
+    // Para usuarios operativos, usar el local seleccionado o el único local permitido del admin.
     let localId = null;
-    if (tipo !== 'admin' && req.user.localId) {
-      localId = req.user.localId;
+    if (tiposOperativos.includes(tipo)) {
+      const fallbackLocalId = req.user.localId || (Array.isArray(allowedLocalIds) && allowedLocalIds.length === 1 ? allowedLocalIds[0] : null);
+      localId = requestedLocalId || fallbackLocalId;
+
+      if (!localId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Debes seleccionar un local para este tipo de usuario'
+        });
+      }
+
+      assertLocalIdAllowed(allowedLocalIds, localId);
     }
 
     const usuarioData = {
@@ -354,7 +367,7 @@ const getUsersByTipo = async (req, res) => {
 
     const allowedLocalIds = await resolveAllowedLocalIds(req);
 
-    const tiposValidos = ['admin', 'atencion', 'cocina', 'proveedor'];
+    const tiposValidos = ['admin', 'atencion', 'supervisor', 'cocina', 'bar', 'proveedor'];
     if (!tiposValidos.includes(tipo)) {
       return res.status(400).json({
         success: false,

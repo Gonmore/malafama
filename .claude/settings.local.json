@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose -f c:/Users/paulo/Documents/Desarrollo/malafama/docker-compose.dev.yml restart backend)"
+    ]
+  }
+}

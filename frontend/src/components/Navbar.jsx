@@ -1,8 +1,8 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+﻿import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import UserDropdown from './UserDropdown';
 
-export default function Navbar({ roleLabel = null, pedidosCount = null, onReporteDia = null, darkMode = false }) {
+export default function Navbar({ roleLabel = null, pedidosCount = null, onReporteDia = null, darkMode = true }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
@@ -21,6 +21,8 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
         return '/admin';
       case 'atencion':
         return '/mesero';
+      case 'supervisor':
+        return '/supervisor';
       case 'cocina':
         return '/cocina';
       case 'bar':
@@ -42,17 +44,20 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
     navigate('/admin');
   };
 
+  const localNombre = user?.local?.nombre || 'Local';
+  const meseroNombre = user?.nombre || 'Mesero';
+
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg sticky top-0 z-50">
+    <div className="sticky top-0 z-50 border-b border-slate-700 bg-slate-900/80 backdrop-blur-md shadow-lg">
       <div className="px-3 py-3">
         <div className="flex items-center justify-between">
           {/* Logo como Home */}
-          <button 
+          <button
             onClick={handleHomeClick}
-            className="flex items-center gap-3 px-2 py-1 rounded-lg hover:bg-white/10 transition-all"
+            className="flex items-center gap-3 px-2 py-1 rounded-xl hover:bg-slate-800 transition-all"
           >
             {user?.local?.logo ? (
-              <div className="bg-white rounded-md p-1 shadow-sm" style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="bg-slate-800 rounded-md p-1 shadow-sm" style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img 
                   src={user.local.logo} 
                   alt="Home"
@@ -68,12 +73,12 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
           </button>
           
           {/* Centered role label and icon */}
-          {roleLabel && (
+          {roleLabel && user?.tipo !== 'atencion' && (
             <div
               className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-3 pointer-events-none max-w-[60%]"
               aria-hidden={false}
             >
-              <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full text-white font-semibold text-sm min-w-0">
+              <div className="flex items-center gap-2 bg-slate-800/90 px-3 py-1 rounded-full text-slate-100 border border-slate-700 font-semibold text-sm min-w-0">
                 {/* Icon based on role */}
                 {(() => {
                   const role = (roleLabel || '').toLowerCase();
@@ -101,7 +106,7 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
                 })()}
 
                 <span className="select-none truncate">{roleLabel}</span>
-                <span className="hidden sm:inline bg-white/20 text-white px-2 py-0.5 rounded-full text-xs">{pedidosCount ?? 0}</span>
+                <span className="hidden sm:inline bg-indigo-600/30 text-indigo-200 px-2 py-0.5 rounded-full text-xs">{pedidosCount ?? 0}</span>
               </div>
             </div>
           )}
@@ -111,28 +116,15 @@ export default function Navbar({ roleLabel = null, pedidosCount = null, onReport
             {isPreview && (
               <button
                 onClick={handleBackToAdmin}
-                className="px-3 py-2 rounded-lg border transition-colors bg-white/10 text-white border-white/20 hover:bg-white/20"
+                className="px-3 py-2 rounded-xl border transition-colors bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
               >
                 Volver al admin
               </button>
             )}
 
-            {/* Mostrar botón Asignar Mesas visible en la barra para meseros */}
-            {user?.tipo === 'atencion' && (
-              <button
-                onClick={() => {
-                  try { window.dispatchEvent(new CustomEvent('open-assign-modal')); } catch (e) {}
-                  navigate('/mesero');
-                }}
-                className="px-3 py-2 rounded-lg border transition-colors bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hidden md:inline"
-              >
-                Asignar mesas
-              </button>
-            )}
-
             <div className="text-right hidden sm:block">
-              <p className="text-white font-semibold text-sm">{user?.nombre}</p>
-              <p className="text-blue-100 text-xs capitalize">{user?.tipo}</p>
+              <p className="text-slate-100 font-semibold text-sm">{user?.tipo === 'atencion' ? localNombre : (user?.nombre || 'Usuario')}</p>
+              <p className="text-slate-400 text-xs">{user?.tipo === 'atencion' ? meseroNombre : (user?.tipo || '')}</p>
             </div>
             
             <UserDropdown 

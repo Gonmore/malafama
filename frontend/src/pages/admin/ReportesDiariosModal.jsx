@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { reporteService } from '../../services/reporteService';
 import localService from '../../services/localService';
 import { toast } from 'react-hot-toast';
 
-export default function ReportesDiariosModal({ onClose, darkMode = false }) {
+export default function ReportesDiariosModal({ onClose, darkMode = true }) {
   const { user } = useAuthStore();
   const [reporte, setReporte] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -106,10 +106,10 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-3xl p-8 shadow-2xl`}>
+        <div className="bg-gray-900 rounded-3xl p-8 shadow-2xl border border-gray-700">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className={`mt-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Cargando reportes...</p>
+            <p className="mt-4 text-gray-300">Cargando reportes...</p>
           </div>
         </div>
       </div>
@@ -120,15 +120,15 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-5xl max-h-[95vh] flex flex-col my-4`}>
-        <div className={`p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between gap-4 flex-wrap`}> 
+      <div className="bg-gray-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-5xl max-h-[95vh] flex flex-col my-4 border border-gray-700">
+        <div className="p-6 border-b border-gray-700 flex items-center justify-between gap-4 flex-wrap"> 
           {/* Local selector (si el admin tiene locales) */}
           <div className="flex items-center gap-3">
             {locales.length > 1 && (
               <select
                 value={selectedLocalId || ''}
                 onChange={(e) => setSelectedLocalId(e.target.value)}
-                className="px-3 py-2 rounded-lg border"
+                className="px-3 py-2 rounded-lg border border-gray-600 bg-gray-800 text-gray-100"
               >
                 {locales.map(l => (
                   <option key={l.id} value={l.id}>{l.nombre}</option>
@@ -136,12 +136,12 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
               </select>
             )}
           <div>
-            <h2 className={`text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>📥 Reportes diarios del local</h2>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Período: {fmtDate(reporte.inicioDia)} - {fmtDate(reporte.finDia)}</p>
+            <h2 className="text-2xl font-bold text-gray-100">📥 Reportes diarios del local</h2>
+            <p className="text-sm text-slate-400">Período: {fmtDate(reporte.inicioDia)} - {fmtDate(reporte.finDia)}</p>
           </div>
           </div>
           <div>
-            <button onClick={onClose} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-slate-400">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -153,22 +153,22 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
           {/* Selector de fechas - vista por mes (mostrar todos los días del mes) */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Seleccionar fecha</p>
+              <p className="text-sm text-gray-300">Seleccionar fecha</p>
               <div className="flex items-center gap-2">
-                <button onClick={() => { const m = new Date(viewingMonth); m.setMonth(m.getMonth()-1); setViewingMonth(m); }} className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-800 text-gray-200' : 'bg-white text-gray-700 border'}`}>◀</button>
-                <div className={`px-3 py-1 rounded font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{viewingMonth.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}</div>
-                <button onClick={() => { const m = new Date(viewingMonth); m.setMonth(m.getMonth()+1); setViewingMonth(m); }} className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-800 text-gray-200' : 'bg-white text-gray-700 border'}`}>▶</button>
+                <button onClick={() => { const m = new Date(viewingMonth); m.setMonth(m.getMonth()-1); setViewingMonth(m); }} className="px-2 py-1 rounded bg-gray-800 text-gray-200">◀</button>
+                <div className="px-3 py-1 rounded font-semibold text-gray-200">{viewingMonth.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}</div>
+                <button onClick={() => { const m = new Date(viewingMonth); m.setMonth(m.getMonth()+1); setViewingMonth(m); }} className="px-2 py-1 rounded bg-gray-800 text-gray-200">▶</button>
               </div>
             </div>
             {/* Legend for markers */}
             <div className="flex items-center gap-4 mb-2 text-xs">
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center">📌</div>
-                <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Reporte persistido</div>
+                <div className="text-gray-300">Reporte persistido</div>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full bg-yellow-400 text-white flex items-center justify-center">📝</div>
-                <div className={`${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Actividad calculada</div>
+                <div className="text-gray-300">Actividad calculada</div>
               </div>
             </div>
             <div className="grid grid-cols-7 gap-2">
@@ -206,7 +206,7 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
                     <button
                       key={iso}
                       onClick={() => setSelectedDate(iso)}
-                      className={`p-2 rounded-lg text-center transition ${active ? 'bg-blue-600 text-white' : darkMode ? 'bg-gray-800 text-gray-200 border border-gray-700' : 'bg-white text-gray-700 border border-gray-200'}`}
+                      className={`p-2 rounded-lg text-center transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-200 border border-gray-700'}`}
                       title={hasReportObj ? `${hasReportObj.total} comandas` : ''}
                     >
                       <div className="text-sm font-semibold">{dt.getDate()}</div>
@@ -231,63 +231,63 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
           </div>
           {/* Totales generales */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-              <p className={`text-sm font-semibold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>Total del Día</p>
-              <p className={`text-2xl font-bold ${darkMode ? 'text-blue-200' : 'text-blue-600'}`}>{fmtMoney(reporte.totales.totalDia)}</p>
+            <div className="p-4 rounded-xl bg-blue-900/30">
+              <p className="text-sm font-semibold text-blue-300">Total del Día</p>
+              <p className="text-2xl font-bold text-blue-200">{fmtMoney(reporte.totales.totalDia)}</p>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-green-900/30' : 'bg-green-50'}`}>
-              <p className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-700'}`}>Efectivo</p>
-              <p className={`text-2xl font-bold ${darkMode ? 'text-green-200' : 'text-green-600'}`}>{fmtMoney(reporte.totales.totalEfectivo)}</p>
+            <div className="p-4 rounded-xl bg-green-900/30">
+              <p className="text-sm font-semibold text-green-300">Efectivo</p>
+              <p className="text-2xl font-bold text-green-200">{fmtMoney(reporte.totales.totalEfectivo)}</p>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-purple-900/30' : 'bg-purple-50'}`}>
-              <p className={`text-sm font-semibold ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>QR</p>
-              <p className={`text-2xl font-bold ${darkMode ? 'text-purple-200' : 'text-purple-600'}`}>{fmtMoney(reporte.totales.totalQr)}</p>
+            <div className="p-4 rounded-xl bg-purple-900/30">
+              <p className="text-sm font-semibold text-purple-300">QR</p>
+              <p className="text-2xl font-bold text-purple-200">{fmtMoney(reporte.totales.totalQr)}</p>
             </div>
 
-            <div className={`p-4 rounded-xl ${darkMode ? 'bg-orange-900/30' : 'bg-orange-50'}`}>
-              <p className={`text-sm font-semibold ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>Mixto</p>
-              <p className={`text-2xl font-bold ${darkMode ? 'text-orange-200' : 'text-orange-600'}`}>{fmtMoney(reporte.totales.totalMixto)}</p>
+            <div className="p-4 rounded-xl bg-orange-900/30">
+              <p className="text-sm font-semibold text-orange-300">Mixto</p>
+              <p className="text-2xl font-bold text-orange-200">{fmtMoney(reporte.totales.totalMixto)}</p>
             </div>
           </div>
 
           {/* Por usuario */}
           {reporte.usuarios.length === 0 ? (
-            <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className="text-center py-8 text-slate-400">
               <p>No hay reportes enviados por los usuarios del local en este período</p>
             </div>
           ) : (
             <div className="space-y-4">
               {reporte.usuarios.map(usuario => (
-                <div key={usuario.id} className={`p-4 rounded-lg ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
+                <div key={usuario.id} className="p-4 rounded-lg bg-gray-800 border border-gray-700">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className={`font-semibold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{usuario.nombre} <span className={`text-xs ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>({usuario.tipo})</span></p>
-                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{usuario.comandas.length} comandas</p>
+                      <p className="font-semibold text-gray-100">{usuario.nombre} <span className="text-xs ml-2 text-slate-400">({usuario.tipo})</span></p>
+                      <p className="text-xs text-slate-400">{usuario.comandas.length} comandas</p>
                     </div>
                     <div className="text-right">
-                      <p className={`text-lg font-bold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>{fmtMoney(usuario.totalUsuario)}</p>
+                      <p className="text-lg font-bold text-blue-300">{fmtMoney(usuario.totalUsuario)}</p>
                     </div>
                   </div>
 
                   <div className="space-y-3">
                     {usuario.comandas.map(c => (
-                      <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                      <div key={c.id} className="p-3 rounded-lg bg-gray-900">
                         <div className="flex items-start justify-between">
                           <div>
-                            <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            <p className="text-sm font-semibold text-gray-300">
                               Comanda #{c.id.slice(0,8)} • Mesa {c.mesa?.numero ?? '—'}
                             </p>
-                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{fmtDate(c.createdAt)}</p>
+                            <p className="text-xs text-slate-400">{fmtDate(c.createdAt)}</p>
                           </div>
                           <div className="text-right">
-                            <p className={`text-lg font-bold ${darkMode ? 'text-blue-200' : 'text-blue-600'}`}>{fmtMoney(c.total)}</p>
+                            <p className="text-lg font-bold text-blue-200">{fmtMoney(c.total)}</p>
                             {c.formaPago && (
                               <div className="mt-2 text-xs">
-                                <span className={`px-2 py-0.5 rounded-full ${darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700'}`}>{c.estado}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-yellow-900/30 text-yellow-300">{c.estado}</span>
                                 {c.formaPago === 'qr' && c.comprobante && (
-                                  <a href={c.comprobante} target="_blank" rel="noreferrer" className={`ml-2 underline ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>Ver comprobante</a>
+                                  <a href={c.comprobante} target="_blank" rel="noreferrer" className="ml-2 underline text-blue-300">Ver comprobante</a>
                                 )}
                               </div>
                             )}
@@ -296,10 +296,10 @@ export default function ReportesDiariosModal({ onClose, darkMode = false }) {
                         {/* Pedidos resumen */}
                         <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                           {c.pedidos.slice(0,4).map(p => (
-                            <div key={p.id} className={`p-2 rounded ${darkMode ? 'bg-gray-800/60' : 'bg-white'}`}>
+                            <div key={p.id} className="p-2 rounded bg-gray-800/60">
                               <div className="flex items-center justify-between">
-                                <span className={`${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{p.producto?.nombre ?? '—'}</span>
-                                <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{parseFloat(p.subtotal).toFixed(2)}</span>
+                                <span className="text-gray-200">{p.producto?.nombre ?? '—'}</span>
+                                <span className="font-semibold text-gray-200">{parseFloat(p.subtotal).toFixed(2)}</span>
                               </div>
                             </div>
                           ))}

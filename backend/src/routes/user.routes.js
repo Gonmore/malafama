@@ -7,7 +7,7 @@ const usuarioController = require('../controllers/usuario.controller');
 router.get('/', authenticate, authorize('admin'), usuarioController.getAllUsuarios);
 
 // Obtener usuarios por tipo
-router.get('/tipo/:tipo', authenticate, authorize('admin'), usuarioController.getUsersByTipo);
+router.get('/tipo/:tipo', authenticate, authorize('admin', 'supervisor'), usuarioController.getUsersByTipo);
 
 // Obtener usuario por ID
 router.get('/:id', authenticate, usuarioController.getUsuarioById);

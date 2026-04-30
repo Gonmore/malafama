@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useLocalStore } from '../store/localStore';
 import localService from '../services/localService';
@@ -53,9 +53,9 @@ export default function LocalSelector({ onLocalChange }) {
     <div className="relative">
       <button
         onClick={() => setMostrarSelector(!mostrarSelector)}
-        className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-blue-300 rounded-lg hover:bg-blue-50 transition-all"
+        className="flex items-center gap-2 px-4 py-2 bg-slate-800 border-2 border-blue-300 rounded-lg hover:bg-blue-900/20 transition-all"
       >
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-slate-100">
           {localActivo?.nombre || 'Seleccionar Local'}
         </span>
         <svg 
@@ -77,7 +77,7 @@ export default function LocalSelector({ onLocalChange }) {
           />
           
           {/* Dropdown */}
-          <div className="absolute top-full mt-2 right-0 bg-white rounded-lg shadow-2xl border-2 border-gray-200 min-w-[250px] z-50">
+          <div className="absolute top-full mt-2 right-0 bg-slate-800 rounded-lg shadow-2xl border-2 border-slate-700 min-w-[250px] z-50">
             <div className="p-2 space-y-1">
               {locales.map((local) => (
                 <button
@@ -85,8 +85,8 @@ export default function LocalSelector({ onLocalChange }) {
                   onClick={() => handleCambiarLocal(local)}
                   className={`w-full text-left px-4 py-3 rounded-lg transition-all flex items-center gap-3 ${
                     localActivo?.id === local.id
-                      ? 'bg-blue-100 border-2 border-blue-500 text-blue-900 font-bold'
-                      : 'hover:bg-gray-100 border-2 border-transparent'
+                      ? 'bg-blue-900/30 border-2 border-blue-500 text-blue-900 font-bold'
+                      : 'hover:bg-slate-800 border-2 border-transparent'
                   }`}
                 >
                   {local.logo && (
@@ -99,7 +99,7 @@ export default function LocalSelector({ onLocalChange }) {
                   <div className="flex-1">
                     <p className="font-semibold">{local.nombre}</p>
                     {local.direccion && (
-                      <p className="text-xs text-gray-600">{local.direccion}</p>
+                      <p className="text-xs text-slate-400">{local.direccion}</p>
                     )}
                   </div>
                   {localActivo?.id === local.id && (

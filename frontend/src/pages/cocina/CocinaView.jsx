@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
+import { useLocalStore } from '../../store/localStore';
 import api from '../../services/api';
 import localService from '../../services/localService';
 import productoService from '../../services/productoService';
 import Navbar from '../../components/Navbar';
+import EventoSelector from '../../components/EventoSelector';
 import io from 'socket.io-client';
 
 function resolveSocketUrl() {
@@ -18,6 +20,7 @@ const READY_STAGING_MS = 2200;
 
 export default function CocinaView() {
   const { user } = useAuthStore();
+  const { localActivo } = useLocalStore();
   const previewLocalId = (() => {
     try {
       return new URLSearchParams(window.location.search).get('localId');
@@ -28,10 +31,11 @@ export default function CocinaView() {
   const [pedidosPendientes, setPedidosPendientes] = useState([]);
   const [pedidosRecientes, setPedidosRecientes] = useState([]);
   const [localId, setLocalId] = useState(null);
+  const [selectedEvento, setSelectedEvento] = useState(null);
   const [loading, setLoading] = useState(true);
   const [vistaActiva, setVistaActiva] = useState('cola'); // cola | historial
   const [modoVista, setModoVista] = useState(() => localStorage.getItem('cocina_modo_vista') || 'por-pedido'); // por-pedido | por-pedido-compacto | por-producto | por-mesa
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cocina_dark_mode') === 'true');
+  const darkMode = true;
   const [catalogoProductos, setCatalogoProductos] = useState([]);
   const [filtroProductosAbierto, setFiltroProductosAbierto] = useState(false);
   const [pedidosListosTransitorios, setPedidosListosTransitorios] = useState({});
@@ -44,10 +48,6 @@ export default function CocinaView() {
     }
   });
   const readyTimeoutsRef = useRef({});
-
-  useEffect(() => {
-    localStorage.setItem('cocina_dark_mode', darkMode);
-  }, [darkMode]);
 
   useEffect(() => {
     localStorage.setItem(`cocina_prod_filter_${user?.id || 'anon'}`, JSON.stringify(Array.from(productosSeleccionados)));
@@ -120,7 +120,7 @@ export default function CocinaView() {
         clearInterval(interval);
       };
     }
-  }, [localId]);
+  }, [localId, selectedEvento?.id]);
 
   const cargarLocalId = async () => {
     try {
@@ -135,9 +135,16 @@ export default function CocinaView() {
         setLocalId(user.localId);
         return;
       }
+
+      if (localActivo?.id) {
+        setLocalId(localActivo.id);
+        return;
+      }
+
       const response = await localService.obtenerLocales();
-      if (response.data && response.data.length > 0) {
-        setLocalId(response.data[0].id);
+      const locales = response?.locales || response?.data || [];
+      if (locales.length > 0) {
+        setLocalId(locales[0].id);
       }
     } catch (error) {
       console.error('Error al cargar local:', error);
@@ -156,6 +163,7 @@ export default function CocinaView() {
         params: {
           tipo: 'comida',
           localId: localId,
+          ...(selectedEvento?.id ? { eventoId: selectedEvento.id } : {}),
           estado: 'pendiente,en_preparacion'
         }
       });
@@ -166,7 +174,8 @@ export default function CocinaView() {
       const recientesResponse = await api.get('/pedidos/cocina/recientes', {
         params: {
           tipo: 'comida',
-          localId: localId
+          localId: localId,
+          ...(selectedEvento?.id ? { eventoId: selectedEvento.id } : {})
         }
       });
 
@@ -864,7 +873,8 @@ export default function CocinaView() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Navbar */}
-      <Navbar roleLabel="Cocina" pedidosCount={pedidosPendientesFiltrados.length} />
+      <Navbar roleLabel="Cocina" pedidosCount={pedidosPendientesFiltrados.length} darkMode={darkMode} />
+      <EventoSelector selectedEvento={selectedEvento} onEventoChange={setSelectedEvento} accent="orange" />
 
       {/* Single header: pass role label & count to Navbar */}
 
@@ -907,26 +917,6 @@ export default function CocinaView() {
               }`}
             >
               Filtrar productos {productosSeleccionados.size > 0 ? `(${productosSeleccionados.size})` : ''}
-            </button>
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg border transition-colors ${
-                darkMode 
-                  ? 'bg-gray-900 text-yellow-400 border-gray-700 hover:bg-gray-700' 
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-              title={darkMode ? 'Modo claro' : 'Modo oscuro'}
-            >
-              {darkMode ? (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fillRule="evenodd" clipRule="evenodd"></path>
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-                </svg>
-              )}
             </button>
             {/* Dropdown Ver Como */}
             <div className="relative">

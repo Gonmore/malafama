@@ -4,6 +4,7 @@ ALTER TABLE usuarios ADD CONSTRAINT usuarios_tipo_check CHECK (tipo IN ('admin',
 
 -- Agregar columna rol_cocina para diferenciar entre cocina y bar
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rol_cocina VARCHAR(20);
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_rol_cocina_check;
 ALTER TABLE usuarios ADD CONSTRAINT usuarios_rol_cocina_check CHECK (rol_cocina IS NULL OR rol_cocina IN ('cocina', 'bar'));
 
 -- Agregar comentario

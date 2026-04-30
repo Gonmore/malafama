@@ -61,6 +61,15 @@ const Producto = sequelize.define('Producto', {
     allowNull: false,
     defaultValue: 'otros',
     comment: 'Tipo de producto para routing: comida→cocina, bebida→bar'
+  },
+  categoriaId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: 'categoria_id',
+    references: {
+      model: 'categorias_productos',
+      key: 'id'
+    }
   }
 }, {
   tableName: 'productos'

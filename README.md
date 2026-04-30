@@ -1,6 +1,6 @@
 # 🍽️ MalaFama - Sistema de Gestión de Pedidos para Restaurante
 
-Sistema completo de gestión de pedidos en tiempo real para restaurantes, que incluye backend API, aplicación web y aplicación móvil.
+Sistema completo de gestión de pedidos en tiempo real para restaurantes, con backend API y aplicación web.
 
 [![Status](https://img.shields.io/badge/status-90%25%20completo-green)]()
 [![Backend](https://img.shields.io/badge/backend-100%25%20funcional-success)]()
@@ -28,9 +28,8 @@ MalaFama es una solución integral que digitaliza y optimiza el flujo de trabajo
 - ✅ **Control de costos** y cálculo de márgenes automático
  - ✅ **Frontend: Reportes Admin (UI & UX mejorado)** — Nueva experiencia premium en `Reportes` (admin): tres tipos de reportes (Ejecutivo, Detallado, Comparativo), gráficos mejorados con gradientes, animaciones, y tarjetas KPI. Añadido botón "Generar Reporte" para control manual, modal de selección de local cuando el admin tiene múltiples locales, y visualización de moneda por local (p.ej. "Bs"). La interfaz también soporta gestión de programaciones (schedules): listar, ejecutar ahora y eliminar.
 - ✅ **Gestión completa de comandas** con estados
-- ✅ **Operación web alineada con mobile** para Mesero, Cocina y Bar en entrega, filtros y notas operativas
+- ✅ **Operación web para Mesero, Cocina, Bar y Supervisor** con flujos en tiempo real
 - 🔄 **Sistema de pedidos** con actualización en tiempo real
-- ⏳ App móvil (estructura básica creada)
 
 ## 🆕 Actualizaciones Operativas Recientes
 
@@ -66,12 +65,10 @@ MalaFama es una solución integral que digitaliza y optimiza el flujo de trabajo
 │  (Port 5000)    │
 └────────┬────────┘
          │
-    ┌────┴────┐
-    │         │
-┌───▼──┐  ┌──▼────┐
-│ Web  │  │ Mobile│
-│React │  │  RN   │
-└──────┘  └───────┘
+      ┌───▼──┐
+      │ Web  │
+      │React │
+      └──────┘
 ```
 
 ## 📁 Estructura del Proyecto
@@ -96,11 +93,6 @@ MalaFama/
 │   │   ├── services/     # Servicios API
 │   │   ├── store/        # Estado global (Zustand)
 │   │   └── App.jsx
-│   └── package.json
-│
-├── mobile/          # App móvil React Native
-│   ├── app/             # Expo Router
-│   ├── components/      # Componentes móviles
 │   └── package.json
 │
 ├── database/        # Scripts SQL y migraciones
@@ -183,15 +175,6 @@ npm run dev
 ```
 
 Frontend corriendo en: `http://localhost:3000`
-
-#### 4. Mobile (Opcional)
-
-```bash
-cd mobile
-npm install
-npm start
-# Escanear QR con Expo Go app
-```
 
 ### Verificar Instalación
 
@@ -348,12 +331,6 @@ En la UI admin (Reportes diarios) verás ahora una vista de mes con días marcad
 - Axios
 - Socket.io Client
 
-### Mobile
-- React Native
-- Expo
-- Expo Router
-- AsyncStorage
-
 ## 📊 Base de Datos
 
 ### Tablas Principales
@@ -416,7 +393,8 @@ npm test
 
 # Frontend
 cd frontend
-npm test
+npm run lint
+npm run build
 ```
 
 ## 📝 Documentación
@@ -426,7 +404,6 @@ npm test
 - **API_REFERENCE.md** - Documentación completa de endpoints
 - **Backend**: `backend/README.md`
 - **Frontend**: `frontend/README.md`
-- **Mobile**: `mobile/README.md`
 - **Database**: `database/README.md`
 
 ## 🛠️ Comandos Útiles

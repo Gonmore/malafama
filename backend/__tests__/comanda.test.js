@@ -1,4 +1,9 @@
 process.env.NODE_ENV = 'test';
+process.env.DB_NAME = process.env.DB_NAME || 'malafama_test';
+
+if (!/test/i.test(process.env.DB_NAME || '')) {
+  throw new Error(`Unsafe DB_NAME for tests: ${process.env.DB_NAME}. Use a dedicated test database.`);
+}
 
 const request = require('supertest');
 const { app, server } = require('../src/index');
@@ -76,5 +81,37 @@ describe('Comanda flow with notas and forzar', () => {
     expect(res.status).toBe(200);
     const pedido = await Pedido.findOne({ where: { comandaId: comanda.id } });
     expect(pedido.notas).toBe('sin cebolla');
+  });
+
+  test('mesas endpoint should include closed and delivered comandas from today', async () => {
+    const comandas = await Comanda.findAll({ where: { mesaId: mesa.id }, order: [['created_at', 'ASC']] });
+    const comandaToClose = comandas[0];
+
+    const closeRes = await request(app)
+      .put(`/api/v1/comandas/${comandaToClose.id}/cerrar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ metodoPago: 'efectivo' });
+
+    expect(closeRes.status).toBe(200);
+
+    const deliverRes = await request(app)
+      .put(`/api/v1/comandas/${comandaToClose.id}/entregar`)
+      .set('Authorization', `Bearer ${token}`)
+      .send();
+
+    expect(deliverRes.status).toBe(200);
+
+    const mesasRes = await request(app)
+      .get('/api/v1/mesas')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(mesasRes.status).toBe(200);
+    const mesaFromList = (mesasRes.body?.data || []).find((m) => m.id === mesa.id);
+    expect(mesaFromList).toBeTruthy();
+
+    const includedClosedDelivered = (mesaFromList.comandas || []).find((c) => c.id === comandaToClose.id);
+    expect(includedClosedDelivered).toBeTruthy();
+    expect(includedClosedDelivered.estado).toBe('cerrada');
+    expect(includedClosedDelivered.entregado).toBe(true);
   });
 });

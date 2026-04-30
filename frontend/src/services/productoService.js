@@ -14,8 +14,27 @@ export const productoService = {
   },
 
   // Obtener categorías
-  getCategorias: async () => {
-    const response = await api.get('/products/categorias');
+  getCategorias: async (params = {}) => {
+    const response = await api.get('/products/categorias', { params });
+    return response.data;
+  },
+
+  // Crear categoria sin asignarla todavia a un producto
+  createCategoria: async (nombre, localId) => {
+    const response = await api.post('/products/categorias', {
+      nombre,
+      localId
+    });
+    return response.data;
+  },
+
+  // Renombrar categoria en todos los productos del local
+  renameCategoria: async (oldName, newName, localId) => {
+    const response = await api.put('/products/categorias', {
+      oldName,
+      newName,
+      localId
+    });
     return response.data;
   },
 

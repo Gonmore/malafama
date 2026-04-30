@@ -9,6 +9,7 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watchAll",
     "db:migrate": "node src/migrations/run.js",
+    "sync:firebase:once": "node src/scripts/sync-firebase-once.js",
     "migrate:sql": "node ./scripts/run_sql_migration.js",
     "seed:reportes:fri-sat": "node src/scripts/seed-reportes-fri-sat.js",
     "seed:proveedores:demo": "node src/scripts/seed-proveedores-demo.js"
@@ -30,6 +31,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
+    "firebase-admin": "^13.8.0",
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",

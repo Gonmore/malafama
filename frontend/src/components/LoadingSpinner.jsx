@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Loader2 } from 'lucide-react';
 
 const LoadingSpinner = ({ size = 'md', text = 'Cargando...' }) => {
@@ -12,7 +12,7 @@ const LoadingSpinner = ({ size = 'md', text = 'Cargando...' }) => {
     <div className="flex flex-col items-center justify-center p-8">
       <Loader2 className={`${sizeClasses[size]} animate-spin text-orange-500`} />
       {text && (
-        <p className="mt-4 text-gray-600 text-sm">{text}</p>
+        <p className="mt-4 text-slate-400 text-sm">{text}</p>
       )}
     </div>
   );

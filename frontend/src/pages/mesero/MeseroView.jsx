@@ -1,14 +1,34 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
+import io from 'socket.io-client';
 import { useAuthStore } from '../../store/authStore';
+import { useLocalStore } from '../../store/localStore';
 import { mesaService } from '../../services/mesaService';
 import { comandaService } from '../../services/comandaService';
+import { eventoService } from '../../services/eventoService';
+import { asignacionService } from '../../services/asignacionService';
+import { alertaService } from '../../services/alertaService';
+import Navbar from '../../components/Navbar';
+import EventoSelector from '../../components/EventoSelector';
 import ComandaModal from './ComandaModal';
 import MesaConComandaModal from './MesaConComandaModal';
-import AssignMesasModal from './AssignMesasModal';
-import ReporteDiaMesero from './ReporteDiaMesero';
-import Navbar from '../../components/Navbar';
-import io from 'socket.io-client';
+import {
+  AlertStack,
+  OCCUPIED_SEAT_STATES,
+  SegmentedTabs,
+  SeatDots,
+  STATUS_STYLE,
+  formatAgo,
+  sortMesasByOperationalPriority,
+} from '../comandas/ComandasUI';
+
+function shortName(name = '') {
+  return String(name).split(' ').filter(Boolean)[0] || 'Mesero';
+}
+
+function isStaffMesa(mesa) {
+  return Number(mesa?.numero) === 0;
+}
 
 function resolveSocketUrl() {
   const apiUrl = import.meta.env.VITE_API_URL;
@@ -17,8 +37,232 @@ function resolveSocketUrl() {
   return apiUrl.replace(/\/api\/v1\/?$/i, '').replace(/\/+$/g, '');
 }
 
+function normalizeSeatStates(mesa, seatsByMesa = {}) {
+  const byLetter = seatsByMesa?.[mesa?.numero] || {};
+  if (Object.keys(byLetter).length === 0 && Array.isArray(mesa?.seatStates) && mesa.seatStates.length > 0) return mesa.seatStates;
+  return ['A', 'B', 'C', 'D'].map((letra) => ({
+    letra,
+    estado: byLetter[letra]?.estado || byLetter[letra] || mesa?.seatStates?.find((seat) => seat.letra === letra)?.estado || 'disponible',
+  }));
+}
+
+function getActiveComandas(mesa) {
+  return Array.isArray(mesa?.comandas) ? mesa.comandas : [];
+}
+
+function deriveComandaStatus(comanda) {
+  // Pagada solo cuando está cerrada o marcada explícitamente como pagada
+  if (comanda?.estado === 'cerrada' || comanda?.estado === 'pagada' || comanda?.pagada || comanda?.paid) {
+    return 'pagada';
+  }
+
+  // Entregado significa que ya salió de cocina/bar, pero aún no se cobró
+  if (comanda?.entregado) return 'cuenta';
+
+  const pedidos = Array.isArray(comanda?.pedidos) ? comanda.pedidos : [];
+  const activePedidos = pedidos.filter((pedido) => pedido?.estado !== 'cancelado');
+  if (activePedidos.length === 0) return 'preparando';
+
+  const readyToDeliverCount = activePedidos.filter((pedido) => pedido?.estado === 'listo').length;
+  const completedCount = activePedidos.filter((pedido) => ['listo', 'entregado'].includes(pedido?.estado)).length;
+
+  if (readyToDeliverCount > 0 && completedCount === activePedidos.length) return 'listo';
+  if (readyToDeliverCount > 0) return 'parcial';
+  if (completedCount === activePedidos.length) return 'cuenta';
+  return 'preparando';
+}
+
+function deriveMesaStatus(mesa) {
+  const comandas = getActiveComandas(mesa);
+  const seats = mesa?.seatStates || [];
+  const staff = isStaffMesa(mesa);
+  const hasOccupiedSeats = !staff && (mesa?.hasOccupiedSeats || seats.some((seat) => OCCUPIED_SEAT_STATES.has(seat.estado)));
+  const allOccupied = !staff && (mesa?.allOccupied || (seats.length > 0 && seats.every((seat) => OCCUPIED_SEAT_STATES.has(seat.estado))));
+
+  if (comandas.length === 0) return (hasOccupiedSeats || allOccupied) ? 'completa' : 'libre';
+
+  const statuses = comandas.map(deriveComandaStatus);
+  if (statuses.length > 0 && statuses.every((s) => s === 'pagada')) return 'pagada';
+  if (statuses.includes('listo')) return 'listo';
+  if (statuses.includes('parcial')) return 'parcial';
+  if (statuses.includes('preparando')) return 'preparando';
+  if (statuses.includes('cuenta')) return 'cuenta';
+  return 'preparando';
+}
+
+function isMesaOperativamenteOcupada(mesa) {
+  if (isStaffMesa(mesa)) return getActiveComandas(mesa).length > 0;
+  return Boolean(mesa?.hasOccupiedSeats) || getActiveComandas(mesa).length > 0 || deriveMesaStatus(mesa) !== 'libre';
+}
+
+function formatComandaCountLabel(count) {
+  if (count === 1) return '1 COMANDA ACTIVA';
+  return `${count} COMANDAS ACTIVAS`;
+}
+
+function MeseroMesaCard({ mesa, status, assignee, onClick }) {
+  const [expandido, setExpandido] = useState(false);
+  const style = STATUS_STYLE[status] || STATUS_STYLE.libre;
+  const comandas = getActiveComandas(mesa)
+    .slice()
+    .sort((a, b) => {
+      const statusOrder = ['listo', 'parcial', 'preparando', 'cuenta', 'pagada'];
+      const statusDiff = (statusOrder.indexOf(deriveComandaStatus(a)) ?? 99)
+        - (statusOrder.indexOf(deriveComandaStatus(b)) ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+      const createdA = new Date(a.createdAt || a.created_at || a.fecha || 0).getTime();
+      const createdB = new Date(b.createdAt || b.created_at || b.fecha || 0).getTime();
+      return createdA - createdB;
+    });
+  const comandasActivas = comandas.filter((c) => deriveComandaStatus(c) !== 'pagada');
+  const comandasPagadas = comandas.filter((c) => deriveComandaStatus(c) === 'pagada');
+  const visibleComandas = expandido ? comandasActivas : comandasActivas.slice(0, 3);
+  const tieneVerMas = comandasActivas.length > 3;
+  const isStaff = isStaffMesa(mesa);
+  const displayAssignee = assignee || (isStaff ? 'Staff' : null);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-[24px] border p-4 text-left transition active:scale-[0.98] flex flex-col items-start"
+      style={{
+        backgroundColor: style.bg,
+        borderColor: style.border,
+        boxShadow: `inset 0 0 0 1px ${style.border}`,
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[34px] font-light leading-none text-white">{mesa?.numero}</div>
+          <div className="mt-1 truncate text-sm font-medium text-slate-400">{displayAssignee || ''}</div>
+        </div>
+        <div className="pt-2">
+          <SeatDots seats={mesa?.seatStates || []} status={status} />
+        </div>
+      </div>
+
+      <div className="my-3 h-px w-full bg-slate-700/70" />
+
+      {comandasActivas.length > 0 ? (
+        <>
+          <div className="mb-3 text-[12px] font-bold uppercase tracking-wide text-slate-500">
+            {formatComandaCountLabel(comandasActivas.length)}
+          </div>
+          <div className="space-y-2.5">
+            {visibleComandas.map((comanda, idx) => {
+              const comandaStatus = deriveComandaStatus(comanda);
+              const comandaStyle = STATUS_STYLE[comandaStatus] || STATUS_STYLE.preparando;
+              const pedidoCount = Array.isArray(comanda?.pedidos) ? comanda.pedidos.filter((pedido) => pedido?.estado !== 'cancelado').length : 0;
+              return (
+                <div key={comanda.id} className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-300">
+                    <span className="mr-2 text-slate-300">#{idx + 1}</span>
+                    <span className="text-slate-500">{pedidoCount} ped.</span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-xl border px-3 py-1 text-xs font-bold"
+                    style={{
+                      color: comandaStyle.color,
+                      borderColor: comandaStyle.border,
+                      backgroundColor: `${comandaStyle.color}22`,
+                    }}
+                  >
+                    {comandaStyle.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {tieneVerMas && (
+            <div className="mt-2 text-left">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandido(!expandido);
+                }}
+                className="text-xs font-bold uppercase tracking-wide text-blue-400 hover:text-blue-300 transition"
+              >
+                {expandido ? '↑ Ver menos' : `↓ Ver ${comandasActivas.length - 3} más`}
+              </button>
+            </div>
+          )}
+          {comandasPagadas.length > 0 && (
+            <>
+              <div className="my-3 h-px w-full bg-slate-700/70" />
+              <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-purple-400">
+                {comandasPagadas.length} comanda{comandasPagadas.length === 1 ? '' : 's'} pagada{comandasPagadas.length === 1 ? '' : 's'}
+              </div>
+              <div className="space-y-2.5">
+                {comandasPagadas.map((comanda, idx) => {
+                  const comandaStyle = STATUS_STYLE.pagada;
+                  const pedidoCount = Array.isArray(comanda?.pedidos) ? comanda.pedidos.filter((pedido) => pedido?.estado !== 'cancelado').length : 0;
+                  return (
+                    <div key={comanda.id} className="flex items-center gap-2.5">
+                      <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-300">
+                        <span className="mr-2 text-slate-300">#{comandasActivas.length + idx + 1}</span>
+                        <span className="text-slate-500">{pedidoCount} ped.</span>
+                      </div>
+                      <span
+                        className="shrink-0 rounded-xl border px-3 py-1 text-xs font-bold"
+                        style={{
+                          color: comandaStyle.color,
+                          borderColor: comandaStyle.border,
+                          backgroundColor: `${comandaStyle.color}22`,
+                        }}
+                      >
+                        {comandaStyle.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      ) : comandasPagadas.length > 0 ? (
+        <>
+          <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-purple-400">
+            {comandasPagadas.length} comanda{comandasPagadas.length === 1 ? '' : 's'} pagada{comandasPagadas.length === 1 ? '' : 's'}
+          </div>
+          <div className="space-y-2.5">
+            {comandasPagadas.map((comanda, idx) => {
+              const comandaStyle = STATUS_STYLE.pagada;
+              const pedidoCount = Array.isArray(comanda?.pedidos) ? comanda.pedidos.filter((pedido) => pedido?.estado !== 'cancelado').length : 0;
+              return (
+                <div key={comanda.id} className="flex items-center gap-2.5">
+                  <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-300">
+                    <span className="mr-2 text-slate-300">#{idx + 1}</span>
+                    <span className="text-slate-500">{pedidoCount} ped.</span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-xl border px-3 py-1 text-xs font-bold"
+                    style={{
+                      color: comandaStyle.color,
+                      borderColor: comandaStyle.border,
+                      backgroundColor: `${comandaStyle.color}22`,
+                    }}
+                  >
+                    {comandaStyle.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="py-6 text-center text-[15px] font-medium text-slate-500">
+          {isStaff ? 'Libre · Staff' : 'Sin comandas activas'}
+        </div>
+      )}
+    </button>
+  );
+}
+
 export default function MeseroView() {
   const { user } = useAuthStore();
+  const { localActivo } = useLocalStore();
   const previewLocalId = (() => {
     try {
       return new URLSearchParams(window.location.search).get('localId');
@@ -26,897 +270,285 @@ export default function MeseroView() {
       return null;
     }
   })();
-  const effectiveLocalId = previewLocalId || user?.localId || null;
-  const [mesas, setMesas] = useState([]);
-  const [assignedMesas, setAssignedMesas] = useState(new Set());
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [showUnassigned, setShowUnassigned] = useState(false);
+  const effectiveLocalId = previewLocalId || user?.localId || localActivo?.id || null;
+  const [evento, setEvento] = useState(null);
+  const [eventoRefreshKey, setEventoRefreshKey] = useState(0);
+  const [allMesas, setAllMesas] = useState([]);
+  const [assignedIds, setAssignedIds] = useState(new Set());
+  const [turnoMeseros, setTurnoMeseros] = useState([]);
+  const [asignacionesByMesa, setAsignacionesByMesa] = useState(new Map());
+  const [seatStateMap, setSeatStateMap] = useState({});
+  const [alertas, setAlertas] = useState([]);
+  const [tab, setTab] = useState('mis');
   const [loading, setLoading] = useState(true);
   const [selectedMesa, setSelectedMesa] = useState(null);
   const [showComandaModal, setShowComandaModal] = useState(false);
   const [showMesaConComandaModal, setShowMesaConComandaModal] = useState(false);
   const [comandaIdSeleccionada, setComandaIdSeleccionada] = useState(null);
-  const [mesasConPedidoListo, setMesasConPedidoListo] = useState(new Set());
-  const [mesasConComandaCompleta, setMesasConComandaCompleta] = useState(new Set());
-  const [deliveredOptimistic, setDeliveredOptimistic] = useState(new Set());
-  const [vistaMode, setVistaMode] = useState(() => localStorage.getItem('mesero_vista_mode') || 'cuadro');
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mesero_dark_mode') === 'true');
-  const [tiempoActual, setTiempoActual] = useState(new Date());
-  const [showReporteDia, setShowReporteDia] = useState(false);
-  const [isMobileLayout, setIsMobileLayout] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerWidth < 640;
-  });
+  const loadGenRef = useRef(0);
+  const eventoRef = useRef(evento);
+  const effectiveLocalIdRef = useRef(effectiveLocalId);
+  eventoRef.current = evento;
+  effectiveLocalIdRef.current = effectiveLocalId;
 
-  useEffect(() => {
-    localStorage.setItem('mesero_vista_mode', vistaMode);
-  }, [vistaMode]);
-
-  useEffect(() => {
-    localStorage.setItem('mesero_dark_mode', darkMode);
-  }, [darkMode]);
-
-  // Actualizar tiempo cada segundo para mostrar tiempos dinámicos
-  useEffect(() => {
-    const intervalo = setInterval(() => {
-      setTiempoActual(new Date());
-    }, 1000);
-    return () => clearInterval(intervalo);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-
-    const handleResize = () => {
-      setIsMobileLayout(window.innerWidth < 640);
-    };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  useEffect(() => {
-    cargarMesas();
-    // Cargar asignaciones (mesas asignadas al mesero)
-    const cargarAsignaciones = async () => {
-      try {
-        const response = await mesaService.getAssigned();
-        const assigned = response.data || [];
-        setAssignedMesas(new Set(assigned.map(m => m.id)));
-        // Si no tiene asignadas, mostrar modal para asignar
-        if (assigned.length === 0 && user?.tipo === 'atencion') {
-          setShowAssignModal(true);
-          // No activar showUnassigned por defecto — el usuario puede seleccionar si desea ver no asignadas
-        }
-      } catch (err) {
-        console.error('Error al cargar asignaciones:', err);
-      }
-    };
-
-    cargarAsignaciones();
-    // Escuchar evento global para abrir modal de asignación desde la Navbar
-    const openAssignHandler = () => setShowAssignModal(true);
-    try { window.addEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
-    
-    // Conectar a Socket.io para recibir notificaciones
-    const socket = io(resolveSocketUrl());
-    
-    socket.on('connect', () => {
-      console.log('Socket conectado');
-      const room = effectiveLocalId ? `atencion:${effectiveLocalId}` : 'atencion';
-      socket.emit('join-room', room);
-    });
-
-    socket.on('pedido-listo', (data) => {
-      console.log('Pedido listo recibido:', data);
-      
-      // Sonido de notificación
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(e => console.log('Error al reproducir sonido:', e));
-      
-      // Agregar mesa a la lista de pedidos listos
-      const mesaId = String(data.mesaId ?? data.mesa);
-      if (!mesaId) {
-        console.warn('pedido-listo without valid mesaId', data);
-      } else {
-        setMesasConPedidoListo(prev => new Set([...prev, mesaId]));
-      }
-      
-      toast.success(data.mensaje || 'Pedido listo para recoger', {
-        duration: 4000,
-        icon: '✅'
-      });
-
-      // Actualizar mesas
-      cargarMesas();
-
-      // Remover indicador después de 2 minutos
-      setTimeout(() => {
-        setMesasConPedidoListo(prev => {
-          const newSet = new Set(prev);
-          const mesaId = String(data.mesaId ?? data.mesa);
-          newSet.delete(mesaId);
-          return newSet;
-        });
-      }, 2 * 60 * 1000);
-    });
-
-    socket.on('comanda-actualizada', async () => {
-      const mesasActualizadas = await cargarMesas();
-      // Re-evaluar comandos completos para limpiar el estado de mesas
-      setMesasConComandaCompleta(prev => {
-        const newSet = new Set(prev);
-        for (const mId of Array.from(prev)) {
-          const mesa = (mesasActualizadas || []).find(m => m.id === mId);
-          if (!mesa) {
-            newSet.delete(mId);
-            continue;
-          }
-          const allComandasCompleta = (mesa.comandas || []).some(c =>
-            (c.pedidos || []).length > 0 && (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
-          );
-          if (!allComandasCompleta) newSet.delete(mId);
-        }
-        return newSet;
-      });
-    });
-
-    socket.on('comanda-completa', (data) => {
-      console.log('Comanda completa:', data);
-      // data.mesaId expected (backend now supplies)
-      const mesaId = String(data.mesaId ?? data.mesa);
-      if (!mesaId) return;
-      setMesasConComandaCompleta(prev => new Set([...prev, mesaId]));
-      // remover de la lista de pedidos listos si estaba
-      setMesasConPedidoListo(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(mesaId);
-        return newSet;
-      });
-      toast.success(data.mensaje || `Mesa ${data.mesa} completa!`, { icon: '🍽️' });
-    });
-
-    socket.on('comanda-entregada', () => {
-      cargarMesas();
-    });
-
-    return () => {
-      socket.disconnect();
-      try { window.removeEventListener('open-assign-modal', openAssignHandler); } catch (e) {}
-    };
-  }, []);
-
-  const cargarMesas = async () => {
+  const loadData = async () => {
+    const gen = ++loadGenRef.current;
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await mesaService.getAll(effectiveLocalId ? { localId: effectiveLocalId } : {});
-      const mesasData = response.data || [];
-      setMesas(mesasData);
+      const selectedEvento = eventoRef.current;
+      const currentLocalId = effectiveLocalIdRef.current;
+      setSeatStateMap({});
 
-      // Derivar indicadores iniciales basados en pedidos existentes (por si el socket no ha llegado todavía)
-      const initialPedidoListo = new Set();
-      const initialComandaCompleta = new Set();
-      for (const m of mesasData) {
-        const comandas = m.comandas || [];
-        // tiene algun pedido listo?
-        const hasPedidoListo = comandas.some(c => (c.pedidos || []).some(p => p.estado === 'listo'));
-        if (hasPedidoListo) initialPedidoListo.add(String(m.id));
-
-        // comanda completa (todos los pedidos de la comanda estan en estados terminales)
-        const anyComandaCompleta = comandas.some(c => (c.pedidos || []).length > 0 && (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado)));
-        if (anyComandaCompleta) initialComandaCompleta.add(String(m.id));
+      let mesas = [];
+      let assigned = new Set();
+      if (selectedEvento?.id) {
+        const [mesasRes, misRes, turnoRes, asignRes] = await Promise.all([
+          eventoService.getMesasConEstado(selectedEvento.id, currentLocalId ? { localId: currentLocalId } : {}).catch(() => null),
+          asignacionService.getMisMesas(selectedEvento.id).catch(() => null),
+          asignacionService.getTurno(selectedEvento.id).catch(() => null),
+          asignacionService.getAsignaciones(selectedEvento.id).catch(() => null),
+        ]);
+        if (gen !== loadGenRef.current) return;
+        mesas = mesasRes?.data || [];
+        assigned = new Set((misRes?.data || []).map((m) => m.id));
+        setTurnoMeseros(turnoRes?.data || []);
+        const map = new Map();
+        (asignRes?.data || []).forEach((row) => {
+          if (row?.mesaId && row?.meseroId) map.set(row.mesaId, row.meseroId);
+        });
+        setAsignacionesByMesa(map);
+      } else {
+        setTurnoMeseros([]);
+        setAsignacionesByMesa(new Map());
       }
-      setMesasConPedidoListo(initialPedidoListo);
-      setMesasConComandaCompleta(initialComandaCompleta);
-      return response.data || [];
+
+      if (mesas.length === 0) {
+        const mesasRes = await mesaService.getAll({
+          activo: true,
+          ...(currentLocalId ? { localId: currentLocalId } : {}),
+        });
+        if (gen !== loadGenRef.current) return;
+        mesas = mesasRes?.data || [];
+        if (!selectedEvento?.id) assigned = new Set(mesas.map((m) => m.id));
+      }
+
+      setAllMesas(mesas.map((mesa) => ({
+        ...mesa,
+        seatStates: normalizeSeatStates(mesa, {}),
+      })));
+      setAssignedIds(assigned);
+      setTab(selectedEvento?.id || assigned.size > 0 ? 'mis' : 'todas');
+
+      const alertRes = await alertaService.getActivas().catch(() => null);
+      if (gen !== loadGenRef.current) return;
+      setAlertas(alertRes?.data || []);
     } catch (error) {
-      console.error('Error al cargar mesas:', error);
+      console.error('Error al cargar vista mesero:', error);
       toast.error('Error al cargar mesas');
     } finally {
-      setLoading(false);
+      if (gen === loadGenRef.current) setLoading(false);
     }
   };
 
-  const handleMesaClick = (mesa) => {
-    const comandasOrdenadas = [...(mesa?.comandas || [])].sort((a, b) => {
-      const fechaA = new Date(a.createdAt || a.created_at || a.fecha || 0);
-      const fechaB = new Date(b.createdAt || b.created_at || b.fecha || 0);
-      return fechaA - fechaB;
+  useEffect(() => {
+    loadData();
+  }, [effectiveLocalId, evento?.id]);
+
+  useEffect(() => {
+    const socket = io(resolveSocketUrl());
+    socket.on('connect', () => {
+      socket.emit('register', { userId: user?.id, userType: user?.tipo || 'atencion' });
+      const localRoomId = effectiveLocalIdRef.current || user?.localId;
+      socket.emit('join-room', localRoomId ? `atencion:${localRoomId}` : 'atencion');
     });
-    const unicaComandaId = comandasOrdenadas[0]?.id || null;
 
-    // Si ya tiene pedido listo, primer click quita el indicador y abre el modal
-    if (mesasConPedidoListo.has(String(mesa.id))) {
-      setMesasConPedidoListo(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(String(mesa.id));
-        return newSet;
+    socket.on('asiento:update', ({ mesaNum, letra, estado }) => {
+      setSeatStateMap((prev) => ({
+        ...prev,
+        [mesaNum]: { ...(prev[mesaNum] || {}), [letra]: { estado } },
+      }));
+      setAllMesas((prev) => prev.map((mesa) => {
+        if (Number(mesa.numero) !== Number(mesaNum)) return mesa;
+        const current = Object.fromEntries((mesa.seatStates || []).map((seat) => [seat.letra, { estado: seat.estado }]));
+        const seatStates = normalizeSeatStates(mesa, { [mesaNum]: { ...current, [letra]: { estado } } });
+        return { ...mesa, seatStates };
+      }));
+    });
+
+    socket.on('alerta:nueva', (alerta) => {
+      setAlertas((prev) => (prev.some((a) => a.id === alerta.id) ? prev : [...prev, alerta]));
+    });
+
+    socket.on('alerta:resuelta', ({ id }) => {
+      setAlertas((prev) => prev.filter((a) => a.id !== id));
+    });
+
+    socket.on('evento:sync', () => setEventoRefreshKey((k) => k + 1));
+    socket.on('evento:deleted', () => setEventoRefreshKey((k) => k + 1));
+    socket.on('asignacion:guardada', loadData);
+    socket.on('asignacion:limpiada', loadData);
+    socket.on('mesas:asignacion_guardada', loadData);
+    socket.on('turno:update', loadData);
+    socket.on('pedido-actualizado', loadData);
+    socket.on('pedido-listo', loadData);
+    socket.on('comanda-completa', loadData);
+    socket.on('comanda-entregada', loadData);
+    socket.on('comanda-actualizada', loadData);
+
+    return () => socket.disconnect();
+  }, [user?.id, user?.tipo, user?.localId, effectiveLocalId]);
+
+  const enrichedMesas = useMemo(() => allMesas.map((mesa) => ({
+    ...mesa,
+    seatStates: normalizeSeatStates(mesa, seatStateMap),
+    asignadoMeseroId: asignacionesByMesa.get(mesa.id) || null,
+  })), [allMesas, seatStateMap, asignacionesByMesa]);
+
+  const mesasMis = enrichedMesas.filter((mesa) => assignedIds.has(mesa.id));
+  const mesasOcupadas = enrichedMesas.filter(isMesaOperativamenteOcupada);
+  const mesasVisibles = tab === 'mis' ? mesasMis : mesasOcupadas;
+
+  const mesasOrdenadas = useMemo(
+    () => sortMesasByOperationalPriority(mesasVisibles, deriveMesaStatus),
+    [mesasVisibles]
+  );
+
+  const alertasEnriquecidas = alertas.map((alerta) => {
+    const mesa = alerta.mesa?.numero ? alerta.mesa : enrichedMesas.find((m) => m.id === alerta.mesaId);
+    const comandaNumero = (() => {
+      if (!alerta.comandaId || !mesa?.comandas || mesa.comandas.length === 0) return null;
+      const ordered = [...mesa.comandas].sort((a, b) => {
+        const createdA = new Date(a.createdAt || a.created_at || a.fecha || 0).getTime();
+        const createdB = new Date(b.createdAt || b.created_at || b.fecha || 0).getTime();
+        return createdA - createdB;
       });
-      // después de quitar el indicador abrimos la comanda para elegir continuar o crear
-      setSelectedMesa(mesa);
-      
-      // Si tiene una sola comanda, abrir directo para reducir un paso en móvil/web
-      if (mesa?.comandas?.length === 1 && unicaComandaId) {
-        setComandaIdSeleccionada(unicaComandaId);
-        setShowComandaModal(true);
-      } else if (mesa?.comandas?.length > 0) {
-        setShowMesaConComandaModal(true);
-      } else {
-        setComandaIdSeleccionada(null);
-        setShowComandaModal(true);
-      }
-      return;
-    }
+      const idx = ordered.findIndex((c) => String(c.id) === String(alerta.comandaId));
+      return idx >= 0 ? idx + 1 : null;
+    })();
 
-    setSelectedMesa(mesa);
-    
-    // Si tiene una sola comanda, entrar directo al detalle
-    if (mesa?.comandas?.length === 1 && unicaComandaId) {
-      setComandaIdSeleccionada(unicaComandaId);
-      setShowComandaModal(true);
-    } else if (mesa?.comandas?.length > 0) {
-      setShowMesaConComandaModal(true);
-    } else {
-      setComandaIdSeleccionada(null);
-      setShowComandaModal(true);
-    }
-  };
-
-  const getEstadoMesa = (mesa) => {
-    if (mesasConComandaCompleta.has(String(mesa.id))) {
-      return 'comanda-completa'; // Verde oscuro estable
-    }
-    if (mesasConPedidoListo.has(String(mesa.id))) {
-      return 'pedido-listo'; // Verde parpadeante
-    }
-    if (mesa.comandas && mesa.comandas.length > 0) {
-      return 'ocupada'; // Amarillo
-    }
-    return 'libre'; // Blanco/Gris
-  };
-
-  const getColorMesa = (estado) => {
-    if (darkMode) {
-      switch (estado) {
-        case 'comanda-completa':
-          return 'bg-gray-800 border-green-500 border-2 text-gray-200';
-        case 'pedido-listo':
-          return 'bg-gray-800 border-green-500 border-4 animate-pulse text-gray-200';
-        case 'ocupada':
-          return 'bg-gray-800 border-gray-600 border-2 text-gray-200';
-        case 'libre':
-        default:
-          return 'bg-gray-800 border-gray-700 border text-gray-400 hover:border-gray-600';
-      }
-    } else {
-      switch (estado) {
-        case 'comanda-completa':
-          return 'bg-green-700 border-green-800 border-2 text-white';
-        case 'pedido-listo':
-          return 'bg-green-100 border-green-500 border-4 animate-pulse';
-        case 'ocupada':
-          return 'bg-yellow-50 border-yellow-400 border-2';
-        case 'libre':
-        default:
-          return 'bg-white border-gray-300 border hover:border-blue-400';
-      }
-    }
-  };
-
-  const getIndicadorMesa = (estado) => {
-    if (estado === 'pedido-listo') {
-      return (
-        <div className="absolute top-2 right-2 w-4 h-4 bg-green-500 rounded-full animate-pulse shadow-lg"></div>
-      );
-    }
-    if (estado === 'comanda-completa') {
-      return (
-        <div className="absolute top-2 right-2 w-4 h-4 bg-green-900 rounded-full shadow-lg ring-2 ring-green-700"></div>
-      );
-    }
-    if (estado === 'ocupada') {
-      return (
-        <div className="absolute top-2 right-2 w-4 h-4 bg-yellow-400 rounded-full shadow-lg"></div>
-      );
-    }
-    return null;
-  };
-
-  const calcularTiempoTranscurrido = (fecha) => {
-    const ahora = new Date();
-    const creacion = new Date(fecha);
-    const diffMs = ahora - creacion;
-    const mins = Math.floor(diffMs / 60000);
-    return mins;
-  };
-
-  const obtenerNotasMesa = (mesa) => {
-    return (mesa?.comandas || [])
-      .flatMap((comanda) => comanda?.pedidos || [])
-      .map((pedido) => String(pedido?.notas || '').trim())
-      .filter(Boolean);
-  };
-
-  const isComandaEntregada = (comanda) => {
-    if (!comanda?.id) return false;
-    return Boolean(comanda.entregado || deliveredOptimistic.has(String(comanda.id)));
-  };
-
-  const marcarComandaEntregada = async (mesa, comandaId) => {
-    const mesaId = String(mesa?.id || '');
-
-    setDeliveredOptimistic(prev => new Set([...prev, String(comandaId)]));
-    if (mesaId) {
-      setMesasConPedidoListo(prev => {
-        const next = new Set(prev);
-        next.delete(mesaId);
-        return next;
-      });
-    }
-
-    try {
-      await comandaService.marcarEntregada(comandaId);
-      toast.success('Comanda marcada como entregada', { icon: '✓', duration: 2000 });
-      await cargarMesas();
-    } catch (error) {
-      console.error('Error al marcar comanda como entregada:', error);
-      setDeliveredOptimistic(prev => {
-        const next = new Set(prev);
-        next.delete(String(comandaId));
-        return next;
-      });
-      toast.error(error.response?.data?.message || 'Error al marcar comanda como entregada');
-    }
-  };
-
-  const handleComandaClick = async (mesa, comandaId) => {
-    // Buscar la comanda
-    const comanda = mesa.comandas?.find(c => c.id === comandaId);
-    const pedidos = comanda?.pedidos || [];
-    const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
-      ['listo', 'entregado', 'cancelado'].includes(p.estado)
-    );
-
-    // Primer click: persistir entrega real en backend; segundo click: abrir detalle
-    if (todosPedidosListos && !isComandaEntregada(comanda)) {
-      await marcarComandaEntregada(mesa, comandaId);
-      return;
-    }
-
-    // Si ya fue entregada o no está lista, abrir el modal
-    setSelectedMesa(mesa);
-    setComandaIdSeleccionada(comandaId);
-    setShowComandaModal(true);
-  };
-
-  const mesasVisibles = mesas.filter((mesa) => {
-    if (showUnassigned) return !assignedMesas.has(mesa.id);
-    return assignedMesas.size === 0 ? true : assignedMesas.has(mesa.id);
+    return {
+      ...alerta,
+      mesa: mesa ? { id: mesa.id, numero: mesa.numero, nombre: mesa.nombre } : alerta.mesa,
+      comandaNumero,
+    };
   });
 
-  // Vista en Lista
-  const renderVistaLista = () => {
-    // Ordenar mesas por prioridad
-    const mesasOrdenadas = [...mesasVisibles].sort((a, b) => {
-      const getPrioridad = (mesa) => {
-        const comandas = mesa.comandas || [];
-        if (comandas.length === 0) return 4; // Sin comandas - última prioridad
-        
-        const todaMesaLista = comandas.every(c => 
-          (c.pedidos || []).length > 0 && 
-          (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
-        );
-        
-        // Verificar si TODAS las comandas ya fueron entregadas
-        const todasEntregadas = comandas.every(c => isComandaEntregada(c));
-        
-        if (todaMesaLista && !todasEntregadas) return 1; // Todas las comandas listas pero NO todas entregadas - máxima prioridad
-        
-        // Verificar si alguna comanda está completa y NO entregada
-        const algunaComandaCompletaNoEntregada = comandas.some(c => {
-          const pedidos = c.pedidos || [];
-          const todosListos = pedidos.length > 0 && pedidos.every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado));
-          return todosListos && !isComandaEntregada(c);
-        });
-        if (algunaComandaCompletaNoEntregada) return 2; // Alguna comanda lista sin entregar - segunda prioridad
-        
-        // Verificar si algún pedido está listo
-        const algunPedidoListo = comandas.some(c => 
-          (c.pedidos || []).some(p => ['listo', 'entregado'].includes(p.estado))
-        );
-        if (algunPedidoListo) return 3; // Algún pedido listo - tercera prioridad
-        
-        return 3.5; // Tiene comandas pero nada listo - antes de mesas vacías
-      };
-      
-      const prioA = getPrioridad(a);
-      const prioB = getPrioridad(b);
-      
-      // Si tienen la misma prioridad, ordenar por número de mesa
-      if (prioA === prioB) {
-        return parseInt(a.numero) - parseInt(b.numero);
+  const handleResolverAlerta = async (alerta) => {
+    try {
+      if (alerta.tipo === 'listo' && alerta.comandaId) {
+        await comandaService.marcarEntregada(alerta.comandaId);
       }
-      
-      return prioA - prioB;
-    });
-
-    return (
-      <div className="space-y-3 px-3 py-4">
-        {mesasOrdenadas.map((mesa) => {
-          const estado = getEstadoMesa(mesa);
-          const comandas = mesa.comandas || [];
-          const tieneComandas = comandas.length > 0;
-          
-          // Calcular si toda la mesa está lista
-          const todaMesaLista = tieneComandas && comandas.every(c => 
-            (c.pedidos || []).length > 0 && 
-            (c.pedidos || []).every(p => ['listo', 'entregado', 'cancelado'].includes(p.estado))
-          );
-          
-          // Verificar si TODAS las comandas están entregadas
-          const todasComandasEntregadas = tieneComandas && comandas.every(c => isComandaEntregada(c));
-
-          // Mesas SIN comandas - layout simple horizontal
-          if (!tieneComandas) {
-            return (
-              <button
-                key={mesa.id}
-                onClick={() => handleMesaClick(mesa)}
-                className={`w-full ${
-                  darkMode 
-                    ? 'bg-gray-800 hover:bg-gray-700 border-2 border-gray-600 text-gray-200' 
-                    : 'bg-gray-200 hover:bg-gray-300 border-2 border-gray-400'
-                } rounded-lg px-4 py-3 transition-all duration-200 hover:shadow-md`}
-              >
-                <div className="flex items-center justify-between">
-                  {/* Avatares de meseros asignados (si hay) */}
-                  {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
-                    <div className="flex items-center mr-3 -space-x-2">
-                      {mesa.usuariosAsignados.slice(0,3).map((u) => (
-                        u.foto ? (
-                          <img key={u.id} src={u.foto} alt={u.nombre} className="w-6 h-6 rounded-full border-2 border-white shadow-sm" />
-                        ) : (
-                          <div key={u.id} className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold text-gray-700 border-2 border-white shadow-sm">{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
-                        )
-                      ))}
-                    </div>
-                  )}
-                  <span className={`text-base font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Mesa {mesa.numero}</span>
-                  <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Sin comandas</span>
-                </div>
-              </button>
-            );
-          }
-
-          // Mesas CON comandas - layout con etiqueta vertical
-          return (
-            <div 
-              key={mesa.id}
-              className={`relative flex rounded-lg overflow-hidden shadow-md transition-all duration-200 ${
-                todaMesaLista && !todasComandasEntregadas
-                  ? 'ring-4 ring-green-500 animate-pulse' 
-                  : todaMesaLista && todasComandasEntregadas
-                    ? 'ring-4 ring-green-500'
-                    : darkMode 
-                      ? 'border border-gray-700' 
-                      : ''
-              }`}
-              style={{ minHeight: '100px' }}
-            >
-              {/* Avatares de meseros asignados en la esquina superior derecha */}
-              {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
-                <div className="absolute top-2 right-2 flex -space-x-2 z-20">
-                  {mesa.usuariosAsignados.slice(0,3).map(u => (
-                    u.foto ? (
-                      <img key={u.id} src={u.foto} alt={u.nombre} className={`w-7 h-7 rounded-full border-2 ${u.id === user?.id ? 'border-blue-400' : 'border-white'}`} />
-                    ) : (
-                      <div key={u.id} className={`w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold ${u.id === user?.id ? 'ring-2 ring-blue-400' : ''}`}>{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
-                    )
-                  ))}
-                </div>
-              )}
-              {/* Etiqueta de Mesa VERTICAL - 10% width */}
-              <button
-                onClick={() => handleMesaClick(mesa)}
-                className={`w-[10%] min-w-[60px] flex items-center justify-center ${
-                  darkMode
-                    ? todaMesaLista
-                      ? 'bg-gray-800 border-green-500 text-gray-200'
-                      : estado === 'comanda-completa' 
-                        ? 'bg-gray-800 border-gray-600 text-gray-200' 
-                        : estado === 'pedido-listo' 
-                          ? 'bg-gray-800 border-gray-600 animate-pulse text-gray-200' 
-                          : estado === 'ocupada' 
-                            ? 'bg-gray-800 border-gray-600 text-gray-200' 
-                            : 'bg-gray-800 border-gray-700 text-gray-400'
-                    : estado === 'comanda-completa' 
-                      ? 'bg-green-700 text-white' 
-                      : estado === 'pedido-listo' 
-                        ? 'bg-green-100 animate-pulse' 
-                        : estado === 'ocupada' 
-                          ? 'bg-yellow-50' 
-                          : 'bg-gray-50'
-                } ${
-                  darkMode ? 'border-r-2' : 'border-r-2 border-gray-300'
-                } ${
-                  todaMesaLista && !darkMode ? '' : ''
-                } hover:bg-opacity-80 transition-all duration-500 ${
-                  todaMesaLista && !todasComandasEntregadas ? 'animate-pulse' : ''
-                }`}
-              >
-                <div className="text-center">
-                  <span className={`block text-sm font-bold whitespace-nowrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`} style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                    Mesa {mesa.numero}
-                  </span>
-                </div>
-              </button>
-
-              {/* Área de Comandas - 90% width */}
-              <div className={`w-[90%] ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} p-2`}>
-                <div className={`space-y-2 ${comandas.length === 1 ? 'flex items-center h-full' : ''}`}>
-                  {comandas.map((comanda, idx) => {
-                    const pedidos = comanda.pedidos || [];
-                    const todosPedidosListos = pedidos.length > 0 && pedidos.every(p => 
-                      ['listo', 'entregado', 'cancelado'].includes(p.estado)
-                    );
-                    const esEntregada = isComandaEntregada(comanda);
-                    
-                    // Calcular tiempo de forma dinámica
-                    let tiempoMin = 0;
-                    let colorTiempo = 'text-green-400'; // < 3 min
-                    const fechaComanda = comanda.updatedAt || comanda.createdAt || comanda.fecha;
-                    if (fechaComanda) {
-                      const creacion = new Date(fechaComanda);
-                      const diffMs = tiempoActual - creacion;
-                      tiempoMin = Math.floor(diffMs / 60000);
-                      if (isNaN(tiempoMin) || tiempoMin < 0) tiempoMin = 0;
-                      
-                      // Reglas de color según tiempo transcurrido
-                      if (tiempoMin < 3) {
-                        colorTiempo = darkMode ? 'text-green-400' : 'text-green-600';
-                      } else if (tiempoMin >= 3 && tiempoMin < 5) {
-                        colorTiempo = darkMode ? 'text-yellow-400' : 'text-yellow-600';
-                      } else {
-                        colorTiempo = darkMode ? 'text-red-400' : 'text-red-600';
-                      }
-                    }
-                    
-                    return (
-                      <div key={comanda.id} className={`relative flex gap-0 rounded-lg shadow-sm items-center ${
-                        darkMode ? 'bg-gray-900' : 'bg-white'
-                      } ${
-                        todosPedidosListos && darkMode ? 'ring-2 ring-green-500' : ''
-                      }`}>
-                        {/* Semicírculo con número de comanda - pegado a la izquierda */}
-                        <button
-                          onClick={() => handleComandaClick(mesa, comanda.id)}
-                          className={`relative flex-shrink-0 w-12 h-16 rounded-r-full flex flex-col items-center justify-center text-xs font-bold ${
-                            darkMode
-                              ? todosPedidosListos
-                                ? `bg-gray-900 border-2 border-green-500 text-white ${!esEntregada ? 'animate-pulse' : ''}`
-                                : 'bg-gray-900 border-2 border-gray-600 text-gray-300'
-                              : todosPedidosListos 
-                                ? `bg-green-500 text-white ${!esEntregada ? 'animate-pulse' : ''}` 
-                                : 'bg-blue-500 text-white'
-                          } hover:scale-105 transition-all duration-500 shadow-md border-l-0`}
-                          style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-                        >
-                          {/* Manito señalando cuando está lista y no entregada */}
-                          {todosPedidosListos && !esEntregada && (
-                            <div className="absolute -bottom-1 -right-1 animate-bounce">
-                              <div className="text-2xl">{darkMode ? '👆🏽' : '👆'}</div>
-                            </div>
-                          )}
-                          <span>C{idx + 1}</span>
-                          <span className={`text-xs font-bold ${colorTiempo}`}>{tiempoMin}m</span>
-                        </button>
-                        
-                        {/* Check verde para comandas entregadas */}
-                        {todosPedidosListos && esEntregada && (
-                          <div className="absolute bottom-1 right-1 flex items-center justify-center w-6 h-6 bg-green-500 rounded-full border-2 border-white shadow-lg animate-fadeIn">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </div>
-                        )}
-
-                        {/* Pedidos de la comanda */}
-                        <div className="flex-1 flex flex-wrap gap-1.5 p-2">
-                          {pedidos.map((pedido) => {
-                            const estaListo = ['listo', 'entregado'].includes(pedido.estado);
-                            // Obtener el nombre del producto
-                            const nombreProducto = pedido.producto?.nombre || pedido.productoNombre || pedido.nombre || 'Sin nombre';
-                            
-                            return (
-                              <div
-                                key={pedido.id}
-                                className={`inline-flex flex-col px-2 py-1 rounded text-xs border transition-all duration-500 ${
-                                  estaListo 
-                                    ? `bg-green-100 border-green-500 ${!esEntregada ? 'animate-pulse' : ''}` 
-                                    : darkMode
-                                      ? 'bg-gray-800 border-gray-600 text-gray-300'
-                                      : 'bg-gray-50 border-gray-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1">
-                                  <span className="font-bold">{pedido.cantidad}x</span>
-                                  <span className={`font-medium ${estaListo ? 'text-gray-800' : darkMode ? 'text-gray-300' : 'text-gray-800'}`}>{nombreProducto}</span>
-                                </div>
-                                {pedido.notas && (
-                                  <div className={`text-[10px] mt-0.5 italic px-1 rounded ${
-                                    darkMode 
-                                      ? 'text-yellow-300 bg-yellow-900/30' 
-                                      : 'text-gray-600 bg-yellow-50'
-                                  }`}>
-                                    {pedido.notas}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
+      await alertaService.resolver(alerta.id);
+      setAlertas((prev) => prev.filter((a) => a.id !== alerta.id));
+      await loadData();
+    } catch (error) {
+      console.error('Error al resolver alerta:', error);
+      toast.error('No se pudo actualizar la alerta');
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando mesas...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleMesaClick = async (mesa) => {
+    try {
+      const res = await mesaService.getById(mesa.id, evento?.id ? { eventoId: evento.id } : {});
+      const mesaCompleta = {
+        ...mesa,
+        ...(res?.data || {}),
+        seatStates: mesa.seatStates,
+      };
+      const comandas = getActiveComandas(mesaCompleta);
+      setSelectedMesa(mesaCompleta);
+      setComandaIdSeleccionada(null);
+      if (comandas.length > 0) {
+        setShowMesaConComandaModal(true);
+      } else {
+        setShowComandaModal(true);
+      }
+    } catch {
+      toast.error('No se pudo abrir la mesa');
+    }
+  };
+
+  const statusLegendOrder = ['preparando', 'parcial', 'listo', 'cuenta', 'pagada'];
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'}`}>
-      {/* Navbar */}
-      <Navbar 
-        darkMode={darkMode}
-        onReporteDia={() => setShowReporteDia(true)}
-      />
-      
-      {/* Controles superiores */}
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-2 gap-3">
-        {/* Toggle de Vista */}
-        <div className={`flex gap-2 rounded-lg p-1 shadow-sm border w-full sm:w-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <button
-            onClick={() => setVistaMode('cuadro')}
-            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              vistaMode === 'cuadro' 
-                ? 'bg-blue-500 text-white' 
-                : darkMode
-                  ? 'text-gray-300 hover:bg-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
-              <span className="hidden sm:inline">Cuadro</span>
-            </div>
-          </button>
-          <button
-            onClick={() => setVistaMode('lista')}
-            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              vistaMode === 'lista' 
-                ? 'bg-blue-500 text-white' 
-                : darkMode
-                  ? 'text-gray-300 hover:bg-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <div className="flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <span className="hidden sm:inline">Lista</span>
-            </div>
-          </button>
+    <div className="min-h-screen bg-gray-900 text-slate-100">
+      <Navbar darkMode />
+      <div className="flex min-h-[calc(100vh-4rem)] flex-col pb-12">
+        <EventoSelector selectedEvento={evento} onEventoChange={setEvento} refreshKey={eventoRefreshKey} />
+        <AlertStack alertas={alertasEnriquecidas} onAction={handleResolverAlerta} />
+        <SegmentedTabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'mis', label: `Mis mesas (${mesasMis.length})` },
+            { key: 'todas', label: `Ocupadas (${mesasOcupadas.length})` },
+          ]}
+        />
+
+        <div className="border-b border-gray-700 bg-gray-800">
+          <div className="mx-auto flex max-w-7xl flex-wrap gap-3 px-4 py-4 text-xs font-semibold text-slate-400 sm:px-6 lg:px-8">
+            {statusLegendOrder.map((key) => {
+              const style = STATUS_STYLE[key];
+              if (!style) return null;
+              return (
+              <span key={key} className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: style.color }} />
+                {style.label}
+              </span>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Controles derechos: Dark Mode + Asignar */}
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
-          {/* Toggle Dark Mode */}
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`px-3 py-2 rounded-lg border transition-colors ${
-              darkMode 
-                ? 'bg-gray-800 text-yellow-400 border-gray-700 hover:bg-gray-700' 
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-            }`}
-            title={darkMode ? 'Modo claro' : 'Modo oscuro'}
-          >
-            {darkMode ? (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fillRule="evenodd" clipRule="evenodd"></path>
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
-              </svg>
-            )}
-          </button>
-
-          {/* Botón Asignar Mesas */}
-          <button
-            className={`px-3 py-2 rounded-lg border transition-colors ${
-              darkMode
-                ? 'bg-blue-900 text-blue-200 border-blue-800 hover:bg-blue-800'
-                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-            }`}
-            onClick={() => setShowAssignModal(true)}
-          >
-            Asignar mesas
-          </button>
-
-          {/* Checkbox Ver mesas no asignadas */}
-          <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-            darkMode
-              ? 'bg-gray-800 border-gray-700 hover:bg-gray-700'
-              : 'bg-white border-gray-200 hover:bg-gray-50'
-          }`}>
-            <input 
-              type="checkbox" 
-              checked={showUnassigned} 
-              onChange={() => setShowUnassigned(v => !v)}
-              className="rounded"
-            />
-            <span className={`text-sm whitespace-nowrap ${
-              darkMode ? 'text-gray-300' : 'text-gray-700'
-            }`}>No asignadas</span>
-          </label>
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-3">
-        <div className={`grid grid-cols-2 sm:flex gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-          <div className={`rounded-xl px-3 py-2 text-sm shadow-sm ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
-            {mesasVisibles.length} mesa{mesasVisibles.length === 1 ? '' : 's'} visibles
-          </div>
-          <div className={`rounded-xl px-3 py-2 text-sm shadow-sm ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
-            {mesasVisibles.filter((mesa) => (mesa.comandas || []).length > 0).length} ocupada{mesasVisibles.filter((mesa) => (mesa.comandas || []).length > 0).length === 1 ? '' : 's'}
-          </div>
-        </div>
-      </div>
-      
-      {/* Leyenda de estados */}
-      <div className={`px-3 py-2 border-b ${darkMode ? 'bg-gray-800/50 backdrop-blur-sm border-gray-700' : 'bg-white/50 backdrop-blur-sm border-gray-200'}`}>
-        <div className="flex gap-3 justify-center flex-wrap">
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-lg"></div>
-            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Algún pedido listo</span>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="w-2 h-2 bg-yellow-300 rounded-full shadow-lg"></div>
-            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Ocupada</span>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="w-2 h-2 bg-green-900 rounded-full shadow-lg ring-2 ring-green-700"></div>
-            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Todos los pedidos listos</span>
-          </div>
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-            <div className="w-2 h-2 bg-gray-300 rounded-full shadow-lg"></div>
-            <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Libre</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Contenido Principal - Grid o Lista */}
-      {vistaMode === 'lista' ? (
-        renderVistaLista()
-      ) : (
-        <div className="px-3 py-4">
-          {mesas.length === 0 ? (
-            <div className={`text-center py-12 rounded-2xl shadow-md ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No hay mesas configuradas</p>
-            </div>
+        <main className="mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-4 py-8 pb-16 sm:px-6 lg:px-8">
+          {loading ? (
+            <div className="py-20 text-center text-slate-400">Cargando mesas...</div>
+          ) : mesasVisibles.length === 0 ? (
+            <div className="py-20 text-center text-slate-400">No hay mesas asignadas</div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5">
-              {mesasVisibles.map((mesa) => {
-                const estado = getEstadoMesa(mesa);
-                const colorClass = getColorMesa(estado);
-                const notasMesa = obtenerNotasMesa(mesa);
-                
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))] md:[grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
+              {mesasOrdenadas.map((mesa) => {
+                const status = deriveMesaStatus(mesa);
+                const assignee = turnoMeseros.find((turno) => turno.meseroId === mesa.asignadoMeseroId);
+                const esStaff = isStaffMesa(mesa);
                 return (
-                  <button
+                  <MeseroMesaCard
                     key={mesa.id}
+                    mesa={esStaff ? { ...mesa, numero: 'S' } : mesa}
+                    status={status}
+                    assignee={assignee ? shortName(assignee.nombre) : (tab === 'mis' ? shortName(user?.nombre) : null)}
                     onClick={() => handleMesaClick(mesa)}
-                    className={`relative p-3 rounded-xl shadow-md transition-all duration-200 active:scale-95 hover:shadow-xl ${colorClass}`}
-                  >
-                    {getIndicadorMesa(estado)}
-                      {/* Avatares de meseros asignados (grid) */}
-                      {mesa.usuariosAsignados && mesa.usuariosAsignados.length > 0 && (
-                        <div className="absolute left-2 top-2 flex -space-x-2 z-10">
-                          {mesa.usuariosAsignados.slice(0,3).map(u => (
-                            u.foto ? (
-                              <img key={u.id} src={u.foto} alt={u.nombre} className={`w-6 h-6 rounded-full border-2 ${u.id === user?.id ? 'border-blue-400' : 'border-white'}`} />
-                            ) : (
-                              <div key={u.id} className={`w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold ${u.id === user?.id ? 'ring-2 ring-blue-400' : ''}`}>{(u.nombre || 'U').charAt(0).toUpperCase()}</div>
-                            )
-                          ))}
-                        </div>
-                      )}
-                    
-                    <div className="text-center">
-                      <div className="text-3xl mb-1">🪑</div>
-                      <h3 className={`font-bold text-base ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                        {mesa.numero}
-                      </h3>
-                      {mesa.ubicacion && (
-                        <p className={`text-[10px] mt-0.5 truncate ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{mesa.ubicacion}</p>
-                      )}
-                      {mesa.comandas && mesa.comandas.length > 0 && (
-                        <div className="mt-1 flex items-center justify-center gap-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                            darkMode 
-                              ? 'bg-gray-700 text-gray-300' 
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>{mesa.comandas.length} {mesa.comandas.length > 1 ? 'comandas' : 'comanda'}</span>
-                        </div>
-                      )}
-                      {notasMesa.length > 0 && (
-                        <div className="mt-2 flex items-center justify-center">
-                          <span
-                            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-semibold ${
-                              darkMode ? 'bg-yellow-900/30 text-yellow-200' : 'bg-amber-50 text-amber-800'
-                            }`}
-                            title={notasMesa.length === 1 ? 'Hay una nota en esta mesa' : `Hay ${notasMesa.length} notas en esta mesa`}
-                          >
-                            📝
-                          </span>
-                        </div>
-                      )}
-                      <p className={`text-[9px] mt-1 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
-                        {mesa.capacidad}p
-                      </p>
-                    </div>
-                  </button>
+                  />
                 );
               })}
             </div>
           )}
-        </div>
-      )}
+        </main>
+      </div>
 
-      {/* Modal de Comanda */}
       {showComandaModal && selectedMesa && (
         <ComandaModal
           mesa={selectedMesa}
           comandaId={comandaIdSeleccionada}
-          darkMode={darkMode}
+          eventoId={evento?.id || null}
+          darkMode
+          staffPricing={isStaffMesa(selectedMesa)}
           onClose={() => {
             setShowComandaModal(false);
             setSelectedMesa(null);
             setComandaIdSeleccionada(null);
-            cargarMesas();
+            loadData();
           }}
         />
       )}
 
-      {/* Modal de Selección (Mesa con Comanda) */}
       {showMesaConComandaModal && selectedMesa && (
         <MesaConComandaModal
           mesa={selectedMesa}
-          isMobile={isMobileLayout}
-          darkMode={darkMode}
+          isMobile
+          darkMode
           onContinuar={(comandaId) => {
-            console.log('onContinuar recibió:', comandaId, 'tipo:', typeof comandaId);
-            const idToUse = comandaId || selectedMesa.comandas[0]?.id;
-            console.log('ID a usar:', idToUse, 'tipo:', typeof idToUse);
-            setComandaIdSeleccionada(idToUse);
+            setComandaIdSeleccionada(comandaId);
             setShowMesaConComandaModal(false);
             setShowComandaModal(true);
           }}
@@ -925,32 +557,15 @@ export default function MeseroView() {
             setShowMesaConComandaModal(false);
             setShowComandaModal(true);
           }}
+          onGenerarCuenta={(comandaId) => {
+            setComandaIdSeleccionada(comandaId || null);
+            setShowMesaConComandaModal(false);
+            setShowComandaModal(true);
+          }}
           onClose={() => {
             setShowMesaConComandaModal(false);
             setSelectedMesa(null);
           }}
-        />
-      )}
-
-      {/* Modal Asignar Mesas (aparece al ingresar si no tiene asignadas) */}
-      {showAssignModal && (
-        <AssignMesasModal
-          visible={showAssignModal}
-          mesasInicial={mesas}
-          assignedInicial={Array.from(assignedMesas)}
-          onAssigned={(newAssigned) => {
-            setAssignedMesas(new Set(newAssigned));
-            cargarMesas();
-          }}
-          onClose={() => setShowAssignModal(false)}
-        />
-      )}
-
-      {/* Modal de Reporte del Día */}
-      {showReporteDia && (
-        <ReporteDiaMesero
-          onClose={() => setShowReporteDia(false)}
-          darkMode={darkMode}
         />
       )}
     </div>

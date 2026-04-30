@@ -1,8 +1,21 @@
-const { Producto, Proveedor } = require('../models');
+const { Producto, Proveedor, CategoriaProducto } = require('../models');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { resolveLocalWhere, resolveAllowedLocalIds, assertLocalIdAllowed } = require('../utils/localScope');
 const { resolveOperationalProductType } = require('../utils/productRouting');
+
+// Helper: resolve or create categoriaId given a category name and localId
+const resolveCategoriaId = async (nombre, localId) => {
+  if (!nombre || !localId) return null;
+  const clean = String(nombre).trim();
+  if (!clean) return null;
+  const [cat] = await CategoriaProducto.findOrCreate({
+    where: { nombre: clean, localId },
+    defaults: { nombre: clean, localId, activo: true }
+  });
+  if (!cat.activo) await cat.update({ activo: true });
+  return cat.id;
+};
 
 // Listar todos los productos
 const getAllProductos = async (req, res) => {
@@ -172,6 +185,7 @@ const createProducto = async (req, res) => {
     }
 
     const resolvedTipo = resolveOperationalProductType({ nombre, categoria, tipo });
+    const categoriaId = await resolveCategoriaId(categoria, targetLocalId);
 
     const producto = await Producto.create({
       nombre,
@@ -181,6 +195,7 @@ const createProducto = async (req, res) => {
       costo,
       proveedorId,
       categoria,
+      categoriaId,
       tipo: resolvedTipo,
       localId: targetLocalId
     });
@@ -242,7 +257,15 @@ const createMultipleProductos = async (req, res) => {
       }
     }
 
-    const productosCreados = await Producto.bulkCreate(productosNormalizados);
+    // Resolve categoriaId for each product
+    const productosConCategoria = await Promise.all(
+      productosNormalizados.map(async (p) => ({
+        ...p,
+        categoriaId: await resolveCategoriaId(p.categoria, p.localId)
+      }))
+    );
+
+    const productosCreados = await Producto.bulkCreate(productosConCategoria);
 
     res.status(201).json({
       success: true,
@@ -296,6 +319,9 @@ const updateProducto = async (req, res) => {
     const nextNombre = nombre || producto.nombre;
     const nextCategoria = categoria !== undefined ? categoria : producto.categoria;
     const nextTipo = tipo !== undefined ? tipo : producto.tipo;
+    const nextCategoriaId = categoria !== undefined
+      ? await resolveCategoriaId(categoria, producto.localId)
+      : producto.categoriaId;
 
     await producto.update({
       nombre: nombre || producto.nombre,
@@ -305,6 +331,7 @@ const updateProducto = async (req, res) => {
       costo: costo || producto.costo,
       proveedorId: proveedorId !== undefined ? proveedorId : producto.proveedorId,
       categoria: categoria !== undefined ? categoria : producto.categoria,
+      categoriaId: nextCategoriaId,
       activo: activo !== undefined ? activo : producto.activo,
       tipo: resolveOperationalProductType({ nombre: nextNombre, categoria: nextCategoria, tipo: nextTipo })
     });
@@ -432,7 +459,7 @@ const deleteProducto = async (req, res) => {
 const getCategorias = async (req, res) => {
   try {
     const { localId } = req.query;
-    
+
     const where = {
       categoria: { [Op.ne]: null },
       activo: true
@@ -456,18 +483,188 @@ const getCategorias = async (req, res) => {
       raw: true
     });
 
+    const categoriasGuardadas = where.localId
+      ? await CategoriaProducto.findAll({
+          attributes: ['id', 'nombre'],
+          where: {
+            localId: where.localId,
+            activo: true
+          },
+          raw: true
+        })
+      : [];
+
+    const porNombre = new Map();
+    categoriasGuardadas.forEach((categoria) => {
+      porNombre.set(categoria.nombre, {
+        id: categoria.id,
+        nombre: categoria.nombre,
+        cantidad: 0
+      });
+    });
+    categorias.forEach((categoria) => {
+      const current = porNombre.get(categoria.categoria);
+      porNombre.set(categoria.categoria, {
+        id: current?.id || null,
+        nombre: categoria.categoria,
+        cantidad: parseInt(categoria.cantidad)
+      });
+    });
+
     res.json({
       success: true,
-      data: categorias.map(c => ({
-        nombre: c.categoria,
-        cantidad: parseInt(c.cantidad)
-      }))
+      data: Array.from(porNombre.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
     });
   } catch (error) {
     console.error('Error en getCategorias:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener categorías',
+      error: error.message
+    });
+  }
+};
+
+// Crear una categoria para usarla aunque todavia no tenga productos
+const createCategoria = async (req, res) => {
+  try {
+    const { nombre, localId } = req.body;
+    const cleanNombre = String(nombre || '').trim();
+
+    if (!cleanNombre) {
+      return res.status(400).json({
+        success: false,
+        message: 'nombre es requerido'
+      });
+    }
+
+    const allowedLocalIds = await resolveAllowedLocalIds(req);
+    const targetLocalId = localId || req.user?.localId || null;
+    if (!targetLocalId) {
+      return res.status(400).json({ success: false, message: 'localId es requerido' });
+    }
+    try {
+      assertLocalIdAllowed(allowedLocalIds, targetLocalId);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
+    const [categoria] = await CategoriaProducto.findOrCreate({
+      where: {
+        localId: targetLocalId,
+        nombre: cleanNombre
+      },
+      defaults: {
+        localId: targetLocalId,
+        nombre: cleanNombre,
+        activo: true
+      }
+    });
+
+    if (!categoria.activo) {
+      await categoria.update({ activo: true });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Categoria creada exitosamente',
+      data: {
+        id: categoria.id,
+        nombre: categoria.nombre,
+        cantidad: 0
+      }
+    });
+  } catch (error) {
+    console.error('Error en createCategoria:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al crear categoria',
+      error: error.message
+    });
+  }
+};
+
+// Renombrar una categoria en todos los productos del local
+const renameCategoria = async (req, res) => {
+  try {
+    const { oldName, newName, localId } = req.body;
+    const from = String(oldName || '').trim();
+    const to = String(newName || '').trim();
+
+    if (!from || !to) {
+      return res.status(400).json({
+        success: false,
+        message: 'oldName y newName son requeridos'
+      });
+    }
+
+    if (from === to) {
+      return res.json({
+        success: true,
+        message: 'Categoria sin cambios',
+        data: { updated: 0 }
+      });
+    }
+
+    const where = {
+      categoria: from
+    };
+
+    try {
+      const scoped = await resolveLocalWhere(req, localId);
+      Object.assign(where, scoped.where);
+    } catch (e) {
+      return res.status(e.status || 403).json({ success: false, message: e.message });
+    }
+
+    const [updated] = await Producto.update(
+      { categoria: to },
+      { where }
+    );
+
+    const targetLocalId = where.localId || localId || req.user?.localId;
+    if (targetLocalId) {
+      const existingNew = await CategoriaProducto.findOne({
+        where: {
+          localId: targetLocalId,
+          nombre: to
+        }
+      });
+
+      if (!existingNew) {
+        const existingOld = await CategoriaProducto.findOne({
+          where: {
+            localId: targetLocalId,
+            nombre: from
+          }
+        });
+
+        if (existingOld) {
+          await existingOld.update({ nombre: to, activo: true });
+        } else {
+          await CategoriaProducto.create({ localId: targetLocalId, nombre: to, activo: true });
+        }
+      } else {
+        await existingNew.update({ activo: true });
+        await CategoriaProducto.destroy({
+          where: {
+            localId: targetLocalId,
+            nombre: from
+          }
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${updated} productos actualizados`,
+      data: { updated, oldName: from, newName: to }
+    });
+  } catch (error) {
+    console.error('Error en renameCategoria:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al actualizar categoria',
       error: error.message
     });
   }
@@ -482,5 +679,7 @@ module.exports = {
   updateProductoProveedor,
   deleteProducto,
   getCategorias,
+  createCategoria,
+  renameCategoria,
   getProductosPorCategoria
 };

@@ -34,9 +34,10 @@ export const comandaService = {
   },
 
   // Agregar pedidos a comanda
-  addPedidos: async (comandaId, pedidos) => {
+  addPedidos: async (comandaId, pedidos, options = {}) => {
     const response = await api.post(`/comandas/${comandaId}/pedidos`, {
-      pedidos
+      pedidos,
+      ...options
     });
     return response.data;
   },

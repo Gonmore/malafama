@@ -13,6 +13,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (loading) return
     setLoading(true)
 
     try {
@@ -20,7 +21,7 @@ export default function Login() {
       const { usuario, token } = response.data
 
       setAuth(usuario, token)
-      toast.success('Inicio de sesión exitoso')
+      toast.success('Inicio de sesión exitoso', { id: 'login-status' })
 
       // Redirigir según el tipo de usuario
       if (usuario.tipo === 'platform_admin') {
@@ -29,6 +30,8 @@ export default function Login() {
         navigate('/admin')
       } else if (usuario.tipo === 'atencion') {
         navigate('/mesero')
+      } else if (usuario.tipo === 'supervisor') {
+        navigate('/supervisor')
       } else if (usuario.tipo === 'cocina') {
         // Determinar si es cocina o bar basado en el nombre/email
         const esBar = usuario.nombre?.toLowerCase().includes('bar') || 
@@ -38,13 +41,16 @@ export default function Login() {
         navigate(`/${usuario.tipo}`)
       }
     } catch (error) {
-      const msg = error.response?.data?.message || 'Error al iniciar sesión';
+      const status = error.response?.status;
+      const msg = status === 429
+        ? 'Demasiados intentos o demasiado tráfico desde esta sesión. Intenta de nuevo en unos minutos.'
+        : (error.response?.data?.message || 'Error al iniciar sesión');
       // Si vienen errores de validación, concatenarlos
       if (error.response?.data?.errors) {
         const details = error.response.data.errors.map(e => `${e.field}: ${e.message}`).join('\n');
-        toast.error(`${msg}\n${details}`);
+        toast.error(`${msg}\n${details}`, { id: 'login-status' });
       } else {
-        toast.error(msg);
+        toast.error(msg, { id: 'login-status' });
       }
     } finally {
       setLoading(false)
@@ -52,17 +58,20 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-500 to-primary-700">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="ambient-blob bg-indigo-600 w-[20rem] h-[20rem] -top-28 -left-16" />
+      <div className="ambient-blob bg-purple-600 w-[24rem] h-[24rem] top-12 -right-20" />
+
+      <div className="glass-surface w-full max-w-md p-8 relative z-10">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary-600 mb-2">MalaFama</h1>
-          <p className="text-gray-600">Sistema de Gestión de Pedidos</p>
+          <h1 className="text-4xl font-extrabold tracking-tight gradient-title mb-2">MalaFama</h1>
+          <p className="text-slate-400">Sistema de Gestion de Pedidos</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Correo Electrónico
+            <label htmlFor="email" className="label-muted mb-2 block">
+              Correo Electronico
             </label>
             <input
               id="email"
@@ -76,8 +85,8 @@ export default function Login() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              Contraseña
+            <label htmlFor="password" className="label-muted mb-2 block">
+              Contrasena
             </label>
             <input
               id="password"
@@ -85,7 +94,7 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
-              placeholder="••••••••"
+              placeholder="********"
               required
             />
           </div>
@@ -93,14 +102,14 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full btn-primary"
           >
-            {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+            {loading ? 'Iniciando sesion...' : 'Iniciar Sesion'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p>Demo: admin@malafama.com / password</p>
+        <div className="mt-6 text-center text-sm text-slate-400">
+          <p>Demo: admin@malafama.com / admin123</p>
         </div>
       </div>
     </div>

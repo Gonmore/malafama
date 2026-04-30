@@ -7,6 +7,8 @@ const { validate, productoSchemas } = require('../middlewares/validation.middlew
 // Rutas públicas/autenticadas
 router.get('/', authenticate, productoController.getAllProductos);
 router.get('/categorias', authenticate, productoController.getCategorias);
+router.post('/categorias', authenticate, authorize('admin'), productoController.createCategoria);
+router.put('/categorias', authenticate, authorize('admin'), productoController.renameCategoria);
 router.get('/agrupados', authenticate, productoController.getProductosPorCategoria);
 router.get('/:id', authenticate, productoController.getProductoById);
 

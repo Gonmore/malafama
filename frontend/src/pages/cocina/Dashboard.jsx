@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Bell, Clock, ChefHat } from 'lucide-react';
 import { pedidoService } from '../../services/pedidoService';
 import { useSocket } from '../../hooks/useSocket';
@@ -77,8 +77,8 @@ export default function CocinaDashboard() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Panel de Cocina</h2>
-          <p className="text-gray-600 mt-1">{totalPedidos} pedidos en cola</p>
+          <h2 className="text-3xl font-bold text-slate-100">Panel de Cocina</h2>
+          <p className="text-slate-400 mt-1">{totalPedidos} pedidos en cola</p>
         </div>
         <button 
           onClick={loadPedidos}
@@ -108,11 +108,11 @@ export default function CocinaDashboard() {
         </div>
       ) : (
         <div className="card text-center py-12">
-          <ChefHat className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">
+          <ChefHat className="w-16 h-16 mx-auto text-slate-500 mb-4" />
+          <h3 className="text-xl font-semibold text-slate-300 mb-2">
             No hay pedidos pendientes
           </h3>
-          <p className="text-gray-500">
+          <p className="text-slate-400">
             Los nuevos pedidos aparecerán aquí automáticamente
           </p>
         </div>
@@ -143,15 +143,15 @@ function ComandaCard({ comanda, pedidos, onActualizarEstado, onMarcarListo }) {
   return (
     <div className={`card border-l-4 ${
       esUrgente 
-        ? 'border-red-500 bg-red-50' 
+        ? 'border-red-500 bg-red-900/20' 
         : preparando.length > 0
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-yellow-500 bg-yellow-50'
+          ? 'border-blue-500 bg-blue-900/20'
+          : 'border-yellow-500 bg-yellow-900/20'
     }`}>
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-xl font-bold text-gray-900">{mesa.nombre}</h3>
-          <p className="text-sm text-gray-600">Mesero: {mesero.nombre}</p>
+          <h3 className="text-xl font-bold text-slate-100">{mesa.nombre}</h3>
+          <p className="text-sm text-slate-400">Mesero: {mesero.nombre}</p>
         </div>
         <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${
           esUrgente ? 'bg-red-200 text-red-800' : 'bg-white'
@@ -167,14 +167,14 @@ function ComandaCard({ comanda, pedidos, onActualizarEstado, onMarcarListo }) {
             key={pedido.id} 
             className={`p-3 rounded-lg ${
               pedido.estado === 'preparando' 
-                ? 'bg-blue-100 border-2 border-blue-300' 
+                ? 'bg-blue-900/30 border-2 border-blue-300' 
                 : 'bg-white'
             }`}
           >
             <div className="flex justify-between items-start mb-2">
               <div className="flex-1">
                 <span className="font-medium">{pedido.producto.nombre}</span>
-                <span className="ml-2 text-gray-600">x{pedido.cantidad}</span>
+                <span className="ml-2 text-slate-400">x{pedido.cantidad}</span>
               </div>
               <span className={`text-xs px-2 py-1 rounded ${
                 pedido.estado === 'pendiente' 
@@ -186,7 +186,7 @@ function ComandaCard({ comanda, pedidos, onActualizarEstado, onMarcarListo }) {
             </div>
             
             {pedido.observaciones && (
-              <p className="text-sm text-gray-600 italic">
+              <p className="text-sm text-slate-400 italic">
                 {pedido.observaciones}
               </p>
             )}
@@ -215,8 +215,8 @@ function ComandaCard({ comanda, pedidos, onActualizarEstado, onMarcarListo }) {
 
       <div className="border-t pt-3">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Pendientes: {pendientes.length}</span>
-          <span className="text-gray-600">Preparando: {preparando.length}</span>
+          <span className="text-slate-400">Pendientes: {pendientes.length}</span>
+          <span className="text-slate-400">Preparando: {preparando.length}</span>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { toast } from 'react-hot-toast';
 import onboardingService from '../../../services/onboardingService';
 import LoadingSpinner from '../../../components/LoadingSpinner';
@@ -82,10 +82,10 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">
+      <h2 className="text-2xl font-bold text-slate-100 mb-4">
         Paso 2: Crear Productos
       </h2>
-      <p className="text-gray-600 mb-6">
+      <p className="text-slate-400 mb-6">
         Elige cómo deseas agregar los productos de tu menú
       </p>
 
@@ -96,13 +96,13 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
           onClick={() => setMetodo('scraping')}
           className={`p-4 border-2 rounded-lg transition-all ${
             metodo === 'scraping'
-              ? 'border-blue-600 bg-blue-50'
-              : 'border-gray-200 hover:border-blue-300'
+              ? 'border-blue-600 bg-blue-900/20'
+              : 'border-slate-700 hover:border-indigo-500'
           }`}
         >
           <div className="text-3xl mb-2">🌐</div>
-          <h3 className="font-semibold text-gray-900">Web Scraping</h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <h3 className="font-semibold text-slate-100">Web Scraping</h3>
+          <p className="text-sm text-slate-400 mt-1">
             Extrae productos desde tu menú web
           </p>
         </button>
@@ -112,13 +112,13 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
           onClick={() => setMetodo('manual')}
           className={`p-4 border-2 rounded-lg transition-all ${
             metodo === 'manual'
-              ? 'border-blue-600 bg-blue-50'
-              : 'border-gray-200 hover:border-blue-300'
+              ? 'border-blue-600 bg-blue-900/20'
+              : 'border-slate-700 hover:border-indigo-500'
           }`}
         >
           <div className="text-3xl mb-2">✏️</div>
-          <h3 className="font-semibold text-gray-900">Crear Manualmente</h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <h3 className="font-semibold text-slate-100">Crear Manualmente</h3>
+          <p className="text-sm text-slate-400 mt-1">
             Agrega tus productos uno por uno
           </p>
         </button>
@@ -128,7 +128,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
       {metodo === 'scraping' && (
         <div>
           <form onSubmit={handleScrapear} className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               URL de tu menú web *
             </label>
             <div className="flex gap-2">
@@ -137,7 +137,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                 value={urlMenu}
                 onChange={(e) => setUrlMenu(e.target.value)}
                 placeholder="https://turestaurante.com/menu"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1 px-4 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
                 disabled={loading}
               />
@@ -149,7 +149,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                 {loading ? 'Extrayendo...' : 'Extraer'}
               </button>
             </div>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-slate-400">
               💡 Tip: Ingresa la URL donde están listados tus productos con precios
             </p>
           </form>
@@ -162,7 +162,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
 
           {/* Productos scrapeados */}
           {productosScrapeados.length > 0 && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <div className="bg-green-900/20 border border-green-200 rounded-lg p-4 mb-6">
               <h3 className="font-semibold text-green-900 mb-3">
                 ✅ {productosScrapeados.length} productos encontrados
               </h3>
@@ -170,14 +170,14 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                 {productosScrapeados.map((producto, index) => (
                   <div
                     key={index}
-                    className="bg-white rounded p-3 flex justify-between items-start"
+                    className="bg-slate-800 rounded p-3 flex justify-between items-start"
                   >
                     <div>
-                      <p className="font-medium text-gray-900">{producto.nombre}</p>
+                      <p className="font-medium text-slate-100">{producto.nombre}</p>
                       {producto.descripcion && (
-                        <p className="text-sm text-gray-500">{producto.descripcion}</p>
+                        <p className="text-sm text-slate-400">{producto.descripcion}</p>
                       )}
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-slate-400 mt-1">
                         Categoría: {producto.categoria || 'Sin categoría'}
                       </p>
                     </div>
@@ -200,10 +200,10 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
         <div>
           <div className="space-y-4 mb-4">
             {productosManual.map((producto, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <div key={index} className="border border-slate-700 rounded-lg p-4 bg-slate-900">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">
                       Nombre del producto *
                     </label>
                     <input
@@ -211,19 +211,19 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                       value={producto.nombre}
                       onChange={(e) => handleCambioProductoManual(index, 'nombre', e.target.value)}
                       placeholder="Ej: Pizza Margarita"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">
                       Categoría *
                     </label>
                     <select
                       value={producto.categoria}
                       onChange={(e) => handleCambioProductoManual(index, 'categoria', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="Platos">Platos</option>
                       <option value="Pizzas">Pizzas</option>
@@ -237,7 +237,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">
                       Precio de venta * ({moneda})
                     </label>
                     <input
@@ -247,13 +247,13 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                       value={producto.precio}
                       onChange={(e) => handleCambioProductoManual(index, 'precio', e.target.value)}
                       placeholder="15.99"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500"
                       required
                     />
                   </div>
 
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">
                       Descripción (opcional)
                     </label>
                     <input
@@ -261,7 +261,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
                       value={producto.descripcion}
                       onChange={(e) => handleCambioProductoManual(index, 'descripcion', e.target.value)}
                       placeholder="Ingredientes o descripción breve"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -282,12 +282,12 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
           <button
             type="button"
             onClick={handleAgregarProductoManual}
-            className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
+            className="w-full py-3 border-2 border-dashed border-slate-600 rounded-lg text-slate-400 hover:border-blue-400 hover:text-blue-600 transition-colors"
           >
             + Agregar otro producto
           </button>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+          <div className="bg-blue-900/20 border border-blue-200 rounded-lg p-4 mt-4">
             <p className="text-sm text-blue-800">
               💡 <strong>Tip:</strong> En el siguiente paso asignarás el costo y proveedor de cada producto
             </p>
@@ -300,7 +300,7 @@ export default function Paso2Productos({ onCompletar, onRetroceder, datosInicial
         <button
           type="button"
           onClick={onRetroceder}
-          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+          className="px-6 py-3 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-900 font-medium transition-colors"
         >
           ← Atrás
         </button>

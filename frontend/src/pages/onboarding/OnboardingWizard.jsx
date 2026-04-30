@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
@@ -235,7 +235,7 @@ export default function OnboardingWizard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
         <LoadingSpinner text="Verificando configuración..." />
       </div>
     );
@@ -244,23 +244,23 @@ export default function OnboardingWizard() {
   // Dialog de configuración existente
   if (mostrarDialogExistente) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 px-4">
+        <div className="bg-slate-800 rounded-lg shadow-xl p-8 max-w-md w-full">
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-100 rounded-full mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-900/30 rounded-full mb-4">
               <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="text-2xl font-bold text-slate-100 mb-2">
               Configuración Detectada
             </h2>
-            <p className="text-gray-600">
+            <p className="text-slate-400">
               Ya tienes configuración existente
             </p>
           </div>
 
-          <div className="bg-blue-50 rounded-lg p-4 mb-6">
+          <div className="bg-blue-900/20 rounded-lg p-4 mb-6">
             {configuracionExistente?.local && (
               <div className="mb-3">
                 <p className="text-sm font-semibold text-blue-900">🏪 Local encontrado:</p>
@@ -269,7 +269,7 @@ export default function OnboardingWizard() {
             )}
             {configuracionExistente?.mesasCount > 0 && (
               <div>
-                <p className="text-sm font-semibold text-blue-900">🪑 Mesas configuradas:</p>
+                <p className="text-sm font-semibold text-blue-900 flex items-center gap-1"><img src="/mesa.png" className="inline w-4 h-4 object-contain" alt="mesa" /> Mesas configuradas:</p>
                 <p className="text-sm text-blue-800">{configuracionExistente.mesasCount} mesas</p>
               </div>
             )}
@@ -284,13 +284,13 @@ export default function OnboardingWizard() {
             </button>
             <button
               onClick={handleIrADashboard}
-              className="w-full px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+              className="w-full px-6 py-3 border border-slate-600 text-slate-300 rounded-lg hover:bg-slate-900 font-medium transition-colors"
             >
               Ir al Dashboard
             </button>
           </div>
 
-          <p className="text-xs text-gray-500 text-center mt-4">
+          <p className="text-xs text-slate-400 text-center mt-4">
             Si continúas la configuración, podrás agregar más productos o proveedores
           </p>
         </div>
@@ -299,20 +299,20 @@ export default function OnboardingWizard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-slate-100 mb-2">
             ¡Bienvenido a MalaFama! 🍕
           </h1>
-          <p className="text-lg text-gray-600">
+          <p className="text-lg text-slate-400">
             Configuremos tu restaurante en 4 simples pasos
           </p>
         </div>
 
         {/* Progress Bar */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="bg-slate-800 rounded-lg shadow-md p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
             {PASOS.map((paso, index) => (
               <div key={paso.numero} className="flex items-center flex-1">
@@ -323,20 +323,20 @@ export default function OnboardingWizard() {
                         ? 'bg-blue-600 text-white'
                         : pasoActual > paso.numero
                         ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 text-gray-500'
+                        : 'bg-slate-700 text-slate-400'
                     }`}
                   >
                     {pasoActual > paso.numero ? '✓' : paso.numero}
                   </div>
                   <div className="mt-2 text-center">
-                    <p className="text-sm font-medium text-gray-900">{paso.titulo}</p>
-                    <p className="text-xs text-gray-500 mt-1">{paso.descripcion}</p>
+                    <p className="text-sm font-medium text-slate-100">{paso.titulo}</p>
+                    <p className="text-xs text-slate-400 mt-1">{paso.descripcion}</p>
                   </div>
                 </div>
                 {index < PASOS.length - 1 && (
                   <div
                     className={`h-1 flex-1 mx-4 ${
-                      pasoActual > paso.numero ? 'bg-green-500' : 'bg-gray-200'
+                      pasoActual > paso.numero ? 'bg-green-500' : 'bg-slate-700'
                     }`}
                   />
                 )}
@@ -346,7 +346,7 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Contenido del paso actual */}
-        <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="bg-slate-800 rounded-lg shadow-md p-8">
           {pasoActual === 0 && (
             <Paso0Local
               onCompletar={handleCompletarPaso0}
@@ -385,7 +385,7 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-slate-400">
           <p>Puedes editar esta configuración más tarde desde el panel de administración</p>
         </div>
       </div>

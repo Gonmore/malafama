@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
@@ -297,16 +297,16 @@ export default function ReportesPage() {
 
   if (loading && !reporte) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <LoadingSpinner text="Cargando reporte..." />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-slate-800 shadow-sm border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -322,13 +322,13 @@ export default function ReportesPage() {
                 </svg>
                 Volver al local
               </button>
-              <h1 className="text-3xl font-bold text-gray-900">📊 Reportes y Análisis</h1>
-              <p className="text-gray-600 mt-1">Análisis detallado de ventas, productos y márgenes</p>
+              <h1 className="text-3xl font-bold text-slate-100">📊 Reportes y Análisis</h1>
+              <p className="text-slate-400 mt-1">Análisis detallado de ventas, productos y márgenes</p>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => window.print()}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900 flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -338,9 +338,9 @@ export default function ReportesPage() {
 
               <button
                 onClick={() => exportReportCSV(reporte)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900 flex items-center gap-2"
               >
-                <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-5 h-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
@@ -349,9 +349,9 @@ export default function ReportesPage() {
               </button>
               <button
                 onClick={() => { setEditingSchedule(null); setShowScheduleModal(true); }}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                className="px-4 py-2 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-900 flex items-center gap-2"
               >
-                <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-5 h-5 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 8v8M8 12h8" />
                 </svg>
                 Programar
@@ -364,20 +364,20 @@ export default function ReportesPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Selector de Período y Tipo de Reporte */}
-        <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg border border-gray-200 p-8 mb-8 backdrop-blur-sm">
+        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl shadow-lg border border-slate-700 p-8 mb-8 backdrop-blur-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+              <h2 className="text-2xl font-bold text-slate-100 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
                 Configuración de Reporte
               </h2>
-              <p className="text-sm text-gray-500 mt-1">Selecciona el tipo de análisis y período</p>
+              <p className="text-sm text-slate-400 mt-1">Selecciona el tipo de análisis y período</p>
             </div>
             {reporte && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 px-4 py-2 bg-blue-900/30 rounded-lg border border-blue-700">
                 <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <p className="text-sm font-medium text-blue-900">
+                <p className="text-sm font-medium text-blue-200">
                   {new Date(reporte.fechaDesde).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })} - {new Date(reporte.fechaHasta).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
               </div>
@@ -386,8 +386,8 @@ export default function ReportesPage() {
 
           {/* Selector de Local (opcional) */}
           {locales.length > 1 && (
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <label className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+            <div className="mb-6 bg-blue-900/30 border border-blue-700 rounded-xl p-4">
+              <label className="text-sm font-semibold text-blue-200 mb-3 flex items-center gap-2">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
@@ -397,7 +397,7 @@ export default function ReportesPage() {
                 <select
                   value={localId || ''}
                   onChange={(e) => setLocalId(e.target.value)}
-                  className="w-full px-4 py-3 pr-10 rounded-lg border-2 border-blue-300 bg-white text-gray-900 font-semibold focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-200 appearance-none cursor-pointer hover:border-blue-400"
+                  className="w-full px-4 py-3 pr-10 rounded-lg border-2 border-blue-700 bg-slate-900 text-slate-100 font-semibold focus:border-blue-500 focus:ring-4 focus:ring-blue-900/40 transition-all duration-200 appearance-none cursor-pointer hover:border-blue-500"
                 >
                   <option value="">Elegir al generar el reporte</option>
                   {locales.map((local) => (
@@ -406,7 +406,7 @@ export default function ReportesPage() {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -417,7 +417,7 @@ export default function ReportesPage() {
 
           {/* Tipo de Reporte */}
           <div className="mb-6">
-            <label className="text-sm font-semibold text-gray-700 mb-3 block uppercase tracking-wide">Tipo de Análisis</label>
+            <label className="text-sm font-semibold text-slate-300 mb-3 block uppercase tracking-wide">Tipo de Análisis</label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { 
@@ -448,17 +448,17 @@ export default function ReportesPage() {
                   className={`group relative overflow-hidden px-6 py-5 rounded-xl border-2 text-left transition-all duration-300 transform hover:scale-105 ${
                     tipoReporte === t.value
                       ? `border-transparent bg-gradient-to-br ${t.gradient} text-white shadow-xl`
-                      : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-lg'
+                      : 'border-slate-700 bg-slate-800 hover:border-slate-600 hover:shadow-lg'
                   }`}
                 >
                   <div className="relative z-10">
                     <div className={`text-3xl mb-2 transition-transform duration-300 ${tipoReporte === t.value ? '' : 'group-hover:scale-110'}`}>
                       {t.icon}
                     </div>
-                    <div className={`font-bold text-lg mb-1 ${tipoReporte === t.value ? 'text-white' : 'text-gray-900'}`}>
+                    <div className={`font-bold text-lg mb-1 ${tipoReporte === t.value ? 'text-white' : 'text-slate-100'}`}>
                       {t.label.replace(/^..\s/, '')}
                     </div>
-                    <div className={`text-sm ${tipoReporte === t.value ? 'text-white/90' : 'text-gray-500'}`}>
+                    <div className={`text-sm ${tipoReporte === t.value ? 'text-white/90' : 'text-slate-400'}`}>
                       {t.desc}
                     </div>
                   </div>
@@ -476,7 +476,7 @@ export default function ReportesPage() {
 
           {/* Período */}
           <div>
-            <label className="text-sm font-semibold text-gray-700 mb-3 block uppercase tracking-wide">Período de Análisis</label>
+            <label className="text-sm font-semibold text-slate-300 mb-3 block uppercase tracking-wide">Período de Análisis</label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { value: 'mensual', label: 'Último Mes', icon: '📅' },
@@ -490,7 +490,7 @@ export default function ReportesPage() {
                   className={`group px-4 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
                     periodo === p.value
                       ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-xl'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:shadow-md'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:shadow-md'
                   }`}
                 >
                   <div className="flex flex-col items-center gap-1">
@@ -626,18 +626,18 @@ export default function ReportesPage() {
                 {/* Top Insights */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                   {/* Top 5 Productos */}
-                  <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 backdrop-blur-sm hover:shadow-2xl transition-shadow duration-300">
+                  <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-8 backdrop-blur-sm hover:shadow-2xl transition-shadow duration-300">
                     <div className="flex items-center gap-3 mb-6">
                       <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center text-2xl shadow-lg">
                         🏆
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-800">Productos Top</h3>
+                      <h3 className="text-2xl font-bold text-slate-200">Productos Top</h3>
                     </div>
                     <div className="space-y-4">
                       {reporte.productosMasVendidos?.slice(0, 5).map((p, i) => (
                         <div 
                           key={p.id} 
-                          className="group relative flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-gray-50 to-white hover:from-blue-50 hover:to-purple-50 border border-gray-100 hover:border-purple-200 transition-all duration-300 hover:shadow-md"
+                          className="group relative flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-800 hover:to-slate-700 border border-slate-700 hover:border-purple-500 transition-all duration-300 hover:shadow-md"
                         >
                           <div className="flex items-center gap-4 flex-1">
                             <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white font-black text-lg shadow-md group-hover:scale-110 transition-transform duration-300 ${
@@ -649,10 +649,10 @@ export default function ReportesPage() {
                               {i + 1}
                             </div>
                             <div className="flex-1">
-                              <p className="font-bold text-gray-800 text-lg group-hover:text-purple-700 transition-colors">
+                              <p className="font-bold text-slate-200 text-lg group-hover:text-purple-300 transition-colors">
                                 {p.nombre}
                               </p>
-                              <p className="text-sm text-gray-500 font-medium">
+                              <p className="text-sm text-slate-400 font-medium">
                                 {p.totalVendido} vendidos • {p.margenPorcentaje?.toFixed(1)}% margen
                               </p>
                             </div>
@@ -668,12 +668,12 @@ export default function ReportesPage() {
                   </div>
 
                   {/* Análisis de Categorías */}
-                  <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 backdrop-blur-sm hover:shadow-2xl transition-shadow duration-300">
+                  <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 p-8 backdrop-blur-sm hover:shadow-2xl transition-shadow duration-300">
                     <div className="flex items-center gap-3 mb-6">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl shadow-lg">
                         📊
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-800">Distribución por Categoría</h3>
+                      <h3 className="text-2xl font-bold text-slate-200">Distribución por Categoría</h3>
                     </div>
                     <div className="h-64">
                       <Pie
@@ -690,9 +690,9 @@ export default function ReportesPage() {
                               'rgba(234, 179, 8, 0.9)'
                             ],
                             borderWidth: 3,
-                            borderColor: '#fff',
+                            borderColor: '#0f172a',
                             hoverBorderWidth: 4,
-                            hoverBorderColor: '#fff'
+                            hoverBorderColor: '#1e293b'
                           }]
                         }}
                         options={{
@@ -705,7 +705,7 @@ export default function ReportesPage() {
                                 boxWidth: 12,
                                 font: { weight: 'bold', size: 12 },
                                 padding: 15,
-                                color: '#374151'
+                                color: '#cbd5e1'
                               }
                             },
                             tooltip: {
@@ -789,8 +789,8 @@ export default function ReportesPage() {
                 </div>
 
                 {/* Tabs de Vistas */}
-                <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-                  <div className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+                <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
+                  <div className="border-b border-slate-700 bg-gradient-to-r from-slate-900 to-slate-800">
                     <div className="flex overflow-x-auto">
                       {[
                         { id: 'resumen', label: '📈 Ventas por Día', icon: '📈' },
@@ -804,7 +804,7 @@ export default function ReportesPage() {
                           className={`px-8 py-5 font-bold transition-all duration-300 whitespace-nowrap relative group ${
                             vistaActiva === tab.id
                               ? 'text-blue-600'
-                              : 'text-gray-500 hover:text-gray-700'
+                              : 'text-slate-400 hover:text-slate-300'
                           }`}
                         >
                           <span className="relative z-10">{tab.label}</span>
@@ -812,7 +812,7 @@ export default function ReportesPage() {
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-lg"></div>
                           )}
                           {vistaActiva !== tab.id && (
-                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-600 opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
                           )}
                         </button>
                       ))}
@@ -823,11 +823,11 @@ export default function ReportesPage() {
                 {/* Vista Resumen - Ventas por Día */}
                 {vistaActiva === 'resumen' && (
                   <div className="animate-fadeIn">
-                    <h3 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+                    <h3 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-3">
                       <span className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-xl shadow-lg">📈</span>
                       Evolución de Ventas
                     </h3>
-                    <div className="h-96 bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border border-gray-100">
+                    <div className="h-96 bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 border border-slate-700">
                       <Line
                         data={{
                           labels: reporte.ventasPorDia.map(v => 
@@ -851,10 +851,10 @@ export default function ReportesPage() {
                               pointRadius: 4,
                               pointHoverRadius: 8,
                               pointBackgroundColor: 'rgb(59, 130, 246)',
-                              pointBorderColor: '#fff',
+                              pointBorderColor: '#0f172a',
                               pointBorderWidth: 2,
                               pointHoverBackgroundColor: 'rgb(59, 130, 246)',
-                              pointHoverBorderColor: '#fff',
+                              pointHoverBorderColor: '#1e293b',
                               pointHoverBorderWidth: 3
                             },
                             {
@@ -874,10 +874,10 @@ export default function ReportesPage() {
                               pointRadius: 4,
                               pointHoverRadius: 8,
                               pointBackgroundColor: 'rgb(16, 185, 129)',
-                              pointBorderColor: '#fff',
+                              pointBorderColor: '#0f172a',
                               pointBorderWidth: 2,
                               pointHoverBackgroundColor: 'rgb(16, 185, 129)',
-                              pointHoverBorderColor: '#fff',
+                              pointHoverBorderColor: '#1e293b',
                               pointHoverBorderWidth: 3
                             }
                           ]
@@ -914,14 +914,14 @@ export default function ReportesPage() {
                               ticks: { 
                                 callback: (value) => `$${value}`,
                                 font: { size: 12, weight: 'bold' },
-                                color: '#6B7280'
+                                color: '#94a3b8'
                               }
                             },
                             x: {
                               grid: { display: false },
                               ticks: {
                                 font: { size: 12, weight: 'bold' },
-                                color: '#6B7280'
+                                color: '#94a3b8'
                               }
                             }
                           },
@@ -940,23 +940,23 @@ export default function ReportesPage() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Más Vendidos */}
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">🏆 Más Vendidos</h3>
+                      <h3 className="text-xl font-bold text-slate-100 mb-4">🏆 Más Vendidos</h3>
                       <div className="space-y-3">
                         {reporte.productosMasVendidos.slice(0, 10).map((producto, index) => (
-                          <div key={producto.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div key={producto.id} className="flex items-center gap-3 p-3 bg-slate-900 rounded-lg">
                             <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold">
                               {index + 1}
                             </div>
                             <div className="flex-1">
-                              <p className="font-semibold text-gray-900">{producto.nombre}</p>
-                              <p className="text-sm text-gray-500">
+                              <p className="font-semibold text-slate-100">{producto.nombre}</p>
+                              <p className="text-sm text-slate-400">
                                 {producto.categoria} • {producto.tipo}
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-gray-900">{producto.totalVendido} uds</p>
+                              <p className="font-bold text-slate-100">{producto.totalVendido} uds</p>
                               <p className="text-sm text-green-600">${producto.ingresosGenerados.toFixed(2)}</p>
-                              <p className="text-xs text-gray-500">Margen: {producto.margenPorcentaje.toFixed(1)}%</p>
+                              <p className="text-xs text-slate-400">Margen: {producto.margenPorcentaje.toFixed(1)}%</p>
                             </div>
                           </div>
                         ))}
@@ -965,22 +965,22 @@ export default function ReportesPage() {
 
                     {/* Menos Vendidos */}
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">⚠️ Menos Vendidos</h3>
+                      <h3 className="text-xl font-bold text-slate-100 mb-4">⚠️ Menos Vendidos</h3>
                       <div className="space-y-3">
                         {reporte.productosMenosVendidos.slice(0, 10).map((producto, index) => (
-                          <div key={producto.id} className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
+                          <div key={producto.id} className="flex items-center gap-3 p-3 bg-red-900/20 rounded-lg">
                             <div className="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">
                               {index + 1}
                             </div>
                             <div className="flex-1">
-                              <p className="font-semibold text-gray-900">{producto.nombre}</p>
-                              <p className="text-sm text-gray-500">
+                              <p className="font-semibold text-slate-100">{producto.nombre}</p>
+                              <p className="text-sm text-slate-400">
                                 {producto.categoria} • {producto.tipo}
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="font-bold text-gray-900">{producto.totalVendido} uds</p>
-                              <p className="text-sm text-gray-600">${producto.ingresosGenerados.toFixed(2)}</p>
+                              <p className="font-bold text-slate-100">{producto.totalVendido} uds</p>
+                              <p className="text-sm text-slate-400">${producto.ingresosGenerados.toFixed(2)}</p>
                             </div>
                           </div>
                         ))}
@@ -1027,29 +1027,29 @@ export default function ReportesPage() {
                       />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Análisis por Categoría</h3>
+                      <h3 className="text-xl font-bold text-slate-100 mb-4">Análisis por Categoría</h3>
                       <div className="space-y-3">
                         {reporte.ventasPorCategoria.map((cat) => (
-                          <div key={cat.categoria} className="p-4 bg-gray-50 rounded-lg">
+                          <div key={cat.categoria} className="p-4 bg-slate-900 rounded-lg">
                             <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-semibold text-gray-900">{cat.categoria || 'Sin categoría'}</h4>
-                              <span className="text-sm text-gray-500">{cat.productosDiferentes} productos</span>
+                              <h4 className="font-semibold text-slate-100">{cat.categoria || 'Sin categoría'}</h4>
+                              <span className="text-sm text-slate-400">{cat.productosDiferentes} productos</span>
                             </div>
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
-                                <p className="text-gray-500">Unidades vendidas</p>
-                                <p className="font-bold text-gray-900">{cat.totalVendido}</p>
+                                <p className="text-slate-400">Unidades vendidas</p>
+                                <p className="font-bold text-slate-100">{cat.totalVendido}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Ingresos</p>
+                                <p className="text-slate-400">Ingresos</p>
                                 <p className="font-bold text-green-600">${cat.ingresosGenerados.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Costo</p>
+                                <p className="text-slate-400">Costo</p>
                                 <p className="font-bold text-red-600">${cat.costoTotal.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Margen</p>
+                                <p className="text-slate-400">Margen</p>
                                 <p className="font-bold text-blue-600">${cat.margenBruto.toFixed(2)}</p>
                               </div>
                             </div>
@@ -1105,42 +1105,42 @@ export default function ReportesPage() {
                       />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Análisis Comida vs Bebida</h3>
+                      <h3 className="text-xl font-bold text-slate-100 mb-4">Análisis Comida vs Bebida</h3>
                       <div className="space-y-4">
                         {reporte.ventasPorTipo.map((tipo) => (
-                          <div key={tipo.tipo} className="p-4 bg-gray-50 rounded-lg">
+                          <div key={tipo.tipo} className="p-4 bg-slate-900 rounded-lg">
                             <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-lg font-semibold text-gray-900">
+                              <h4 className="text-lg font-semibold text-slate-100">
                                 {tipo.tipo === 'comida' && '🍽️'} 
                                 {tipo.tipo === 'bebida' && '🍹'}
                                 {tipo.tipo === 'otros' && '📦'}
                                 {' '}
                                 {tipo.tipo.charAt(0).toUpperCase() + tipo.tipo.slice(1)}
                               </h4>
-                              <span className="text-sm text-gray-500">{tipo.productosDiferentes} productos</span>
+                              <span className="text-sm text-slate-400">{tipo.productosDiferentes} productos</span>
                             </div>
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
-                                <p className="text-gray-500">Unidades vendidas</p>
-                                <p className="font-bold text-gray-900">{tipo.totalVendido}</p>
+                                <p className="text-slate-400">Unidades vendidas</p>
+                                <p className="font-bold text-slate-100">{tipo.totalVendido}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Ingresos</p>
+                                <p className="text-slate-400">Ingresos</p>
                                 <p className="font-bold text-green-600">${tipo.ingresosGenerados.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Costo</p>
+                                <p className="text-slate-400">Costo</p>
                                 <p className="font-bold text-red-600">${tipo.costoTotal.toFixed(2)}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500">Margen</p>
+                                <p className="text-slate-400">Margen</p>
                                 <p className="font-bold text-blue-600">${tipo.margenBruto.toFixed(2)}</p>
                               </div>
                             </div>
-                            <div className="mt-3 pt-3 border-t border-gray-200">
+                            <div className="mt-3 pt-3 border-t border-slate-700">
                               <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-500">% Margen</span>
-                                <span className="font-bold text-gray-900">
+                                <span className="text-sm text-slate-400">% Margen</span>
+                                <span className="font-bold text-slate-100">
                                   {((tipo.margenBruto / tipo.ingresosGenerados) * 100).toFixed(1)}%
                                 </span>
                               </div>
@@ -1159,23 +1159,23 @@ export default function ReportesPage() {
             {/* Reporte Comparativo */}
             {tipoReporte === 'comparativo' && (
               <div className="space-y-8 animate-fadeIn">
-                <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-xl">
+                <div className="bg-slate-800 rounded-2xl border border-slate-700 p-8 shadow-xl">
                   <div className="flex items-center gap-3 mb-8">
                     <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl shadow-lg">
                       📊
                     </div>
-                    <h3 className="text-2xl font-bold text-gray-800">Comparación de Períodos</h3>
+                    <h3 className="text-2xl font-bold text-slate-200">Comparación de Períodos</h3>
                   </div>
                   
                   <div className="grid md:grid-cols-3 gap-6 mb-8">
                     {/* KPI Comparativo: Ventas */}
-                    <div className="group p-6 bg-gradient-to-br from-blue-50 via-blue-100 to-blue-50 rounded-2xl border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 hover:shadow-xl hover:scale-105">
-                      <div className="text-sm text-blue-700 font-bold mb-2 uppercase tracking-wide">Ventas Período Actual</div>
-                      <div className="text-4xl font-black text-blue-900 mb-3 tracking-tight">
+                    <div className="group p-6 bg-gradient-to-br from-blue-900/40 via-blue-900/30 to-slate-900 rounded-2xl border-2 border-blue-700 hover:border-blue-500 transition-all duration-300 hover:shadow-xl hover:scale-105">
+                      <div className="text-sm text-blue-300 font-bold mb-2 uppercase tracking-wide">Ventas Período Actual</div>
+                      <div className="text-4xl font-black text-blue-100 mb-3 tracking-tight">
                         {getMoneda()} {reporte?.resumen?.totalVentas?.toLocaleString('es-AR') || 0}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-blue-700 font-semibold">vs período anterior</span>
+                        <span className="text-sm text-blue-300 font-semibold">vs período anterior</span>
                         <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-black bg-green-500 text-white shadow-md">
                           ↗ +12.5%
                         </span>
@@ -1183,14 +1183,14 @@ export default function ReportesPage() {
                     </div>
 
                     {/* KPI Comparativo: Productos */}
-                    <div className="group p-6 bg-gradient-to-br from-green-50 via-green-100 to-green-50 rounded-2xl border-2 border-green-200 hover:border-green-400 transition-all duration-300 hover:shadow-xl hover:scale-105">
-                      <div className="text-sm text-green-700 font-bold mb-2 uppercase tracking-wide">Productos Vendidos</div>
-                      <div className="text-4xl font-black text-green-900 mb-3 tracking-tight">
+                    <div className="group p-6 bg-gradient-to-br from-green-900/40 via-green-900/30 to-slate-900 rounded-2xl border-2 border-green-700 hover:border-green-500 transition-all duration-300 hover:shadow-xl hover:scale-105">
+                      <div className="text-sm text-green-300 font-bold mb-2 uppercase tracking-wide">Productos Vendidos</div>
+                      <div className="text-4xl font-black text-green-100 mb-3 tracking-tight">
                         {reporte?.resumen?.totalProductosVendidos?.toLocaleString('es-AR') || 
                          reporte?.productosMasVendidos?.reduce((sum, p) => sum + (p.totalVendido || 0), 0) || 0}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-green-700 font-semibold">vs período anterior</span>
+                        <span className="text-sm text-green-300 font-semibold">vs período anterior</span>
                         <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-black bg-green-500 text-white shadow-md">
                           ↗ +8.3%
                         </span>
@@ -1198,13 +1198,13 @@ export default function ReportesPage() {
                     </div>
 
                     {/* KPI Comparativo: Ticket Promedio */}
-                    <div className="group p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-purple-50 rounded-2xl border-2 border-purple-200 hover:border-purple-400 transition-all duration-300 hover:shadow-xl hover:scale-105">
-                      <div className="text-sm text-purple-700 font-bold mb-2 uppercase tracking-wide">Ticket Promedio</div>
-                      <div className="text-4xl font-black text-purple-900 mb-3 tracking-tight">
+                    <div className="group p-6 bg-gradient-to-br from-purple-900/40 via-purple-900/30 to-slate-900 rounded-2xl border-2 border-purple-700 hover:border-purple-500 transition-all duration-300 hover:shadow-xl hover:scale-105">
+                      <div className="text-sm text-purple-300 font-bold mb-2 uppercase tracking-wide">Ticket Promedio</div>
+                      <div className="text-4xl font-black text-purple-100 mb-3 tracking-tight">
                         {getMoneda()} {reporte?.resumen?.ticketPromedio || 0}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-purple-700 font-semibold">vs período anterior</span>
+                        <span className="text-sm text-purple-300 font-semibold">vs período anterior</span>
                         <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-black bg-red-500 text-white shadow-md">
                           ↘ -3.2%
                         </span>
@@ -1214,11 +1214,11 @@ export default function ReportesPage() {
 
                   {/* Gráfico de tendencia comparativa */}
                   <div className="mb-6">
-                    <h4 className="text-xl font-bold mb-6 flex items-center gap-3 text-gray-800">
+                    <h4 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-200">
                       <span className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-lg shadow-md">📈</span>
                       Tendencia de Ventas: Período Actual vs Anterior
                     </h4>
-                    <div className="h-96 bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border border-gray-100">
+                    <div className="h-96 bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-6 border border-slate-700">
                       <Line
                         data={{
                           labels: reporte?.ventasPorDia?.map(d => 
@@ -1242,7 +1242,7 @@ export default function ReportesPage() {
                               pointRadius: 5,
                               pointHoverRadius: 8,
                               pointBackgroundColor: 'rgb(59, 130, 246)',
-                              pointBorderColor: '#fff',
+                              pointBorderColor: '#0f172a',
                               pointBorderWidth: 2
                             },
                             {
@@ -1257,7 +1257,7 @@ export default function ReportesPage() {
                               pointRadius: 4,
                               pointHoverRadius: 7,
                               pointBackgroundColor: 'rgb(156, 163, 175)',
-                              pointBorderColor: '#fff',
+                              pointBorderColor: '#0f172a',
                               pointBorderWidth: 2
                             }
                           ]
@@ -1294,14 +1294,14 @@ export default function ReportesPage() {
                               ticks: {
                                 callback: (value) => `$${value.toLocaleString('es-AR')}`,
                                 font: { size: 12, weight: 'bold' },
-                                color: '#6B7280'
+                                color: '#94a3b8'
                               }
                             },
                             x: {
                               grid: { display: false },
                               ticks: {
                                 font: { size: 12, weight: 'bold' },
-                                color: '#6B7280'
+                                color: '#94a3b8'
                               }
                             }
                           },
@@ -1318,8 +1318,8 @@ export default function ReportesPage() {
                   <div>
                     <h4 className="font-semibold mb-3">Cambios en el Ranking de Productos</h4>
                     <div className="grid md:grid-cols-2 gap-4">
-                      <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                        <div className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                      <div className="p-4 bg-green-900/30 rounded-lg border border-green-700">
+                        <div className="font-semibold text-green-300 mb-2 flex items-center gap-2">
                           <span className="text-xl">📈</span>
                           Productos en Ascenso
                         </div>
@@ -1327,14 +1327,14 @@ export default function ReportesPage() {
                           {reporte?.productosMasVendidos?.slice(0, 3).map((p, idx) => (
                             <div key={idx} className="flex items-center justify-between">
                               <span>{p.nombre}</span>
-                              <span className="text-green-700 font-semibold">↑ +{idx + 2} posiciones</span>
+                              <span className="text-green-300 font-semibold">↑ +{idx + 2} posiciones</span>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                        <div className="font-semibold text-red-900 mb-2 flex items-center gap-2">
+                      <div className="p-4 bg-red-900/30 rounded-lg border border-red-700">
+                        <div className="font-semibold text-red-300 mb-2 flex items-center gap-2">
                           <span className="text-xl">📉</span>
                           Productos en Descenso
                         </div>
@@ -1342,7 +1342,7 @@ export default function ReportesPage() {
                           {reporte?.productosMenosVendidos?.slice(0, 3).map((p, idx) => (
                             <div key={idx} className="flex items-center justify-between">
                               <span>{p.nombre}</span>
-                              <span className="text-red-700 font-semibold">↓ -{idx + 1} posiciones</span>
+                              <span className="text-red-300 font-semibold">↓ -{idx + 1} posiciones</span>
                             </div>
                           ))}
                         </div>
@@ -1356,7 +1356,7 @@ export default function ReportesPage() {
         )}
 
         {/* Programaciones de Reportes */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mt-6">
+        <div className="bg-slate-800 rounded-lg shadow-sm border border-slate-700 p-6 mt-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">📅 Reportes Programados</h3>
             <button
@@ -1368,45 +1368,45 @@ export default function ReportesPage() {
           </div>
 
           {loadingScheduled ? (
-            <div className="text-center py-8 text-gray-500">Cargando programaciones...</div>
+            <div className="text-center py-8 text-slate-400">Cargando programaciones...</div>
           ) : schedules.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-slate-400">
               No hay reportes programados. Crea uno para recibir reportes automáticamente.
             </div>
           ) : (
             <div className="space-y-3">
               {schedules.map((scheduled) => (
-                <div key={scheduled.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div key={scheduled.id} className="p-4 bg-slate-900 rounded-lg border border-slate-700">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <div className="font-semibold text-gray-900">{scheduled.nombre}</div>
-                      <div className="text-sm text-gray-600 mt-1">
+                      <div className="font-semibold text-slate-100">{scheduled.nombre}</div>
+                      <div className="text-sm text-slate-400 mt-1">
                         Frecuencia: <span className="font-medium">{scheduled.frecuencia}</span> • 
                         Tipo: <span className="font-medium">{scheduled.tipo_reporte}</span>
                         {scheduled.periodo && ` • Período: ${scheduled.periodo}`}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-slate-400 mt-1">
                         Próxima ejecución: {new Date(scheduled.proxima_ejecucion).toLocaleString('es-AR')}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                         scheduled.activo 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
+                          ? 'bg-green-900/30 text-green-800' 
+                          : 'bg-slate-800 text-slate-200'
                       }`}>
                         {scheduled.activo ? 'Activo' : 'Pausado'}
                       </span>
                       <button
                         onClick={() => handleRunScheduledReportNow(scheduled.id)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-2 text-blue-600 hover:bg-blue-900/20 rounded-lg transition-colors"
                         title="Ejecutar ahora"
                       >
                         ▶️
                       </button>
                       <button
                         onClick={() => handleDeleteScheduledReport(scheduled.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-2 text-red-600 hover:bg-red-900/20 rounded-lg transition-colors"
                         title="Eliminar"
                       >
                         🗑️
@@ -1423,14 +1423,14 @@ export default function ReportesPage() {
       {/* Modal de Selección de Local */}
       {showLocalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-fadeIn">
+          <div className="bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-8 animate-fadeIn">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl shadow-lg">
                 🏪
               </div>
               <div>
-                <h3 className="text-2xl font-bold text-gray-900">Selecciona un Local</h3>
-                <p className="text-sm text-gray-500">Elige el local para generar el reporte</p>
+                <h3 className="text-2xl font-bold text-slate-100">Selecciona un Local</h3>
+                <p className="text-sm text-slate-400">Elige el local para generar el reporte</p>
               </div>
             </div>
             
@@ -1442,14 +1442,14 @@ export default function ReportesPage() {
                     setLocalId(local.id);
                     generarReporte(local.id);
                   }}
-                  className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 text-left group"
+                  className="w-full p-4 rounded-xl border-2 border-slate-700 hover:border-blue-500 hover:bg-blue-900/20 transition-all duration-200 text-left group"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-bold text-gray-900 group-hover:text-blue-700 text-lg">{local.nombre}</p>
-                      <p className="text-sm text-gray-500">{local.direccion || 'Sin dirección'}</p>
+                      <p className="font-bold text-slate-100 group-hover:text-blue-700 text-lg">{local.nombre}</p>
+                      <p className="text-sm text-slate-400">{local.direccion || 'Sin dirección'}</p>
                     </div>
-                    <svg className="w-6 h-6 text-gray-400 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6 text-slate-500 group-hover:text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -1459,7 +1459,7 @@ export default function ReportesPage() {
 
             <button
               onClick={() => setShowLocalModal(false)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+              className="w-full px-4 py-3 border-2 border-slate-600 rounded-xl text-slate-300 font-semibold hover:bg-slate-900 transition-colors"
             >
               Cancelar
             </button>
@@ -1532,10 +1532,10 @@ function SuggestionsPanel({ reporte, onAction }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {suggestions.map(s => (
-        <div key={s.id} className="p-4 rounded-lg border bg-white flex flex-col justify-between">
+        <div key={s.id} className="p-4 rounded-lg border bg-slate-800 flex flex-col justify-between">
           <div>
-            <h4 className="font-semibold text-gray-900">{s.title}</h4>
-            <p className="text-sm text-gray-500 mt-1">{s.body}</p>
+            <h4 className="font-semibold text-slate-100">{s.title}</h4>
+            <p className="text-sm text-slate-400 mt-1">{s.body}</p>
           </div>
           <div className="mt-3 flex justify-end">
             <button onClick={s.action} className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm">Ejecutar</button>
@@ -1598,18 +1598,18 @@ function ScheduleModal({ open, onClose, onSaved, initial, currentLocalId }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg p-6">
+      <div className="w-full max-w-2xl bg-slate-800 rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-semibold mb-4">{initial ? 'Editar programación' : 'Nueva programación'}</h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
-            <div className="text-sm text-gray-600">Nombre</div>
-            <input value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} className="mt-1 w-full border rounded px-3 py-2" />
+            <div className="text-sm text-slate-400">Nombre</div>
+            <input value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2" />
           </label>
 
           <label className="block">
-            <div className="text-sm text-gray-600">Frecuencia</div>
-            <select value={form.frecuencia} onChange={e=>setForm({...form, frecuencia:e.target.value})} className="mt-1 w-full border rounded px-3 py-2">
+            <div className="text-sm text-slate-400">Frecuencia</div>
+            <select value={form.frecuencia} onChange={e=>setForm({...form, frecuencia:e.target.value})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2">
               <option value="daily">Diario</option>
               <option value="weekly">Semanal</option>
               <option value="monthly">Mensual</option>
@@ -1617,13 +1617,13 @@ function ScheduleModal({ open, onClose, onSaved, initial, currentLocalId }) {
           </label>
 
           <label className="block">
-            <div className="text-sm text-gray-600">Hora (HH:MM)</div>
-            <input value={form.tiempo} onChange={e=>setForm({...form, tiempo:e.target.value})} className="mt-1 w-full border rounded px-3 py-2" />
+            <div className="text-sm text-slate-400">Hora (HH:MM)</div>
+            <input value={form.tiempo} onChange={e=>setForm({...form, tiempo:e.target.value})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2" />
           </label>
 
           <label className="block">
-            <div className="text-sm text-gray-600">Formato</div>
-            <select value={form.formato} onChange={e=>setForm({...form, formato:e.target.value})} className="mt-1 w-full border rounded px-3 py-2">
+            <div className="text-sm text-slate-400">Formato</div>
+            <select value={form.formato} onChange={e=>setForm({...form, formato:e.target.value})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2">
               <option value="csv">CSV</option>
               <option value="pdf">PDF</option>
               <option value="both">Ambos</option>
@@ -1632,31 +1632,31 @@ function ScheduleModal({ open, onClose, onSaved, initial, currentLocalId }) {
 
           {form.frecuencia === 'weekly' && (
             <label className="sm:col-span-2">
-              <div className="text-sm text-gray-600">Día de la semana (0=Dom..6=Sab)</div>
-              <input type="number" value={form.diaSemana ?? ''} onChange={e=>setForm({...form, diaSemana: e.target.value === '' ? null : parseInt(e.target.value,10)})} className="mt-1 w-full border rounded px-3 py-2" />
+              <div className="text-sm text-slate-400">Día de la semana (0=Dom..6=Sab)</div>
+              <input type="number" value={form.diaSemana ?? ''} onChange={e=>setForm({...form, diaSemana: e.target.value === '' ? null : parseInt(e.target.value,10)})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2" />
             </label>
           )}
 
           {form.frecuencia === 'monthly' && (
             <label className="sm:col-span-2">
-              <div className="text-sm text-gray-600">Día del mes (1-31)</div>
-              <input type="number" value={form.diaMes ?? ''} onChange={e=>setForm({...form, diaMes: e.target.value === '' ? null : parseInt(e.target.value,10)})} className="mt-1 w-full border rounded px-3 py-2" />
+              <div className="text-sm text-slate-400">Día del mes (1-31)</div>
+              <input type="number" value={form.diaMes ?? ''} onChange={e=>setForm({...form, diaMes: e.target.value === '' ? null : parseInt(e.target.value,10)})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2" />
             </label>
           )}
 
           <label className="sm:col-span-2">
-            <div className="text-sm text-gray-600">Destinatarios (separados por coma) — emails o números</div>
-            <input value={form.destinatarios} onChange={e=>setForm({...form, destinatarios: e.target.value})} className="mt-1 w-full border rounded px-3 py-2" />
+            <div className="text-sm text-slate-400">Destinatarios (separados por coma) — emails o números</div>
+            <input value={form.destinatarios} onChange={e=>setForm({...form, destinatarios: e.target.value})} className="mt-1 w-full border border-slate-600 bg-slate-900 text-slate-100 rounded px-3 py-2" />
           </label>
 
           <label className="sm:col-span-2 flex items-center gap-2">
             <input type="checkbox" checked={!!form.activo} onChange={e=>setForm({...form, activo: e.target.checked})} />
-            <div className="text-sm text-gray-600">Activo</div>
+            <div className="text-sm text-slate-400">Activo</div>
           </label>
         </div>
 
             <div className="mt-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 border rounded">Cancelar</button>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-600 rounded text-slate-300 hover:bg-slate-900">Cancelar</button>
           <button onClick={save} className="px-4 py-2 bg-blue-600 text-white rounded">Guardar</button>
         </div>
       </div>

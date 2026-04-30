@@ -28,7 +28,7 @@ const Usuario = sequelize.define('Usuario', {
     type: DataTypes.STRING(50),
     allowNull: false,
     validate: {
-      isIn: [['admin', 'atencion', 'cocina', 'bar', 'proveedor', 'platform_admin']]
+      isIn: [['admin', 'atencion', 'supervisor', 'cocina', 'bar', 'proveedor', 'platform_admin']]
     }
   },
   activo: {
